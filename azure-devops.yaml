@@ -49,11 +49,13 @@ stages:
   jobs:
   - job: Deploy
     steps:
+      
       - powershell: |
          $fileExists = Test-Path -Path "$(System.WorkFolder)/$(Release.EnvironmentName)/post-release-snapshot.snp"
          Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
         failOnStderr: true
         displayName: 'Detect For Schema Snapshot'
+      
       - powershell: |
          $path = "$(System.WorkFolder)/$(Release.EnvironmentName)"
          If(!(test-path $path))
@@ -62,6 +64,36 @@ stages:
          }
          
         displayName: 'Conditionally Generate Stage Specific Folder'
+      
+      - script: '"%dlmas_home%sc\sqlcompare" /Database1:Eastwind_Test /Makesnapshot:"pre-release-snapshot.snp"'
+        workingDirectory: '$(System.WorkFolder)/$(Release.EnvironmentName)'
+        failOnStderr: true
+        displayName: 'Pre-Release Schema Snapshot'
+      
+      - script: '"%dlmas_home%sc\sqlcompare" /Snapshot1:"pre-release-snapshot.snp" /Snapshot2:"post-release-snapshot.snp" /report:"C:\ReleaseArtifacts\DriftReports\Drift-Report-$(Release.DeploymentID).html" /force /ReportType:html /assertidentical  /include:Identical'
+        workingDirectory: '$(System.WorkFolder)/$(Release.EnvironmentName)'
+        failOnStderr: true
+        displayName: 'Detect For Drift'
+        condition: eq(variables['snapshotExists'], True)
+      
+      - script: 'flyway info migrate info  -url=jdbc:sqlserver://localhost;database=Eastwind_Test;integratedSecurity=true '
+        workingDirectory: '$(System.DefaultWorkingDirectory)/_Eastwind-CI/Eastwind-Build'
+        displayName: 'Deploy to Eastwind_Test'
+        env:
+          FLYWAY_CLEAN_DISABLED: true
+      
+      - script: '"%dlmas_home%sc\sqlcompare" /Database1:Eastwind_Test /Makesnapshot:"post-release-snapshot.snp"'
+        workingDirectory: '$(System.WorkFolder)/$(Release.EnvironmentName)'
+        failOnStderr: true
+        displayName: 'Post Release Schema Snapshot'
+      
+      - script: '"%dlmas_home%sc\sqlcompare" /Snapshot1:"post-release-snapshot.snp" /Snapshot2:"pre-release-snapshot.snp" /report:"C:\ReleaseArtifacts\ChangeReports\Change-Report-$(Release.DeploymentID).html" /force /ReportType:html /include:Identical'
+        workingDirectory: '$(System.WorkFolder)/$(Release.EnvironmentName)'
+        failOnStderr: true
+        displayName: 'Write Change Report'
+        condition: eq(variables['snapshotExists'], True)
+
+
 
 
 
