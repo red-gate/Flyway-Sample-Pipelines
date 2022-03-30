@@ -1,7 +1,8 @@
 stages:
-  pool: Default
-
 - stage: Build
+  pool: Default
+  # trigger:
+  #   - master
   jobs:
   - job: Build
     # variables:
@@ -37,19 +38,12 @@ stages:
 
 
 - stage: Test
-  condition: succeeded('Build')
+  # condition: succeeded('Build')
   jobs:
   - job: Deploy
+    # variables:
+    #   FLYWAY_CLEAN_DISABLED: true
     steps:
-
-
-- stage: Prod
-  dependsOn: Test
-  condition: succeeded('Test')
-  jobs:
-  - job: Deploy
-    steps:
-      
       - powershell: |
          $fileExists = Test-Path -Path "$(System.WorkFolder)/$(Release.EnvironmentName)/post-release-snapshot.snp"
          Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
@@ -94,12 +88,12 @@ stages:
         condition: eq(variables['snapshotExists'], True)
 
 
-
-
-
-
-
-
-
+# - stage: Prod
+#   dependsOn: Test
+#   condition: succeeded('Test')
+#   jobs:
+#   - job: Deploy
+#     steps:
+      
 
 
