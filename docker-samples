@@ -1,0 +1,53 @@
+
+docker run --rm -v $(Build.Repository.LocalPath)/SQL:/flyway/SQL -v $(Build.Repository.LocalPath)/conf:/flyway/conf flyway/flyway migrate -url="$flywayurl" -user="$user" -password="$password" -teams
+
+
+
+
+
+Flyway on docker - https://hub.docker.com/r/flyway/flyway-azure
+way/flyway
+
+
+
+version: 0.2
+
+phases:
+    #install:
+    #pre_build:
+    build:
+        commands:
+            - docker login -u $dockerlogin -p $dockerpassword
+            - docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise clean
+            #- docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise validate -ignorependingmigrations=true
+            #- docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -teams repair
+
+
+
+            # add docker get
+
+            - docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise migrate
+            # - docker run --rm -v $(pwd)/migrations:/flyway/SQL flyway/flyway -teams migrate        
+    #post_build:
+
+#        docker run --rm -v c:\Users\grant\Documents\HamShackRadio\SQL:/flyway/SQL -v c:\Users\grant\Documents\HamShackRadio\conf:/flyway/conf flyway/flyway -enterprise clean
+
+
+
+
+# Get the Spawn Security Info
+
+$sec = spawnctl get data-container AzureDevOpsCI -o json
+$sectable = $sec | ConvertFrom-Json
+
+
+# Build out the variables, useful for testing
+
+$flywayurl = "jdbc:postgresql://" + $sectable.host + ":" + $sectable.port + "/hamshackradio"
+$user = $sectable.user
+$password = $sectable.password
+
+
+# Run Flyway to do the Deploy
+
+docker run --rm -v $(Build.Repository.LocalPath)/SQL:/flyway/SQL -v $(Build.Repository.LocalPath)/conf:/flyway/conf flyway/flyway migrate -url="$flywayurl" -user="$user" -password="$password" -teams

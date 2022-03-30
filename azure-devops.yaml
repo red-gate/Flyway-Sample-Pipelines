@@ -71,7 +71,7 @@ stages:
       #   condition: eq(variables['snapshotExists'], True)
       
       - script: 'flyway info migrate info  -url=jdbc:sqlserver://localhost;database=Eastwind_Test;integratedSecurity=true '
-        workingDirectory: '$(System.DefaultWorkingDirectory)/_Eastwind-CI/Eastwind-Build'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Eastwind'
         displayName: 'Deploy to Eastwind_Test'
         env:
           FLYWAY_CLEAN_DISABLED: true
@@ -100,15 +100,3 @@ stages:
         env:
           FLYWAY_CLEAN_DISABLED: true
       
-
-
-
-
-
-
-
-
-
-
-
-
