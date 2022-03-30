@@ -95,7 +95,7 @@ stages:
   - job: Deploy
     steps:
       - script: 'flyway info migrate info  -url=jdbc:sqlserver://localhost;database=Eastwind;integratedSecurity=true '
-        workingDirectory: '$(System.DefaultWorkingDirectory)/_Eastwind-CI/Eastwind-Build'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Eastwind'
         displayName: 'Deploy to Eastwind Prod'
         env:
           FLYWAY_CLEAN_DISABLED: true
