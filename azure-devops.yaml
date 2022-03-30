@@ -1,0 +1,73 @@
+stages:
+  pool: Default
+
+- stage: Build
+  jobs:
+  - job: Build
+    # variables:
+    #   dryRunOutputPath: 'dryrun.sql'
+
+    steps:
+    - script: 'flyway clean info -url=jdbc:sqlserver://localhost;database=Eastwind_Build;integratedSecurity=true '
+      workingDirectory: Eastwind
+      failOnStderr: true
+      displayName: 'Clean Build DB'
+      env:
+        FLYWAY_CLEAN_DISABLED: false
+
+    - script: 'flyway migrate info -url=jdbc:sqlserver://localhost;database=Eastwind_Build;integratedSecurity=true '
+      workingDirectory: Eastwind
+      failOnStderr: true
+      displayName: 'Validate Migrate Scripts'
+      env:
+        FLYWAY_CLEAN_DISABLED: true
+
+    - script: 'flyway undo info -url=jdbc:sqlserver://localhost;database=Eastwind_Build;integratedSecurity=true '
+      workingDirectory: Eastwind
+      failOnStderr: true
+      displayName: 'Validate Undo Scripts'
+      env:
+        FLYWAY_CLEAN_DISABLED: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: Eastwind-Build'
+      inputs:
+        PathtoPublish: Eastwind
+        ArtifactName: 'Eastwind-Build'
+
+
+- stage: Test
+  condition: succeeded('Build')
+  jobs:
+  - job: Deploy
+    steps:
+
+
+- stage: Prod
+  dependsOn: Test
+  condition: succeeded('Test')
+  jobs:
+  - job: Deploy
+    steps:
+      - powershell: |
+         $fileExists = Test-Path -Path "$(System.WorkFolder)/$(Release.EnvironmentName)/post-release-snapshot.snp"
+         Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
+        failOnStderr: true
+        displayName: 'Detect For Schema Snapshot'
+      - powershell: |
+         $path = "$(System.WorkFolder)/$(Release.EnvironmentName)"
+         If(!(test-path $path))
+         {
+               New-Item -ItemType Directory -Force -Path $path
+         }
+         
+        displayName: 'Conditionally Generate Stage Specific Folder'
+
+
+
+
+
+
+
+
+
