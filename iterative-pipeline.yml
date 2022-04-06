@@ -1,0 +1,148 @@
+trigger:
+  branches:
+    include:
+    - master
+
+variables:
+  -group: release
+  # boolean used for filesystem
+  # snapshotExists: True
+  # flyway clean is destructive - wipes out a target db. It's necessary for shadow and build db, but be sure to disable on other targets.
+  # clean_disabled: true
+
+# parameters:
+  -stages:
+    Release_Build:
+      stage: 'Build'
+      databaseName: 'Westwind_Build'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
+      dependsOn: ''
+      cleanDisabled: false
+      displayName: 'Deploy to Westwind Build'
+    
+    Release_Test:
+      stage: 'Test'
+      databaseName: 'Westwind_Test'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+      dependsOn: 'Build'
+      cleanDisabled: true
+      displayName: 'Deploy to Westwind Test'
+    
+    Release_Prod:
+      stage: 'Prod'
+      databaseName: 'Westwind'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
+      dependsOn: 'Test'
+      cleanDisabled: true
+      displayName: 'Deploy to Westwind Prod'
+      
+
+  - ${{each stage in variables.stages}}:
+    - stage: ${{ stage.stage }} 
+      dependsOn: ${{ stage.dependsOn }} 
+      condition: succeeded(${{ stage.dependsOn }} )
+      jobs:
+      - job: Deploy
+        steps:
+          - script: 'flyway info migrate info  -url=${{ stage.JDBC }}'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+            displayName: ${{ stage.displayName }}
+            env:
+              FLYWAY_CLEAN_DISABLED: ${{ stage.cleanDisabled }}       
+
+# stages:
+# - stage: Build
+#   pool: Default
+
+#   jobs:
+#   - job: Build
+#     steps:
+#     - script: 'flyway clean info -url=jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true '
+#       # workingDirectory: Westwind
+#       failOnStderr: true
+#       displayName: 'Clean Build DB'
+#       env:
+#         FLYWAY_CLEAN_DISABLED: false
+
+#     - script: 'flyway migrate info -url=jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true '
+#       # workingDirectory: Westwind
+#       failOnStderr: true
+#       displayName: 'Validate Migrate Scripts'
+#       env:
+#         FLYWAY_CLEAN_DISABLED: $(clean_disabled)
+
+#     - script: 'flyway undo info -url=jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true '
+#       # workingDirectory: Westwind
+#       failOnStderr: true
+#       displayName: 'Validate Undo Scripts'
+#       env:
+#         FLYWAY_CLEAN_DISABLED: $(clean_disabled)
+
+#     - task: PublishBuildArtifacts@1
+#       displayName: 'Publish Artifact: Westwind-Build'
+#       inputs:
+#         PathtoPublish: $(Build.ArtifactStagingDirectory)
+#         ArtifactName: 'Westwind-Build'
+
+
+# - stage: Test
+#   condition: succeeded('Build')
+#   jobs:
+#   - job: Deploy
+#     steps:
+#       - powershell: |
+#          $fileExists = Test-Path -Path "$(Pipeline.Workspace)/$(System.StageName)/post-release-snapshot.snp"
+#          Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
+#         failOnStderr: true
+#         displayName: 'Detect For Schema Snapshot'
+      
+#       - powershell: |
+#          $path = "$(Pipeline.Workspace)/$(System.StageName)"
+#          If(!(test-path $path))
+#          {
+#                New-Item -ItemType Directory -Force -Path $path
+#          }
+         
+#         displayName: 'Conditionally Generate Stage Specific Folder'
+      
+#       - script: '"%dlmas_home%sc\sqlcompare" /Database1:Westwind_Test /Makesnapshot:"pre-release-snapshot.snp"'
+#         workingDirectory: '$(Pipeline.Workspace)/$(System.StageName)'
+#         failOnStderr: true
+#         displayName: 'Pre-Release Schema Snapshot'
+      
+#       - script: '"%dlmas_home%sc\sqlcompare" /Snapshot1:"pre-release-snapshot.snp" /Snapshot2:"post-release-snapshot.snp" /report:"C:\WestWindArtifacts\DriftReports\Drift-Report-$(System.StageAttempt).html" /force /ReportType:html /assertidentical  /include:Identical'
+#         workingDirectory: '$(Pipeline.Workspace)/$(System.StageName)'
+#         failOnStderr: true
+#         displayName: 'Detect For Drift'
+#         condition: eq(variables['snapshotExists'], True)
+      
+#       - script: 'flyway info migrate info  -url=jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+#         workingDirectory: $(Build.ArtifactStagingDirectory)
+#         displayName: 'Deploy to Westwind_Test'
+#         env:
+#           FLYWAY_CLEAN_DISABLED: $(clean_disabled)
+      
+#       - script: '"%dlmas_home%sc\sqlcompare" /Database1:Westwind_Test /Makesnapshot:"post-release-snapshot.snp"'
+#         workingDirectory: '$(Pipeline.Workspace)/$(System.StageName)'
+#         failOnStderr: true
+#         displayName: 'Post Release Schema Snapshot'
+      
+#       - script: '"%dlmas_home%sc\sqlcompare" /Snapshot1:"post-release-snapshot.snp" /Snapshot2:"pre-release-snapshot.snp" /report:"C:\WestWindArtifacts\ChangeReports\Change-Report-$(System.StageAttempt).html" /force /ReportType:html /include:Identical'
+#         workingDirectory: '$(Pipeline.Workspace)/$(System.StageName)'
+#         failOnStderr: true
+#         displayName: 'Write Change Report'
+#         condition: eq(variables['snapshotExists'], True)
+
+
+# - stage: Prod
+#   dependsOn: Test
+#   condition: succeeded('Test')
+#   jobs:
+#   - job: Deploy
+#     steps:
+#       - script: 'flyway info migrate info  -url=jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true '
+#         workingDirectory: $(Build.ArtifactStagingDirectory)
+#         displayName: 'Deploy to Westwind Prod'
+#         env:
+#           FLYWAY_CLEAN_DISABLED: $(clean_disabled)
+      
