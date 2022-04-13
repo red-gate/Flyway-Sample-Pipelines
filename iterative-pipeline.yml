@@ -7,58 +7,91 @@ trigger:
 variables:
   -group: release
   snapshotExists: True
-  # CAREFUL: flyway clean is destructive - wipes out a target db. It's necessary for shadow and build databases, but be sure to disable on other targets.
-  # clean_disabled: true
-  # workingDirectory: 'Westwind'
 
 parameters:
-  - name: releaseStages
+  - name: pipelineStages
     type: object
     default: 
-    
     - environmentName: 'build'
       stage: 'Build'
       databaseName: 'Westwind_Build'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       dependsOn: ''
-      cleanDisabled: false
-      displayName: 'Deploy to Westwind Build'
-    
+      displayName: 'Build'
+      isBuild: true
+
     - environmentName: 'test'
       stage: 'Test'
       databaseName: 'Westwind_Test'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
       dependsOn: 'Build'
-      cleanDisabled: true
-      displayName: 'Deploy to Westwind Test'
+      displayName: 'Deploy Test'
+      isDeploy: true
+      manualIntervention: false
     
     - environmentName: 'production'
       stage: 'Prod'
       databaseName: 'Westwind'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
       dependsOn: 'Test'
-      cleanDisabled: true
-      displayName: 'Deploy to Westwind Prod'
+      displayName: 'Deploy Prod'
+      isDeploy: true
+      manualIntervention: true
 
-  - name: workingDirectory
+  - name: buildArtifactName 
     type: string
-    default: 'Westwind'
-
+    default: 'Westwind-Build'
   
 stages:
-  # -stage: Build
+  - ${{each stage in parameters.pipelineStages}}:
+    - ${{if eq(stage.isBuild, true)}}:
+      - stage: Build
+        pool: Default
+        displayName: ${{stage.displayName}} 
+        dependsOn: ${{stage.dependsOn}}
+        jobs:
+        - job: Build
+          steps:
+            # - script: 'flyway clean info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Clean Build DB'
+            #   env:
+            #     FLYWAY_CLEAN_DISABLED: false
 
-  - ${{each stage in parameters.releaseStages}}:
-    - stage: ${{stage.stage}} 
-      displayName: ${{stage.displayName}} 
-      dependsOn: ${{stage.dependsOn}} 
-      # condition: succeeded(${{stage.dependsOn}})
-      jobs:
-      - job: Deploy
-        steps:
-          - script: 'flyway info migrate info -url=${{stage.JDBC}}'
-            # workingDirectory: $(Build.ArtifactStagingDirectory)
-            displayName: ${{stage.displayName}}
-            # workingDirectory: ${{parameters.workingDirectory}}
-            env:
-              FLYWAY_CLEAN_DISABLED: ${{lower(stage.cleanDisabled)}}
+            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Migrate Scripts'
+
+            # - script: 'flyway undo info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Undo Scripts'
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Build Artifact'
+              inputs:
+                ArtifactName: '${{parameters.buildArtifactName}}'
+                PathtoPublish: '$(System.ArtifactsDirectory)'
+    
+    - ${{if eq(stage.isDeploy, true)}}:
+      - stage: ${{stage.stage}} 
+        pool: Default
+        displayName: ${{stage.displayName}} 
+        dependsOn: ${{stage.dependsOn}} 
+        # condition: succeeded(${{stage.dependsOn}})
+        jobs:
+        - job: Deploy
+          steps:
+            - task: DownloadBuildArtifacts@0
+              inputs:
+                buildType: 'current'
+                downloadType: 'single'
+                artifactName: '${{parameters.buildArtifactName}}'
+                downloadPath: '$(System.ArtifactsDirectory)'
+
+            - script: 'flyway info migrate info -url=${{stage.JDBC}}'
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              displayName: ${{stage.displayName}}
+              failOnStderr: true
+              env:
+                # clean destroys a target DB, keep disabled except for build step
+                FLYWAY_CLEAN_DISABLED: true
