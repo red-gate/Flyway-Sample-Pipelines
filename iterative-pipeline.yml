@@ -8,7 +8,8 @@ variables:
   -group: release
   snapshotExists: True
   # CAREFUL: flyway clean is destructive - wipes out a target db. It's necessary for shadow and build databases, but be sure to disable on other targets.
-  clean_disabled: true
+  # clean_disabled: true
+  # workingDirectory: 'Westwind'
 
 parameters:
   - name: releaseStages
@@ -39,54 +40,25 @@ parameters:
       cleanDisabled: true
       displayName: 'Deploy to Westwind Prod'
 
+  - name: workingDirectory
+    type: string
+    default: 'Westwind'
 
-
+  
 stages:
+  # -stage: Build
+
   - ${{each stage in parameters.releaseStages}}:
-    - stage: ${{ stage.stage }} 
-      displayName: ${{ stage.displayName}} 
-      dependsOn: ${{ stage.dependsOn}} 
+    - stage: ${{stage.stage}} 
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
       # condition: succeeded(${{stage.dependsOn}})
       jobs:
       - job: Deploy
         steps:
-          - script: 'flyway info migrate info -url=${{ stage.JDBC }}'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
-            displayName: ${{ stage.displayName }}
-            # - script: echo "-------- stage.cleanDisabled -----------------"
-            # - script: echo ${{ stage.cleanDisabled }}
+          - script: 'flyway info migrate info -url=${{stage.JDBC}}'
+            # workingDirectory: $(Build.ArtifactStagingDirectory)
+            displayName: ${{stage.displayName}}
+            # workingDirectory: ${{parameters.workingDirectory}}
             env:
-              FLYWAY_CLEAN_DISABLED: true
-
-# stages:
-
-# - ${{each stage in parameters.releaseStages}}:
-# - stage: ${{stage.stage}}
-#   displayName: ${{stage.displayName}}
-#   dependsOn: ${{stage.dependsOn}}
-#   condition: succeeded(${{stage.dependsOn}})
-#   jobs:
-#   - job: Deploy
-#     steps:
-#       - script: 'flyway info migrate info  -url=${{ stage.JDBC }}'
-#         workingDirectory: $(Build.ArtifactStagingDirectory)
-#         displayName: ${{ stage.displayName }}
-#         env:
-#           FLYWAY_CLEAN_DISABLED: ${{ stage.cleanDisabled }}  
-
-# steps:
-#   - ${{each stage in parameters.releaseStages}}:
-#     # -stage: ${{ stage.stage }}
-#     - script: echo ${{ stage.environmentName }}
-#     # - stage: ${{ stage.stage }} 
-#     #   dependsOn: ${{ stage.dependsOn }} 
-#     #   condition: succeeded(${{ stage.dependsOn }} )
-#     #   jobs:
-#     #   - job: Deploy
-#     #     steps:
-#     #       - script: 'flyway info migrate info  -url=${{ stage.JDBC }}'
-#     #         workingDirectory: $(Build.ArtifactStagingDirectory)
-#     #         displayName: ${{ stage.displayName }}
-#     #         env:
-#     #           FLYWAY_CLEAN_DISABLED: ${{ stage.cleanDisabled }}  
-  
+              FLYWAY_CLEAN_DISABLED: ${{lower(stage.cleanDisabled)}}
