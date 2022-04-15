@@ -2,16 +2,19 @@ trigger:
   branches:
     include:
     - master
+    # uncomment the below line to only trigger a piepline run on a change to the migrations folder in master
     # - migrations/*
 
 variables:
   -group: release
   snapshotExists: True
+  manualIntervention: False
 
 parameters:
   - name: pipelineStages
     type: object
     default: 
+
     - environmentName: 'build'
       stage: 'Build'
       databaseName: 'Westwind_Build'
@@ -27,7 +30,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       isDeploy: true
-      manualIntervention: false
+      manualIntervention: False
     
     - environmentName: 'production'
       stage: 'Prod'
@@ -36,12 +39,24 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       isDeploy: true
-      manualIntervention: true
+      manualIntervention: True
 
   - name: buildArtifactName 
     type: string
     default: 'Westwind-Build'
-  
+
+  - name: preReleaseSnapshot 
+    type: string
+    default: 'pre-release-snapshot.snp'
+
+  - name: postReleaseSnapshot
+    type: string
+    default: 'post-release-snapshot.snp'
+
+  - name: schemaCompare
+    type: string
+    default: '%dlmas_home%sc\sqlcompare'
+
 stages:
   - ${{each stage in parameters.pipelineStages}}:
     - ${{if eq(stage.isBuild, true)}}:
@@ -52,19 +67,24 @@ stages:
         jobs:
         - job: Build
           steps:
-            # - script: 'flyway clean info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Clean Build DB'
-            #   env:
-            #     FLYWAY_CLEAN_DISABLED: false
+            
+            - script: 'flyway clean info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Clean Build DB'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
 
-            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Migrate Scripts'
+            - script: 'flyway migrate info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Migrate Scripts'
 
-            # - script: 'flyway undo info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Undo Scripts'
+            - script: 'flyway undo info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Undo Scripts'
+            
+            - task: CopyFiles@2
+              inputs:
+                targetFolder: '$(System.ArtifactsDirectory)' 
 
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Build Artifact'
@@ -79,14 +99,64 @@ stages:
         dependsOn: ${{stage.dependsOn}} 
         # condition: succeeded(${{stage.dependsOn}})
         jobs:
-        - job: Deploy
+        - job: PreRelease
+          displayName: Pre Release Drift Detection
           steps:
+            
             - task: DownloadBuildArtifacts@0
               inputs:
                 buildType: 'current'
                 downloadType: 'single'
                 artifactName: '${{parameters.buildArtifactName}}'
                 downloadPath: '$(System.ArtifactsDirectory)'
+
+            - script: 'mkdir -p ${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)'
+              failOnStderr: true
+              displayName: 'Generate Persistent Staging Folder Conditionally'
+
+            - script: '-f ${{parameters.postReleaseSnapshot}} || echo "##vso[task.setvariable variable=snapshotExists;isOutput=true]True"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Detect For Schema Snapshot From Previous Run'
+
+            - script: 'echo "##vso[task.setvariable variable=manualIntervention;isOutput=true]${{stage.manualIntervention}}"'
+              failOnStderr: true
+              displayName: 'Set Manual Intervention Flag'
+            
+            - script: '"${{parameters.schemaCompare}}" /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Pre-Release Schema Snapshot'
+            
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"C:\WestWindArtifacts\DriftReports\Drift-Report.html" /force /ReportType:html /assertidentical  /include:Identical'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Detect For Drift'
+              condition: eq(variables['snapshotExists'], True)
+
+            - script: 'flyway migrate -dryRunOutput="C:\ReleaseArtifacts\Pre-Release\release-report.sql" -url=${{stage.JDBC}}'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              failOnStderr: true
+              displayName: 'Pre-Release Deployment Report'
+              env:
+                FLYWAY_CLEAN_DISABLED: true
+        
+        - job: AgentlessJob
+          displayName: Agentless Job
+          pool: server
+          steps:
+            
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              condition: eq(variables['nmanualIntervention'], True)
+              inputs:
+                notifyUsers: 'user@email.com'
+                instructions: 'Review changes at "C:\ReleaseArtifacts\ChangeReports\Change-Report.html"'
+
+        - job: Deploy
+          displayName: Post Drift Detection Release
+          steps:
 
             - script: 'flyway info migrate info -url=${{stage.JDBC}}'
               workingDirectory: $(System.DefaultWorkingDirectory)
@@ -95,3 +165,15 @@ stages:
               env:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
+
+            - script: '"${{parameters.schemaCompare}}" /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Post Release Schema Snapshot'
+            
+            # TODO - make artifact
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"C:\WestWindArtifacts\ChangeReports\Change-Report.html" /force /ReportType:html /include:Identical'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Write Change Report'
+              condition: eq(variables['snapshotExists'], True)
