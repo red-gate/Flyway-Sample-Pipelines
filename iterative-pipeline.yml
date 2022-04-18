@@ -65,19 +65,19 @@ stages:
         - job: Build
           steps:
             
-            # - script: 'flyway clean info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Clean Build DB'
-            #   env:
-            #     FLYWAY_CLEAN_DISABLED: false
+            - script: 'flyway clean info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Clean Build DB'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
 
-            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Migrate Scripts'
+            - script: 'flyway migrate info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Migrate Scripts'
 
-            # - script: 'flyway undo info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Undo Scripts'
+            - script: 'flyway undo info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Undo Scripts'
             
             - task: CopyFiles@2
               inputs:
@@ -173,6 +173,7 @@ stages:
             steps:
               - task: ManualValidation@0
                 displayName: 'Review Change Report Prior To Release'
+                timeoutInMinutes: 4320 # job times out in 3 days
                 inputs:
                   notifyUsers: 'user@email.com'
                   instructions: 'Review changes'
