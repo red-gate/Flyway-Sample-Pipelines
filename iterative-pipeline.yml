@@ -2,29 +2,27 @@ trigger:
   branches:
     include:
     - master
-    # uncomment the below line to only trigger a piepline run on a change to the migrations folder in master
+    # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
     # - migrations/*
 
 variables:
   -group: release
   snapshotExists: True
-  manualIntervention: False
 
 parameters:
   - name: pipelineStages
     type: object
     default: 
 
-    - environmentName: 'build'
-      stage: 'Build'
+    - stage: 'Build'
       databaseName: 'Westwind_Build'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       dependsOn: ''
       displayName: 'Build'
       isBuild: true
+      manualIntervention: False
 
-    - environmentName: 'test'
-      stage: 'Test'
+    - stage: 'Test'
       databaseName: 'Westwind_Test'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
       dependsOn: 'Build'
@@ -32,8 +30,7 @@ parameters:
       isDeploy: true
       manualIntervention: False
     
-    - environmentName: 'production'
-      stage: 'Prod'
+    - stage: 'Prod'
       databaseName: 'Westwind'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
       dependsOn: 'Test'
@@ -68,19 +65,19 @@ stages:
         - job: Build
           steps:
             
-            - script: 'flyway clean info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Clean Build DB'
-              env:
-                FLYWAY_CLEAN_DISABLED: false
+            # - script: 'flyway clean info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Clean Build DB'
+            #   env:
+            #     FLYWAY_CLEAN_DISABLED: false
 
-            - script: 'flyway migrate info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Validate Migrate Scripts'
+            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Migrate Scripts'
 
-            - script: 'flyway undo info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Validate Undo Scripts'
+            # - script: 'flyway undo info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Undo Scripts'
             
             - task: CopyFiles@2
               inputs:
@@ -110,20 +107,46 @@ stages:
                 artifactName: '${{parameters.buildArtifactName}}'
                 downloadPath: '$(System.ArtifactsDirectory)'
 
-            - script: 'mkdir -p ${{stage.stage}}'
+            # ---------------- if the agent is linux, the following steps will be executed --------------------
+            
+            - bash: 'mkdir -p ${{stage.stage}}'
               workingDirectory: '$(Agent.WorkFolder)'
               failOnStderr: true
-              displayName: 'Generate Persistent Staging Folder Conditionally'
+              displayName: 'Cross Run Snapshots Folder Per Stage'
+              condition: eq( variables['Agent.OS'], 'Linux' )
 
-            - script: '-f ${{parameters.postReleaseSnapshot}} || echo "##vso[task.setvariable variable=snapshotExists;isOutput=true]True"'
+            - bash: '-f ${{parameters.postReleaseSnapshot}} || echo "##vso[task.setvariable variable=snapshotExists;isOutput=true]True"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Schema Snapshot From Previous Run'
-
-            - script: 'echo "##vso[task.setvariable variable=manualIntervention;isOutput=true]${{stage.manualIntervention}}"'
-              failOnStderr: true
-              displayName: 'Set Manual Intervention Flag'
+              condition: eq( variables['Agent.OS'], 'Linux' )
             
+            # ---------------- end linux ----------------------------------------------------------------------
+
+            # ---------------- if the agent is windows, the following steps will be executed ------------------
+            
+            - powershell: |
+                $path = "${{stage.stage}}"
+                If(!(test-path $path))
+                {
+                      New-Item -ItemType Directory -Force -Path $path
+                }
+              displayName: 'Cross Run Snapshots Folder Per Stage'
+              workingDirectory: '$(Agent.WorkFolder)'
+              failOnStderr: true
+              condition: eq( variables['Agent.OS'], 'Windows_NT' )
+
+            - powershell: |
+                $path = "${{parameters.postReleaseSnapshot}}"
+                $fileExists = Test-Path -Path $path
+                Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
+              failOnStderr: true
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              displayName: 'Detect For Schema Snapshot'
+              condition: eq( variables['Agent.OS'], 'Windows_NT' )
+            
+            # ---------------- end windows -------------------------------------------------------------------
+
             - script: '"${{parameters.schemaCompare}}" /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
@@ -141,21 +164,27 @@ stages:
               displayName: 'Pre-Release Deployment Report'
               env:
                 FLYWAY_CLEAN_DISABLED: true
-        
-        - job: AgentlessJob
-          displayName: Agentless Job
-          pool: server
-          steps:
             
-            - task: ManualValidation@0
-              displayName: 'Review Change Report Prior To Release'
-              condition: eq(variables['nmanualIntervention'], True)
-              inputs:
-                notifyUsers: 'user@email.com'
-                instructions: 'Review changes at "C:\ReleaseArtifacts\ChangeReports\Change-Report.html"'
-
+        - ${{ if eq(stage.manualIntervention, true) }}:
+          - job: CodeReview
+            displayName: Code Review
+            dependsOn: 'PreRelease'
+            pool: server
+            steps:
+              - task: ManualValidation@0
+                displayName: 'Review Change Report Prior To Release'
+                inputs:
+                  notifyUsers: 'user@email.com'
+                  instructions: 'Review changes'
+        
+        - ${{ if ne(stage.manualIntervention, true) }}:
+          - job: CodeReview
+            displayName: Skipping Code Review
+            dependsOn: 'PreRelease'
+        
         - job: Deploy
           displayName: Post Drift Detection Release
+          dependsOn: 'CodeReview'
           steps:
 
             - script: 'flyway info migrate info -url=${{stage.JDBC}}'
