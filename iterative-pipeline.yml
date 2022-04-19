@@ -84,19 +84,19 @@ stages:
         - job: Build
           steps:
             
-            - script: 'flyway clean info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Clean Build DB'
-              env:
-                FLYWAY_CLEAN_DISABLED: false
+            # - script: 'flyway clean info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Clean Build DB'
+            #   env:
+            #     FLYWAY_CLEAN_DISABLED: false
 
-            - script: 'flyway migrate info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Validate Migrate Scripts'
+            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Migrate Scripts'
 
-            - script: 'flyway undo info -url=${{stage.JDBC}}'
-              failOnStderr: true
-              displayName: 'Validate Undo Scripts'
+            # - script: 'flyway undo info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Undo Scripts'
             
             - task: CopyFiles@2
               inputs:
@@ -170,18 +170,31 @@ stages:
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"C:\WestWindArtifacts\DriftReports\Drift-Report.html" /force /ReportType:html /assertidentical  /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\Drift-Report.html" /force /ReportType:html /assertidentical  /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Drift'
               condition: eq(variables['snapshotExists'], True)
 
-            - script: 'flyway migrate -dryRunOutput="C:\ReleaseArtifacts\Pre-Release\release-report.sql" -url=${{stage.JDBC}}'
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Drift Report'
+              inputs:
+                ArtifactName: 'Drift-Report'
+                PathtoPublish: '$(System.ArtifactsDirectory)'
+
+            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\dryRunOutput.sql" -url=${{stage.JDBC}}'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: 'Pre-Release Deployment Report'
               env:
                 FLYWAY_CLEAN_DISABLED: true
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Release Preview'
+              inputs:
+                ArtifactName: 'Release-Preview'
+                PathtoPublish: '$(System.ArtifactsDirectory)'
+
             
         - ${{ if eq(stage.manualIntervention, true) }}:
           - job: CodeReview
@@ -206,7 +219,7 @@ stages:
           dependsOn: 'CodeReview'
           steps:
 
-            - script: 'flyway info migrate info -url=${{stage.JDBC}}'
+            - script: 'flyway info migrate -outOfOrder=true info -url=${{stage.JDBC}}'
               workingDirectory: $(System.DefaultWorkingDirectory)
               displayName: ${{stage.displayName}}
               failOnStderr: true
@@ -219,9 +232,16 @@ stages:
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
             
-            # TODO - make artifact
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"C:\WestWindArtifacts\ChangeReports\Change-Report.html" /force /ReportType:html /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\Change-Report.html" /force /ReportType:html /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
               condition: eq(variables['snapshotExists'], True)
+            
+            # todo only publish 1x
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Change Report'
+              inputs:
+                ArtifactName: 'Change-Report'
+                PathtoPublish: '$(System.ArtifactsDirectory)'
+        
