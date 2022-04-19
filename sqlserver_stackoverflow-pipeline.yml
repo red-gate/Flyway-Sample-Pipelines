@@ -1,0 +1,232 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - $(FLYWAY_PROJECT_PATH)
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+- group: REDGATE
+# Each Flyway project saves its project specific details in the following template
+- template: pipeline_variables_template.yml
+# Where your flyway migrations reside in your project
+- name: FLYWAY_LOCATIONS
+  value: $(Build.Repository.LocalPath)/$(FLYWAY_PROJECT_PATH)/migrations
+  
+stages:
+- stage: "CI"
+  displayName: "Database CI"
+  jobs:
+  - job: Database_Build_and_Test
+    displayName: Build DB, run unit tests
+    steps:
+    - task: CmdLine@2
+      displayName: Run all migrations on a clean database
+      inputs:
+        script: "docker run --rm -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway clean migrate 
+        -user=$(DB_TEMP_USER) -password=$(DB_TEMP_PASSWORD) 
+        -url='$(DB_TEMP_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)
+        -errorOverrides=S0001:0:I-
+        > $(Build.ArtifactStagingDirectory)/Build_results.txt"
+    - task: CmdLine@2
+      displayName: Flyway info (post build)
+      inputs:
+        script: "docker run --rm -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway info 
+        -user=$(DB_TEMP_USER) -password=$(DB_TEMP_PASSWORD) 
+        -url='$(DB_TEMP_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)"
+    - task: CmdLine@2
+      enabled: false
+      displayName: Placeholder for unit testing
+      inputs:
+        script: "docker run --rm -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway check -unitTest
+        -user=$(DB_TEMP_USER) -password=$(DB_TEMP_PASSWORD) 
+        -url='$(DB_TEMP_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)
+        -check.outputLocation=$(Build.ArtifactStagingDirectory)"
+    - task: CmdLine@2
+      enabled: false
+      displayName: SQL static analysis
+      # Should static analysis be part of the pre-release stage and only apply to pending scripts? If so, easier to run within flyway
+      # https://stackoverflow.com/questions/70787432/permission-denied-error-in-github-actions
+      inputs:
+        script: |
+          mkdir $(Build.Repository.LocalPath)/Versioned_Migrations
+          cp $(FLYWAY_LOCATIONS)/V*.sql $(Build.Repository.LocalPath)/Versioned_Migrations
+          docker run --rm -i -v $(Build.Repository.LocalPath)/Versioned_Migrations:/sql sqlfluff/sqlfluff:latest lint --dialect $(SQLFLUFF_DIALECT) --nofail > $(Build.ArtifactStagingDirectory)/SQLFluff_results.txt
+    - task: PublishPipelineArtifact@1
+      displayName: Publish CI Report Artifacts
+      condition: succeededOrFailed()
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: 1.Flyway-CI-reports
+        publishLocation: 'pipeline'
+    - task: ArchiveFiles@2
+      displayName: Zip flyway migrations folder
+      condition: succeededOrFailed()
+      inputs:
+        rootFolderOrFile: $(FLYWAY_LOCATIONS)
+        includeRootFolder: false 
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        #tarCompression: 'gz' # Optional. Options: gz, bz2, xz, none
+        archiveFile: '$(Build.ArtifactStagingDirectory)/Migrations.zip' 
+        #replaceExistingArchive: true 
+        #verbose: # Optional
+        #quiet: # Optional
+    - task: PublishPipelineArtifact@1
+      displayName: Publish Build Artifact
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)/Migrations.zip'
+        artifact: 2.Flyway-build-artifact
+        publishLocation: 'pipeline'
+- stage: "Pre_Release"
+  displayName: Pre-Release Checks
+  jobs:
+  - job: Deployment_Rehearsal
+    steps:
+    # - checkout: none # need to check out to use the checked in flyway command line (set to non once Docker version is released)
+    - task: CmdLine@2
+      displayName: Flyway info (pre-rehearsal)
+      inputs:
+        script: "docker run --rm -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway info -X 
+        -user=$(DB_ACCEPTANCE_USER) -password=$(DB_ACCEPTANCE_PASSWORD) 
+        -url='$(DB_ACCEPTANCE_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)"
+    - task: CmdLine@2
+      displayName: Changes Report (using flyway check)
+      inputs:
+        script: "cd flyway; ./flyway check -changes -locations=filesystem:$(FLYWAY_LOCATIONS) 
+        -check.tempUrl='$(DB_TEMP_URL)' 
+        -check.tempUsername=$(DB_TEMP_USER) -check.tempPassword=$(DB_TEMP_PASSWORD) 
+        -url='$(DB_ACCEPTANCE_URL)' 
+        -user=$(DB_ACCEPTANCE_USER) -password=$(DB_ACCEPTANCE_PASSWORD) 
+        -licenseKey=$(FLYWAY_LICENSE_KEY) 
+        -check.outputLocation=$(Build.ArtifactStagingDirectory)"
+    - task: CmdLine@2
+      displayName: 'Changes.sql (dry run script)'
+      inputs:
+        script: |
+          container=$(docker create -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway migrate -dryRunOutput=/flyway/reports/changes.sql -outOfOrder=true -schemas=dbo -user=$(DB_ACCEPTANCE_USER) -password=$(DB_ACCEPTANCE_PASSWORD) -url='$(DB_ACCEPTANCE_URL)' -licenseKey=$(FLYWAY_LICENSE_KEY) -errorOverrides=S0001:0:I-)
+          docker start -a ${container}
+          docker cp ${container}:/flyway/reports/changes.sql $(Build.ArtifactStagingDirectory)
+    - task: CmdLine@2
+      enabled: true
+      displayName: SQL static analysis on dry run script
+      inputs:
+        script:
+          "docker run --rm -i -v $(Build.ArtifactStagingDirectory):/sql sqlfluff/sqlfluff:latest lint changes.sql
+          --dialect $(SQLFLUFF_DIALECT) 
+          --nofail 
+          > $(Build.ArtifactStagingDirectory)/SQLFluff_dryrun_results.txt"
+    - task: PublishPipelineArtifact@1
+      displayName: Publish Report Artifacts
+      condition: succeededOrFailed()
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: 3.Flyway-pre-release-reports
+        publishLocation: 'pipeline'
+
+# As waitForValidation can only be used in an agentless (server) job, we are keeping it in its own stage
+# Consider using "- deployment" as a job in combination with an Azure DevOps "environment" for a more advanced approval step
+- stage: 'Review_Database_Changes'
+  displayName: Review / Approval
+  jobs:
+  - job: waitForValidation
+    displayName: Wait for manual approval
+    pool: server
+    timeoutInMinutes: 4320 # job times out in 3 days
+    steps:
+    - task: ManualValidation@0
+      timeoutInMinutes: 5 # set 1440 for 1 day time out
+      inputs:
+        notifyUsers: |
+          david.atkinson@red-gate.com
+#          stephanie.herr@red-gate.com
+        instructions: 'Please review all pre-release artifacts before approving the deployment'
+        onTimeout: 'resume'
+
+- stage: 'Deploy'
+  displayName: Database Deployment
+  jobs:
+  - job: DeployToProd
+    steps:
+# Ideally we should have a task that compares Acceptance with Prod to ensure they are at the same version
+    - checkout: none 
+    - download: current
+      artifact: 2.Flyway-build-artifact
+    - task: CmdLine@2
+      displayName: ls-pipeline-workspace-folder # to help debug
+      inputs:
+        script: "ls -R $(Pipeline.Workspace)"
+    - task: ExtractFiles@1
+      inputs:
+        archiveFilePatterns: '$(Pipeline.Workspace)/2.Flyway-build-artifact/Migrations.zip'
+        destinationFolder: $(Pipeline.Workspace)/Migrations
+        #cleanDestinationFolder: true 
+        #overwriteExistingFiles: false
+        #pathToSevenZipTool: - 
+    - task: CmdLine@2
+      displayName: Flyway info (pre-deployment)
+      inputs:
+        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway info 
+        -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
+        -url='$(DB_PROD_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)"
+    - task: CmdLine@2
+      enabled: true
+      displayName: Flyway migrate
+      inputs:
+        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway migrate 
+        -outOfOrder=true 
+        -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
+        -url='$(DB_PROD_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)
+        -errorOverrides=S0001:0:I-"
+    - task: CmdLine@2
+      displayName: Flyway info (post-deployment)
+      inputs:
+        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway info 
+        -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
+        -url='$(DB_PROD_URL)'
+        -licenseKey=$(FLYWAY_LICENSE_KEY)"
+
+# - stage: 'Deployment'
+#   displayName: "Database Deployment"
+#   jobs:
+#   - deployment: DeployToProd
+#     environment: 'StackOverflow2010-Production'
+#     strategy:
+#       runOnce:
+#         deploy:
+#           steps:
+#           - task: CmdLine@2
+#             enabled: false
+#             displayName: Run flyway migrate
+#             inputs:
+#               script: "docker run --rm -v $(FLYWAY_LOCATIONS):/flyway/sql flyway/flyway migrate 
+#               -outOfOrder=true -schemas=dbo 
+#               -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
+#               -url='$(DB_PROD_URL)'"
+#           - task: CmdLine@2
+#             displayName: inspect-artifacts
+#             inputs:
+#               script: "ls $(Pipeline.Workspace)"
+#           - task: CmdLine@2
+#             displayName: Run flyway info post-deployment
+#             inputs:
+#               script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway info 
+#               -X
+#               -schemas=dbo 
+#               -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
+#               -url='$(DB_PROD_URL)'"
+

@@ -1,0 +1,36 @@
+variables:
+
+# This is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
+# In this case we have a variable group called REDGATE. It contains two variables with secret values:
+#   FLYWAY_LICENSE_KEY
+#   SPAWNCTL_ACCESS_TOKEN
+# Listing the group here pulls these variables into your pipelines
+
+ - group: REDGATE
+# Fyway project path
+ - name: FLYWAY_PROJECT_PATH
+   value: sqlserver/StackOverflow2010
+# SQL dialect for SQLFluff parser (ansi|tsql|oracle|postgres|mysql|redshift|snowflake|bigquery|teradata)
+ - name: SQLFLUFF_DIALECT
+   value: tsql
+# This is the temporary database used for some CI tests as well as building the changes report
+ - name: DB_TEMP_URL
+   value: $(STACKOVERFLOW2010_TEMP_URL)
+ - name: DB_TEMP_USER
+   value: $(STACKOVERFLOW2010_TEMP_USER)
+ - name: DB_TEMP_PASSWORD
+   value: $(STACKOVERFLOW2010_TEMP_PASSWORD)
+# This is the database we use for the deployment rehearsal testing
+ - name: DB_ACCEPTANCE_URL
+   value: $(STACKOVERFLOW2010_ACCEPTANCE_URL)
+ - name: DB_ACCEPTANCE_USER
+   value: $(STACKOVERFLOW2010_ACCEPTANCE_USER)
+ - name: DB_ACCEPTANCE_PASSWORD
+   value: $(STACKOVERFLOW2010_ACCEPTANCE_PASSWORD)
+# This is the production database
+ - name: DB_PROD_URL
+   value: $(STACKOVERFLOW2010_PROD_URL)
+ - name: DB_PROD_USER
+   value: $(STACKOVERFLOW2010_PROD_USER)
+ - name: DB_PROD_PASSWORD
+   value: $(STACKOVERFLOW2010_PROD_PASSWORD)
