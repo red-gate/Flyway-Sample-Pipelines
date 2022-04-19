@@ -13,6 +13,9 @@ trigger:
 variables:
   snapshotExists: True
   group: REDGATE
+  changeReport: 'Change-Report.html'
+  driftReport: 'Drift-Report.html'
+  releasePreview: 'releasePreview.sql'
   # template: pipeline_variables_template.yml
 
 # parameters: 
@@ -170,7 +173,7 @@ stages:
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\Drift-Report.html" /force /ReportType:html /assertidentical  /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\$(driftReport)" /force /ReportType:html /assertidentical  /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Drift'
@@ -180,9 +183,9 @@ stages:
               displayName: 'Publish Drift Report'
               inputs:
                 ArtifactName: 'Drift-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)'
+                PathtoPublish: '$(System.ArtifactsDirectory)/$(driftReport)'
 
-            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\dryRunOutput.sql" -url=${{stage.JDBC}}'
+            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\$(releasePreview)" -url=${{stage.JDBC}}'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: 'Pre-Release Deployment Report'
@@ -193,7 +196,7 @@ stages:
               displayName: 'Publish Release Preview'
               inputs:
                 ArtifactName: 'Release-Preview'
-                PathtoPublish: '$(System.ArtifactsDirectory)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(releasePreview)'
 
             
         - ${{ if eq(stage.manualIntervention, true) }}:
@@ -232,16 +235,15 @@ stages:
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\Change-Report.html" /force /ReportType:html /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\$(changeReport)" /force /ReportType:html /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
               condition: eq(variables['snapshotExists'], True)
             
-            # todo only publish 1x
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Change Report'
               inputs:
                 ArtifactName: 'Change-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(changeReport)'
         
