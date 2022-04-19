@@ -6,10 +6,15 @@ trigger:
     # - migrations/*
 
 variables:
-  -group: release
   snapshotExists: True
+  group: REDGATE
+  # template: pipeline_variables_template.yml
+
+# parameters: 
+#   template: pipeline_variables_template.yml
 
 parameters:
+
   - name: pipelineStages
     type: object
     default: 
@@ -19,6 +24,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       dependsOn: ''
       displayName: 'Build'
+      #IMPORTANT: only set to true if database can be destroyed
       isBuild: true
       manualIntervention: False
 
@@ -27,6 +33,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
+      #IMPORTANT: only set to true if database can be destroyed
       isDeploy: true
       manualIntervention: False
     
@@ -35,6 +42,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
+      #IMPORTANT: only set to true if database can be destroyed
       isDeploy: true
       manualIntervention: True
 
@@ -94,7 +102,6 @@ stages:
         pool: Default
         displayName: ${{stage.displayName}} 
         dependsOn: ${{stage.dependsOn}} 
-        # condition: succeeded(${{stage.dependsOn}})
         jobs:
         - job: PreRelease
           displayName: Pre Release Drift Detection
@@ -147,7 +154,7 @@ stages:
             
             # ---------------- end windows -------------------------------------------------------------------
 
-            - script: '"${{parameters.schemaCompare}}" /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
+            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:Redgate /password1:Redg@te1 /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
@@ -196,7 +203,7 @@ stages:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
 
-            - script: '"${{parameters.schemaCompare}}" /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
+            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:Redgate /password1:Redg@te1 /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
