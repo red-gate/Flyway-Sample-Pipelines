@@ -24,9 +24,10 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       dependsOn: ''
       displayName: 'Build'
-      #IMPORTANT: only set isBuild to true if database can be destroyed (appropriate for the build DB)
-      isBuild: true
+      isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
       manualIntervention: False
+      userName: Redgate
+      password: Redg@te1
 
     - stage: 'Test'
       databaseName: 'Westwind_Test'
@@ -35,6 +36,8 @@ parameters:
       displayName: 'Deploy Test'
       isDeploy: true
       manualIntervention: False
+      userName: Redgate
+      password: Redg@te1
     
     - stage: 'Prod'
       databaseName: 'Westwind'
@@ -43,6 +46,8 @@ parameters:
       displayName: 'Deploy Prod'
       isDeploy: true
       manualIntervention: True
+      userName: Redgate
+      password: Redg@te1
 
   - name: buildArtifactName 
     type: string
@@ -152,7 +157,7 @@ stages:
             
             # ---------------- end windows -------------------------------------------------------------------
 
-            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:Redgate /password1:Redg@te1 /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
+            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:"${{parameters.userName}}" /password1:"${{parameters.password}}" /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
@@ -201,7 +206,7 @@ stages:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
 
-            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:Redgate /password1:Redg@te1 /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
+            - script: '"${{parameters.schemaCompare}}" /Server1:WIN2016 /userName1:"${{parameters.userName}}" /password1:"${{parameters.password}}" /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
