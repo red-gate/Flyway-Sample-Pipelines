@@ -24,7 +24,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       dependsOn: ''
       displayName: 'Build'
-      #IMPORTANT: only set to true if database can be destroyed
+      #IMPORTANT: only set isBuild to true if database can be destroyed (appropriate for the build DB)
       isBuild: true
       manualIntervention: False
 
@@ -33,7 +33,6 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
-      #IMPORTANT: only set to true if database can be destroyed
       isDeploy: true
       manualIntervention: False
     
@@ -42,7 +41,6 @@ parameters:
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
-      #IMPORTANT: only set to true if database can be destroyed
       isDeploy: true
       manualIntervention: True
 
