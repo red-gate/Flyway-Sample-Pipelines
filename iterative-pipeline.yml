@@ -15,7 +15,7 @@ variables:
   group: REDGATE
   changeReport: 'Change-Report.html'
   driftReport: 'Drift-Report.html'
-  releasePreview: 'releasePreview.sql'
+  releasePreview: 'Release-Preview.sql'
   # template: pipeline_variables_template.yml
 
 # parameters: 
