@@ -5,9 +5,10 @@ trigger:
     # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
     # - migrations/*
 
-# todo
-# 1. flyway_license_key
-# 2. add -teams flag?
+# TODO
+# Use docker
+# Break out parameters into separate file (should be very easy)
+# Include flyway credentials that most clients require in a POC
 
 
 variables:
@@ -33,7 +34,7 @@ parameters:
       dependsOn: ''
       displayName: 'Build'
       isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
-      manualIntervention: False
+      manualIntervention: false
       server: WIN2016
       userName: Redgate
       password: Redg@te1
@@ -44,7 +45,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       isDeploy: true
-      manualIntervention: False
+      manualIntervention: false
       server: WIN2016
       userName: Redgate
       password: Redg@te1
@@ -55,7 +56,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       isDeploy: true
-      manualIntervention: True
+      manualIntervention: true
       server: WIN2016
       userName: Redgate
       password: Redg@te1
@@ -87,19 +88,19 @@ stages:
         - job: Build
           steps:
             
-            # - script: 'flyway clean info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Clean Build DB'
-            #   env:
-            #     FLYWAY_CLEAN_DISABLED: false
+            - script: 'flyway clean info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Clean Build DB'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
 
-            # - script: 'flyway migrate info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Migrate Scripts'
+            - script: 'flyway migrate info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Migrate Scripts'
 
-            # - script: 'flyway undo info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Undo Scripts'
+            - script: 'flyway undo info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Undo Scripts'
             
             - task: CopyFiles@2
               inputs:
@@ -173,7 +174,7 @@ stages:
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\$(driftReport)" /force /ReportType:html /assertidentical  /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(driftReport)" /force /ReportType:html /assertidentical  /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Drift'
@@ -183,9 +184,9 @@ stages:
               displayName: 'Publish Drift Report'
               inputs:
                 ArtifactName: 'Drift-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)/$(driftReport)'
+                PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(driftReport)'
 
-            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\$(releasePreview)" -url=${{stage.JDBC}}'
+            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(releasePreview)" -url=${{stage.JDBC}}'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: 'Pre-Release Deployment Report'
@@ -196,7 +197,7 @@ stages:
               displayName: 'Publish Release Preview'
               inputs:
                 ArtifactName: 'Release-Preview'
-                PathtoPublish: '$(System.ArtifactsDirectory)\$(releasePreview)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(releasePreview)'
 
             
         - ${{ if eq(stage.manualIntervention, true) }}:
@@ -235,7 +236,7 @@ stages:
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\$(changeReport)" /force /ReportType:html /include:Identical'
+            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(changeReport)" /force /ReportType:html /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
@@ -245,5 +246,5 @@ stages:
               displayName: 'Publish Change Report'
               inputs:
                 ArtifactName: 'Change-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)\$(changeReport)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(changeReport)'
         
