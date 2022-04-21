@@ -232,8 +232,12 @@ stages:
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
-            
-            - script: '"$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical'
+
+            - script: |
+                "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html
+                If ($lastExitCode == 61) {
+                  exit 0
+                }
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
