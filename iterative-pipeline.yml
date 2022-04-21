@@ -7,16 +7,26 @@ trigger:
 
 # TODO
 # Use docker
-# Break out parameters into separate file (should be very easy)
+# Break out parameters into separate file
 # Include flyway credentials that most clients require in a POC
 
+# INSTRUCTIONS
+# install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# install flyway on agent
 
 variables:
-  snapshotExists: True
+  SNAPSHOT_EXISTS: True
   group: REDGATE
-  changeReport: 'Change-Report.html'
-  driftReport: 'Drift-Report.html'
-  releasePreview: 'Release-Preview.sql'
+  CHANGE_REPORT: 'Change-Report.html'
+  DRIFT_REPORT: 'Drift-Report.html'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  FLYWAY_LICENSE_KEY: 'FL014D2BC7401A71CD48A9F0CF38896ACD6107D0CA08450E7571AB73A27F451388DC0C2706129EE3F2719AE93DA4D3DE9EDCCD85293068AB0D2895569AF32DC0ABA6F351D9535E8F3C26A3C5858B46FB07224CF4E0F775566AAF8AD6796A3D6F05442B8F7C53771052E54DEA04686D79A5FA1D262623BB4657C347463D7A3AE0B4FA9E4016737F63F779DADB2A36E22DAE30B2D8AADBB9D3BB14377203E88D43FF8B10CB4E0B8D371749BD1084EE530660CBAA47EB838765E7FDA79AB86F91E1E449EFDCFCB16132D78D59806FDE735F979D55BFF115113D371EC66178627E137DF1984A4236C63D3ADB2BAFB2746262D78DCF0D13855304D762BE0D1E9FFE500D87'
+  BUILD_NAME: 'Build'
+  PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
+  POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
+  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
+  FLYWAY: 'flyway'
+
   # template: pipeline_variables_template.yml
 
 # parameters: 
@@ -61,22 +71,6 @@ parameters:
       userName: Redgate
       password: Redg@te1
 
-  - name: buildArtifactName 
-    type: string
-    default: 'Westwind-Build'
-
-  - name: preReleaseSnapshot 
-    type: string
-    default: 'pre-release-snapshot.snp'
-
-  - name: postReleaseSnapshot
-    type: string
-    default: 'post-release-snapshot.snp'
-
-  - name: schemaCompare
-    type: string
-    default: '%dlmas_home%sc\sqlcompare'
-
 stages:
   - ${{each stage in parameters.pipelineStages}}:
     - ${{if eq(stage.isBuild, true)}}:
@@ -88,17 +82,17 @@ stages:
         - job: Build
           steps:
             
-            - script: 'flyway clean info -url=${{stage.JDBC}}'
+            - script: '$(FLYWAY) clean info -url=${{stage.JDBC}}'
               failOnStderr: true
               displayName: 'Clean Build DB'
               env:
                 FLYWAY_CLEAN_DISABLED: false
 
-            - script: 'flyway migrate info -url=${{stage.JDBC}}'
+            - script: '$(FLYWAY) migrate info -url=${{stage.JDBC}}'
               failOnStderr: true
               displayName: 'Validate Migrate Scripts'
 
-            - script: 'flyway undo info -url=${{stage.JDBC}}'
+            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               displayName: 'Validate Undo Scripts'
             
@@ -109,7 +103,7 @@ stages:
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Build Artifact'
               inputs:
-                ArtifactName: '${{parameters.buildArtifactName}}'
+                ArtifactName: '$(BUILD_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)'
     
     - ${{if eq(stage.isDeploy, true)}}:
@@ -126,7 +120,7 @@ stages:
               inputs:
                 buildType: 'current'
                 downloadType: 'single'
-                artifactName: '${{parameters.buildArtifactName}}'
+                artifactName: '$(BUILD_NAME)'
                 downloadPath: '$(System.ArtifactsDirectory)'
 
             # ---------------- if the agent is linux, the following steps will be executed --------------------
@@ -135,13 +129,13 @@ stages:
               workingDirectory: '$(Agent.WorkFolder)'
               failOnStderr: true
               displayName: 'Cross Run Snapshots Folder Per Stage'
-              condition: eq( variables['Agent.OS'], 'Linux' )
+              condition: eq( variables['Agent.OS'], 'Linux')
 
-            - bash: '-f ${{parameters.postReleaseSnapshot}} || echo "##vso[task.setvariable variable=snapshotExists;isOutput=true]True"'
+            - bash: '-f $(POST_RELEASE_SCHEMA_SNAPSHOT) || echo "##vso[task.setvariable variable=SNAPSHOT_EXISTS;isOutput=true]True"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Schema Snapshot From Previous Run'
-              condition: eq( variables['Agent.OS'], 'Linux' )
+              condition: eq( variables['Agent.OS'], 'Linux')
             
             # ---------------- end linux ----------------------------------------------------------------------
 
@@ -156,37 +150,41 @@ stages:
               displayName: 'Cross Run Snapshots Folder Per Stage'
               workingDirectory: '$(Agent.WorkFolder)'
               failOnStderr: true
-              condition: eq( variables['Agent.OS'], 'Windows_NT' )
+              condition: eq( variables['Agent.OS'], 'Windows_NT')
 
             - powershell: |
-                $path = "${{parameters.postReleaseSnapshot}}"
+                $path = "$(POST_RELEASE_SCHEMA_SNAPSHOT)"
                 $fileExists = Test-Path -Path $path
-                Write-Output "##vso[task.setvariable variable=snapshotExists]$fileExists"
+                Write-Output "##vso[task.setvariable variable=SNAPSHOT_EXISTS]$fileExists"
               failOnStderr: true
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               displayName: 'Detect For Schema Snapshot'
-              condition: eq( variables['Agent.OS'], 'Windows_NT' )
+              condition: eq( variables['Agent.OS'], 'Windows_NT')
             
             # ---------------- end windows -------------------------------------------------------------------
 
-            - script: '"${{parameters.schemaCompare}}" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:${{stage.databaseName}} /Makesnapshot:"${{parameters.preReleaseSnapshot}}"'
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.preReleaseSnapshot}}" /Snapshot2:"${{parameters.postReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(driftReport)" /force /ReportType:html /assertidentical  /include:Identical'
+            - script: |
+                "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
+                If ($lastExitCode == 61) {
+                  exit 0
+                }
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Drift'
-              condition: eq(variables['snapshotExists'], True)
+              condition: eq(variables['SNAPSHOT_EXISTS'], True)
 
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Drift Report'
               inputs:
                 ArtifactName: 'Drift-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(driftReport)'
+                PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)'
 
-            - script: 'flyway migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(releasePreview)" -url=${{stage.JDBC}}'
+            - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: 'Pre-Release Deployment Report'
@@ -197,9 +195,8 @@ stages:
               displayName: 'Publish Release Preview'
               inputs:
                 ArtifactName: 'Release-Preview'
-                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(releasePreview)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
 
-            
         - ${{ if eq(stage.manualIntervention, true) }}:
           - job: CodeReview
             displayName: Code Review
@@ -223,7 +220,7 @@ stages:
           dependsOn: 'CodeReview'
           steps:
 
-            - script: 'flyway info migrate -outOfOrder=true info -url=${{stage.JDBC}}'
+            - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
               workingDirectory: $(System.DefaultWorkingDirectory)
               displayName: ${{stage.displayName}}
               failOnStderr: true
@@ -231,20 +228,20 @@ stages:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
 
-            - script: '"${{parameters.schemaCompare}}" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:Westwind_Test /Makesnapshot:"${{parameters.postReleaseSnapshot}}"'
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
             
-            - script: '"${{parameters.schemaCompare}}" /Snapshot1:"${{parameters.postReleaseSnapshot}}" /Snapshot2:"${{parameters.preReleaseSnapshot}}" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(changeReport)" /force /ReportType:html /include:Identical'
+            - script: '"$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
-              condition: eq(variables['snapshotExists'], True)
+              condition: eq(variables['SNAPSHOT_EXISTS'], True)
             
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Change Report'
               inputs:
                 ArtifactName: 'Change-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(changeReport)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
         
