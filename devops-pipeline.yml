@@ -1,0 +1,248 @@
+trigger:
+  branches:
+    include:
+    - master
+    # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
+    # - migrations/*
+
+# TODO
+# Use docker
+# Break out parameters into separate file
+# Include flyway credentials that most clients require in a POC
+
+# INSTRUCTIONS
+# install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# install flyway on agent
+
+variables:
+  SNAPSHOT_EXISTS: True
+  CHANGE_REPORT: 'Change-Report.html'
+  DRIFT_REPORT: 'Drift-Report.html'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  BUILD_NAME: 'Build'
+  PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
+  POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
+  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
+  FLYWAY: 'flyway'
+  
+  group: REDGATE
+
+  # template: pipeline_variables_template.yml
+
+parameters:
+
+  - name: pipelineStages
+    type: object
+    default: 
+
+    - stage: 'Build'
+      databaseName: 'Westwind_Build'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
+      dependsOn: ''
+      displayName: 'Build'
+      isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
+      manualIntervention: false
+      server: WIN2016
+      variableGroupName: 'REDGATE'
+
+    - stage: 'Test'
+      databaseName: 'Westwind_Test'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+      dependsOn: 'Build'
+      displayName: 'Deploy Test'
+      isDeploy: true
+      manualIntervention: false
+      server: WIN2016
+      variableGroupName: 'REDGATE'
+    
+    - stage: 'Prod'
+      databaseName: 'Westwind'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
+      dependsOn: 'Test'
+      displayName: 'Deploy Prod'
+      isDeploy: true
+      manualIntervention: true
+      server: WIN2016
+      variableGroupName: 'REDGATE'
+
+stages:
+  - ${{each stage in parameters.pipelineStages}}:
+    - ${{if eq(stage.isBuild, true)}}:
+      - stage: Build
+        pool: Default
+        displayName: ${{stage.displayName}} 
+        dependsOn: ${{stage.dependsOn}}
+        jobs:
+        - job: Build
+          steps:
+            
+            # - script: '$(FLYWAY) clean info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Clean Build DB'
+            #   env:
+            #     FLYWAY_CLEAN_DISABLED: false
+
+            # - script: '$(FLYWAY) migrate info -url=${{stage.JDBC}}'
+            #   failOnStderr: true
+            #   displayName: 'Validate Migrate Scripts'
+
+            # - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            #   failOnStderr: true
+            #   displayName: 'Validate Undo Scripts'
+            
+            - task: CopyFiles@2
+              inputs:
+                targetFolder: '$(System.ArtifactsDirectory)' 
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Build Artifact'
+              inputs:
+                ArtifactName: '$(BUILD_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)'
+    
+    - ${{if eq(stage.isDeploy, true)}}:
+      - stage: ${{stage.stage}} 
+        pool: Default
+        displayName: ${{stage.displayName}} 
+        dependsOn: ${{stage.dependsOn}} 
+        jobs:
+        - job: PreRelease
+          displayName: Pre Release Drift Detection
+          variables:
+          - group: ${{ stage.variableGroupName }}
+          steps:
+            - task: DownloadBuildArtifacts@0
+              inputs:
+                buildType: 'current'
+                downloadType: 'single'
+                artifactName: '$(BUILD_NAME)'
+                downloadPath: '$(System.ArtifactsDirectory)'
+
+            # ---------------- if the agent is linux, the following steps will be executed --------------------
+            
+            - bash: 'mkdir -p ${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)'
+              failOnStderr: true
+              displayName: 'Cross Run Snapshots Folder Per Stage'
+              condition: eq( variables['Agent.OS'], 'Linux')
+
+            - bash: '-f $(POST_RELEASE_SCHEMA_SNAPSHOT) || echo "##vso[task.setvariable variable=SNAPSHOT_EXISTS;isOutput=true]True"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Detect For Schema Snapshot From Previous Run'
+              condition: eq( variables['Agent.OS'], 'Linux')
+            
+            # ---------------- end linux ----------------------------------------------------------------------
+
+            # ---------------- if the agent is windows, the following steps will be executed ------------------
+            
+            - powershell: |
+                $path = "${{stage.stage}}"
+                If(!(test-path $path))
+                {
+                      New-Item -ItemType Directory -Force -Path $path
+                }
+              displayName: 'Cross Run Snapshots Folder Per Stage'
+              workingDirectory: '$(Agent.WorkFolder)'
+              failOnStderr: true
+              condition: eq( variables['Agent.OS'], 'Windows_NT')
+
+            - powershell: |
+                $path = "$(POST_RELEASE_SCHEMA_SNAPSHOT)"
+                $fileExists = Test-Path -Path $path
+                Write-Output "##vso[task.setvariable variable=SNAPSHOT_EXISTS]$fileExists"
+              failOnStderr: true
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              displayName: 'Detect For Schema Snapshot'
+              condition: eq( variables['Agent.OS'], 'Windows_NT')
+            
+            # ---------------- end windows -------------------------------------------------------------------
+
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Pre-Release Schema Snapshot'
+            
+            - script: |
+                "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
+                If ($lastExitCode == 61) {
+                  exit 0
+                }
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Detect For Drift'
+              condition: eq(variables['SNAPSHOT_EXISTS'], True)
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Drift Report'
+              inputs:
+                ArtifactName: 'Drift-Report'
+                PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)'
+
+            - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              failOnStderr: true
+              displayName: 'Pre-Release Deployment Report'
+              env:
+                FLYWAY_CLEAN_DISABLED: true
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Release Preview'
+              inputs:
+                ArtifactName: 'Release-Preview'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+
+        - ${{ if eq(stage.manualIntervention, true) }}:
+          - job: CodeReview
+            displayName: Code Review
+            dependsOn: 'PreRelease'
+            pool: server
+            steps:
+              - task: ManualValidation@0
+                displayName: 'Review Change Report Prior To Release'
+                timeoutInMinutes: 4320 # job times out in 3 days
+                inputs:
+                  notifyUsers: 'user@email.com'
+                  instructions: 'Review changes'
+        
+        - ${{ if ne(stage.manualIntervention, true) }}:
+          - job: CodeReview
+            displayName: Skipping Code Review
+            dependsOn: 'PreRelease'
+        
+        - job: Deploy
+          displayName: Post Drift Detection Release
+          dependsOn: 'CodeReview'
+          variables:
+          - group: ${{ stage.variableGroupName }}
+          steps:
+
+            - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
+              workingDirectory: $(System.DefaultWorkingDirectory)
+              displayName: ${{stage.displayName}}
+              failOnStderr: true
+              env:
+                # clean destroys a target DB, keep disabled except for build step
+                FLYWAY_CLEAN_DISABLED: true
+
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Post Release Schema Snapshot'
+
+            - script: |
+                "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical
+                If ($lastExitCode == 63) {
+                  exit 0
+                }
+              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              failOnStderr: true
+              displayName: 'Write Change Report'
+              condition: eq(variables['SNAPSHOT_EXISTS'], True)
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Change Report'
+              inputs:
+                ArtifactName: 'Change-Report'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
+        
