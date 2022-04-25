@@ -5,35 +5,22 @@ trigger:
     # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
     # - migrations/*
 
-# TODO
-# Use docker
-# Break out parameters into separate file
-# Include flyway credentials that most clients require in a POC
-
 # INSTRUCTIONS
 # install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
 # install flyway on agent
 
 variables:
   SNAPSHOT_EXISTS: True
-  group: REDGATE
   CHANGE_REPORT: 'Change-Report.html'
   DRIFT_REPORT: 'Drift-Report.html'
   RELEASE_PREVIEW: 'Release-Preview.sql'
-  FLYWAY_LICENSE_KEY: 'FL014D2BC7401A71CD48A9F0CF38896ACD6107D0CA08450E7571AB73A27F451388DC0C2706129EE3F2719AE93DA4D3DE9EDCCD85293068AB0D2895569AF32DC0ABA6F351D9535E8F3C26A3C5858B46FB07224CF4E0F775566AAF8AD6796A3D6F05442B8F7C53771052E54DEA04686D79A5FA1D262623BB4657C347463D7A3AE0B4FA9E4016737F63F779DADB2A36E22DAE30B2D8AADBB9D3BB14377203E88D43FF8B10CB4E0B8D371749BD1084EE530660CBAA47EB838765E7FDA79AB86F91E1E449EFDCFCB16132D78D59806FDE735F979D55BFF115113D371EC66178627E137DF1984A4236C63D3ADB2BAFB2746262D78DCF0D13855304D762BE0D1E9FFE500D87'
   BUILD_NAME: 'Build'
   PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
   POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
   SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
   FLYWAY: 'flyway'
-
-  # template: pipeline_variables_template.yml
-
-# parameters: 
-#   template: pipeline_variables_template.yml
-
+  
 parameters:
-
   - name: pipelineStages
     type: object
     default: 
@@ -46,8 +33,12 @@ parameters:
       isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
       manualIntervention: false
       server: WIN2016
-      userName: Redgate
-      password: Redg@te1
+      # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
+      # In this case we have a variable group called build_credentials_variable_group. It contains variables with the following secret values:
+      # FLYWAY_LICENSE_KEY, userName, password
+      # Define any sensitive data inside of a variable group and reference as a variable
+      # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
+      variableGroupName: 'build_credentials_variable_group'
 
     - stage: 'Test'
       databaseName: 'Westwind_Test'
@@ -57,8 +48,7 @@ parameters:
       isDeploy: true
       manualIntervention: false
       server: WIN2016
-      userName: Redgate
-      password: Redg@te1
+      variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'Westwind'
@@ -68,8 +58,7 @@ parameters:
       isDeploy: true
       manualIntervention: true
       server: WIN2016
-      userName: Redgate
-      password: Redg@te1
+      variableGroupName: 'prod_credentials_variable_group'
 
 stages:
   - ${{each stage in parameters.pipelineStages}}:
@@ -114,8 +103,9 @@ stages:
         jobs:
         - job: PreRelease
           displayName: Pre Release Drift Detection
+          variables:
+          - group: ${{ stage.variableGroupName }}
           steps:
-            
             - task: DownloadBuildArtifacts@0
               inputs:
                 buildType: 'current'
@@ -163,7 +153,7 @@ stages:
             
             # ---------------- end windows -------------------------------------------------------------------
 
-            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
@@ -218,6 +208,8 @@ stages:
         - job: Deploy
           displayName: Post Drift Detection Release
           dependsOn: 'CodeReview'
+          variables:
+          - group: ${{ stage.variableGroupName }}
           steps:
 
             - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
@@ -228,14 +220,14 @@ stages:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
 
-            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"${{stage.userName}}" /password1:"${{stage.password}}" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
 
             - script: |
-                "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html
-                If ($lastExitCode == 61) {
+                "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical
+                If ($lastExitCode == 63) {
                   exit 0
                 }
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'

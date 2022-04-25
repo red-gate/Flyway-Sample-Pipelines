@@ -5,11 +5,6 @@ trigger:
     # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
     # - migrations/*
 
-# TODO
-# Use docker
-# Break out parameters into separate file
-# Include flyway credentials that most clients require in a POC
-
 # INSTRUCTIONS
 # install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
 # install flyway on agent
@@ -25,12 +20,7 @@ variables:
   SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
   FLYWAY: 'flyway'
   
-  group: REDGATE
-
-  # template: pipeline_variables_template.yml
-
 parameters:
-
   - name: pipelineStages
     type: object
     default: 
@@ -43,7 +33,12 @@ parameters:
       isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
       manualIntervention: false
       server: WIN2016
-      variableGroupName: 'REDGATE'
+      # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
+      # In this case we have a variable group called build_credentials_variable_group. It contains variables with the following secret values:
+      # FLYWAY_LICENSE_KEY, userName, password
+      # Define any sensitive data inside of a variable group and reference as a variable
+      # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
+      variableGroupName: 'build_credentials_variable_group'
 
     - stage: 'Test'
       databaseName: 'Westwind_Test'
@@ -53,7 +48,7 @@ parameters:
       isDeploy: true
       manualIntervention: false
       server: WIN2016
-      variableGroupName: 'REDGATE'
+      variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'Westwind'
@@ -63,7 +58,7 @@ parameters:
       isDeploy: true
       manualIntervention: true
       server: WIN2016
-      variableGroupName: 'REDGATE'
+      variableGroupName: 'prod_credentials_variable_group'
 
 stages:
   - ${{each stage in parameters.pipelineStages}}:
@@ -76,19 +71,19 @@ stages:
         - job: Build
           steps:
             
-            # - script: '$(FLYWAY) clean info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Clean Build DB'
-            #   env:
-            #     FLYWAY_CLEAN_DISABLED: false
+            - script: '$(FLYWAY) clean info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Clean Build DB'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
 
-            # - script: '$(FLYWAY) migrate info -url=${{stage.JDBC}}'
-            #   failOnStderr: true
-            #   displayName: 'Validate Migrate Scripts'
+            - script: '$(FLYWAY) migrate info -url=${{stage.JDBC}}'
+              failOnStderr: true
+              displayName: 'Validate Migrate Scripts'
 
-            # - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
-            #   failOnStderr: true
-            #   displayName: 'Validate Undo Scripts'
+            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
+              failOnStderr: true
+              displayName: 'Validate Undo Scripts'
             
             - task: CopyFiles@2
               inputs:

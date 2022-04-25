@@ -2,6 +2,7 @@
 # Start with a minimal pipeline that you can customize to build and deploy your code.
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
+name: db-devops-pipeline
 
 trigger:
   branches:
@@ -9,19 +10,15 @@ trigger:
     - main
   paths:
     include:
-    - $(FLYWAY_PROJECT_PATH)
+    - sqlserver/stackoverflow2010
+
+variables:
+ - group: REDGATE
+ - template: pipeline_variables_template.yml
 
 pool:
   vmImage: ubuntu-latest
 
-variables:
-- group: REDGATE
-# Each Flyway project saves its project specific details in the following template
-- template: pipeline_variables_template.yml
-# Where your flyway migrations reside in your project
-- name: FLYWAY_LOCATIONS
-  value: $(Build.Repository.LocalPath)/$(FLYWAY_PROJECT_PATH)/migrations
-  
 stages:
 - stage: "CI"
   displayName: "Database CI"
@@ -178,7 +175,7 @@ stages:
     - task: CmdLine@2
       displayName: Flyway info (pre-deployment)
       inputs:
-        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway info 
+        script: "docker run --rm -v $(Pipeline.Workspace)/Migrations:/flyway/sql flyway/flyway info 
         -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
         -url='$(DB_PROD_URL)'
         -licenseKey=$(FLYWAY_LICENSE_KEY)"
@@ -186,7 +183,7 @@ stages:
       enabled: true
       displayName: Flyway migrate
       inputs:
-        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway migrate 
+        script: "docker run --rm -v $(Pipeline.Workspace)/Migrations:/flyway/sql flyway/flyway migrate 
         -outOfOrder=true 
         -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
         -url='$(DB_PROD_URL)'
@@ -195,7 +192,7 @@ stages:
     - task: CmdLine@2
       displayName: Flyway info (post-deployment)
       inputs:
-        script: "docker run --rm -v $(Pipeline.Workspace)/2.Flyway-build-artifact:/flyway/sql flyway/flyway info 
+        script: "docker run --rm -v $(Pipeline.Workspace)/Migrations:/flyway/sql flyway/flyway info 
         -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
         -url='$(DB_PROD_URL)'
         -licenseKey=$(FLYWAY_LICENSE_KEY)"
@@ -229,4 +226,3 @@ stages:
 #               -schemas=dbo 
 #               -user=$(DB_PROD_USER) -password=$(DB_PROD_PASSWORD) 
 #               -url='$(DB_PROD_URL)'"
-
