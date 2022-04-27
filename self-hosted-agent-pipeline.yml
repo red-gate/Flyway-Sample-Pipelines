@@ -20,7 +20,7 @@ variables:
   SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
   FLYWAY: 'flyway'
   # contains FLYWAY_LICENSE_KEY
-  - group: flyway_vars
+  group: flyway_vars
   
 parameters:
   - name: pipelineStages
