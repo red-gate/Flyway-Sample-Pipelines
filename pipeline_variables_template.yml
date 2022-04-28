@@ -4,12 +4,14 @@ variables:
 # In this case we have a variable group called REDGATE. It contains two variables with secret values:
 #   FLYWAY_LICENSE_KEY
 #   SPAWNCTL_ACCESS_TOKEN
-# Listing the group here pulls these variables into your pipelines
+# Listing the group here pulls these variables into your pipelines 
 
- - group: REDGATE
 # Fyway project path
  - name: FLYWAY_PROJECT_PATH
-   value: sqlserver/StackOverflow2010
+   value: sqlserver/stackoverflow2010
+# Where the migration scripts are
+ - name: FLYWAY_LOCATIONS
+   value: $(Build.Repository.LocalPath)/$(FLYWAY_PROJECT_PATH)/migrations
 # SQL dialect for SQLFluff parser (ansi|tsql|oracle|postgres|mysql|redshift|snowflake|bigquery|teradata)
  - name: SQLFLUFF_DIALECT
    value: tsql

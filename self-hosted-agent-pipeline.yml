@@ -6,8 +6,16 @@ trigger:
     # - migrations/*
 
 # INSTRUCTIONS
-# install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
-# install flyway on agent
+# 1. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# 2. Install flyway on agent, add flyway to PATH
+# 3. Set up variable groups. In this example, they are named "build_credentials_variable_group", "test_credentials_variable_group", "prod_credentials_variable_group"
+#     These can be created under Pipelines -> Library. 
+#     Create one variable group for every target database that contains userName and password (keys must be the same, values can be different)
+# 4. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+# 5. Define build and deployment steps. Be sure to carefully look at every variable and 
+# 6. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed to
+# 7. When setting up the project, go to pipelines, define where your code is (azure repo in this gase), add "Existing Azure Pipelines YAML file", then point to this file
+
 
 variables:
   SNAPSHOT_EXISTS: True
@@ -21,7 +29,9 @@ variables:
   FLYWAY: 'flyway'
   # contains FLYWAY_LICENSE_KEY
   group: flyway_vars
-  
+
+# Every stage in pipelineStages corresponds to an environment - here it's Build, Test, and Prod. 
+# IMPORTANT: Build and all other environments are different - DO NOT COPY PASTE FROM THE BUILD STEP
 parameters:
   - name: pipelineStages
     type: object
@@ -37,7 +47,7 @@ parameters:
       server: WIN2016
       # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
       # In this case we have a variable group called build_credentials_variable_group. It contains variables with the following secret values:
-      # FLYWAY_LICENSE_KEY, userName, password
+      # userName, password
       # Define any sensitive data inside of a variable group and reference as a variable
       # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
       variableGroupName: 'build_credentials_variable_group'
