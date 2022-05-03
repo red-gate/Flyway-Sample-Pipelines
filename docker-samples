@@ -21,7 +21,7 @@ phases:
             - docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise clean
             #- docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise validate -ignorependingmigrations=true
             #- docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -teams repair
-
+            #  docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf redgate/flyway:9.0.0-beta2-azure flyway -enterprise -dryRunOutput="/flyway/SQL/output.sql" migrate
 
 
             # add docker get

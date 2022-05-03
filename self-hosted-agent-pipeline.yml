@@ -6,16 +6,43 @@ trigger:
     # - migrations/*
 
 # INSTRUCTIONS
-# 1. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
-# 2. Install flyway on agent, add flyway to PATH
-# 3. Set up variable groups. In this example, they are named "build_credentials_variable_group", "test_credentials_variable_group", "prod_credentials_variable_group"
+# 1. This workflow is for a self-hosted Windows agent on Azure Devops
+# 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# 3. Install flyway on agent, add flyway to PATH
+
+# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
+      # A. - When configureing FWD for the first time, clone the empty repository into a working folder. Open Flyway Desktop, create a NEW project, point it to the folder that was just cloned. 
+          #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
+          #  In the top left of FWD, there is a project dropdown. Open the project folder, and edit "flyway-dev.json" to have the following properties (this is a one time operation):
+          # "deployment": {
+          #     "flywayConfFiles": [
+          #       "./flyway.conf"
+          #     ],
+          #     "generateUndoScripts": true
+          #   },
+          #   "capabilities": {
+          #     "comparison": {
+          #         "filter": "./Filter.scpf",
+          #         "options": {
+          #             "ObjectExistenceChecks": true,
+          #             "IgnorePermissions": true,
+          #             "IgnoreDataCompression": false
+          #         }
+          #     }
+          #   }
+
+   # B. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
+        # It will be necessary to elect a development and shadow database still. THe shadow database should be unique for every developer 
+# 5. Save this pipeline file alongside the migrations and schema-model folders.
+# 6. When setting up an azure devops project, go to pipelines, define where your code is (azure repo in this gase), add "Existing Azure Pipelines YAML file", then point to this file
+# 7. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
+# 8. Set up variable groups. In this example, they are named "build_credentials_variable_group", "test_credentials_variable_group", "prod_credentials_variable_group"
 #     These can be created under Pipelines -> Library. 
 #     Create one variable group for every target database that contains userName and password (keys must be the same, values can be different)
-# 4. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
-# 5. Define build and deployment steps. Be sure to carefully look at every variable and 
-# 6. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed to
-# 7. When setting up the project, go to pipelines, define where your code is (azure repo in this gase), add "Existing Azure Pipelines YAML file", then point to this file
-
+# 9. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+# 10. Define build and deployment steps. Be sure to carefully look at every variable.
+# 11. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 12. In the project folder, 
 
 variables:
   SNAPSHOT_EXISTS: True
