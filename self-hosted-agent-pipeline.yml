@@ -32,7 +32,8 @@ trigger:
           #   }
 
    # B. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
-        # It will be necessary to elect a development and shadow database still. THe shadow database should be unique for every developer 
+        # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
+
 # 5. Save this pipeline file alongside the migrations and schema-model folders.
 # 6. When setting up an azure devops project, go to pipelines, define where your code is (azure repo in this gase), add "Existing Azure Pipelines YAML file", then point to this file
 # 7. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
@@ -42,7 +43,6 @@ trigger:
 # 9. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
 # 10. Define build and deployment steps. Be sure to carefully look at every variable.
 # 11. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
-# 12. In the project folder, 
 
 variables:
   SNAPSHOT_EXISTS: True
@@ -86,6 +86,7 @@ parameters:
       displayName: 'Deploy Test'
       isDeploy: true
       manualIntervention: false
+      failReleaseIfDriftDetected: false
       server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
     
@@ -96,6 +97,7 @@ parameters:
       displayName: 'Deploy Prod'
       isDeploy: true
       manualIntervention: true
+      failReleaseIfDriftDetected: true
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 
@@ -199,11 +201,8 @@ stages:
             
             - script: |
                 "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
-                If ($lastExitCode == 61) {
-                  exit 0
-                }
               workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-              failOnStderr: true
+              failOnStderr: ${{stage.failReleaseIfDriftDetected}}
               displayName: 'Detect For Drift'
               condition: eq(variables['SNAPSHOT_EXISTS'], True)
 
