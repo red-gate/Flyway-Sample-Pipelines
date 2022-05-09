@@ -19,10 +19,16 @@ variables:
   PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
   POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
   SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:latest-azure
+  FLYWAY_DOCKER_IMAGE: redgate/flyway:9.0.0-beta2 #Name of the DockerHub image to use throughout the pipeline (https://hub.docker.com/r/flyway/flyway)
+  FLYWAY_DOCKER_CONTAINER_NAME: flyway-container #The name to provide to any Docker Container created
   FLYWAY: 'flyway'
+  
   # contains FLYWAY_LICENSE_KEY
- - group: flyway_vars
-  # - template: pipeline_variables_template.yml
+  # group: flyway_vars
+  FLYWAY_LICENSE_KEY: 'FL012EC30A3EFDE4049459C032ACDE1E0E18074C2040D49D48CC4016B4C1D3C3F15F8E9A90AC3E79BFA5BDDDDC3FA94A0808CCA8B41CBAF32B8669F3E2A2ECD6555EB848BD7DC1A9BF164B90D0A5AC6A26CF430BAE1A4142F1AF20D7F3D547CB34A1EBE1D68D8C7873425455489FE0D1EE4A2E947D620D2A52FE77585FDDA053738873CB6E0C7716D69F3437D722D4F656E2AB223058D7DBADEBD5F1D1DB63826FFAA348B31151EBD3629BBE2C910632FED593899778006B1416D471A22D604F1E307BC41B5365438F4BA8A078D0B8CD23CD7078D80D89BE4B2A1AF7037DA545BDC76658B52308F4FA22EADA8BD51D69F1D089429E3A13FC135E05B019CF2EA12840'
+  FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
+  FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/conf
   
 parameters:
   - name: pipelineStages
@@ -31,7 +37,8 @@ parameters:
 
     - stage: 'Build'
       databaseName: 'SouthWind_Build'
-      JDBC: 'jdbc:sqlserver://localhost;database=SouthWind_Build;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
+      # JDBC: 'jdbc:sqlserver://instances.spawn.cc,30459;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
       dependsOn: ''
       displayName: 'Build'
       isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
@@ -47,26 +54,26 @@ parameters:
 
     - stage: 'Test'
       databaseName: 'SouthWind_Test'
-      JDBC: 'jdbc:sqlserver://localhost;database=SouthWind_Test;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://instances.spawn.cc,30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true'
+      # JDBC: 'jdbc:sqlserver://instances.spawn.cc,30459;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       isDeploy: true
       manualIntervention: false
       server: WIN2016
-      # userName
-      # password
+      # test_credentials_variable_group contains userName, password
       variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'SouthWind'
-      JDBC: 'jdbc:sqlserver://localhost;database=SouthWind;integratedSecurity=true'
+      # JDBC: 'jdbc:sqlserver://instances.spawn.cc,30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind;trustServerCertificate=true;encrypt=true'
+      JDBC: 'jdbc:sqlserver://instances.spawn.cc,30459;databaseName=SouthWind;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       isDeploy: true
       manualIntervention: true
       server: WIN2016
-      # userName
-      # password
+      # prod_credentials_variable_group contains userName, password
       variableGroupName: 'prod_credentials_variable_group'
 
 stages:
@@ -79,19 +86,12 @@ stages:
         - job: Build
           steps:
 
-            - script: "echo $(pwd)"
-              failOnStderr: true
-              displayName: 'Echo PWD'
-            
-            - script: "docker run --rm -v $(pwd)/migrations:/flyway/migrations -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise info
-                      -user=${{stage.userName}} 
-                      -password=${{stage.password}} 
-                      -url='${{stage.JDBC}}'
-                      -licenseKey=$(FLYWAY_LICENSE_KEY)
-                      -cleanDisabled='false'"
+            - script: |
+                docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) info -url='${{stage.JDBC}}' -user='sa' -password='tYDGovRPko4htX0t' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='true'
               failOnStderr: true
               displayName: 'Info Build DB'
-            
+
+
             # - script: '$(FLYWAY) clean info -url=${{stage.JDBC}}'
             #   failOnStderr: true
             #   displayName: 'Clean Build DB'

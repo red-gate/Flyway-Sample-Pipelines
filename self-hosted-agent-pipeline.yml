@@ -8,12 +8,17 @@ trigger:
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops
 # 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
-# 3. Install flyway on agent, add flyway to PATH
+# 3. Install flyway cli on agent, add flyway to PATH
+# 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
-# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
-      # A. - When configureing FWD for the first time, clone the empty repository into a working folder. Open Flyway Desktop, create a NEW project, point it to the folder that was just cloned. 
+# 5. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
+      # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
+      # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
+      # C. - Initialize a git project (git init). In your Azure Devops, go to your repository in your project, and follow the instructions listed to push up your local git repository to the centralized repository.
+      # D. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
           #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
           #  In the top left of FWD, there is a project dropdown. Open the project folder, and edit "flyway-dev.json" to have the following properties (this is a one time operation):
+          # https://documentation.red-gate.com/fd/sql-server-comparison-options-138347108.html
           # "deployment": {
           #     "flywayConfFiles": [
           #       "./flyway.conf"
@@ -34,30 +39,19 @@ trigger:
    # B. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
         # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
 
-# 5. Save this pipeline file alongside the migrations and schema-model folders.
-# 6. When setting up an azure devops project, go to pipelines, define where your code is (azure repo in this gase), add "Existing Azure Pipelines YAML file", then point to this file
-# 7. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
-# 8. Set up variable groups. In this example, they are named "build_credentials_variable_group", "test_credentials_variable_group", "prod_credentials_variable_group"
-#     These can be created under Pipelines -> Library. 
-#     Create one variable group for every target database that contains userName and password (keys must be the same, values can be different)
-# 9. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
-# 10. Define build and deployment steps. Be sure to carefully look at every variable.
-# 11. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 6. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
+# 7. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
+# 8. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
+# 9. Set up variable groups. In this example, they are named "build_credentials_variable_group", "test_credentials_variable_group", "prod_credentials_variable_group"
+#       These can be created under Pipelines -> Library. 
+#       Create one variable group for every target database and add the exact same keys of userName and password, with potentially different values to each variable group.
+# 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+# 11. Define build and deployment steps. Be sure to carefully look at every variable.
+# 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 13. Either generate a migration and undo script or disable the build steps for the 1st run
+# 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
 
-variables:
-  SNAPSHOT_EXISTS: True
-  CHANGE_REPORT: 'Change-Report.html'
-  DRIFT_REPORT: 'Drift-Report.html'
-  RELEASE_PREVIEW: 'Release-Preview.sql'
-  BUILD_NAME: 'Build'
-  PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
-  POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
-  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
-  FLYWAY: 'flyway'
-  # contains FLYWAY_LICENSE_KEY
-  group: flyway_vars
-
-# Every stage in pipelineStages corresponds to an environment - here it's Build, Test, and Prod. 
+# Every parameter in pipelineStages corresponds to an environment - here it's Build, Test, and Prod. 
 # IMPORTANT: Build and all other environments are different - DO NOT COPY PASTE FROM THE BUILD STEP
 parameters:
   - name: pipelineStages
@@ -101,6 +95,21 @@ parameters:
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 
+variables:
+  SNAPSHOT_EXISTS: True
+  CHANGE_REPORT: 'Change-Report.html'
+  DRIFT_REPORT: 'Drift-Report.html'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  BUILD_NAME: 'Build'
+  PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
+  POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
+  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
+  FLYWAY: 'flyway'
+  # If the first undo script is U002, this will validate all undo scripts up to and including that
+  UNDO_SCRIPT_TARGET_TO_VALIDATE: '1.9999'
+  # contains FLYWAY_LICENSE_KEY
+  group: flyway_vars
+
 stages:
   - ${{each stage in parameters.pipelineStages}}:
     - ${{if eq(stage.isBuild, true)}}:
@@ -122,6 +131,8 @@ stages:
               failOnStderr: true
               displayName: 'Validate Migrate Scripts'
 
+            # -target="$(UNDO_SCRIPT_TARGET_TO_VALIDATE)"?
+            # TODO - dont error out if no undo script exists
             - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               displayName: 'Validate Undo Scripts'
@@ -156,14 +167,14 @@ stages:
 
             # ---------------- if the agent is linux, the following steps will be executed --------------------
             
-            - bash: 'mkdir -p ${{stage.stage}}'
+            - bash: 'mkdir -p $(System.TeamProject)/${{stage.stage}}'
               workingDirectory: '$(Agent.WorkFolder)'
               failOnStderr: true
-              displayName: 'Cross Run Snapshots Folder Per Stage'
+              displayName: 'Dynamically Generate Workspace'
               condition: eq( variables['Agent.OS'], 'Linux')
 
             - bash: '-f $(POST_RELEASE_SCHEMA_SNAPSHOT) || echo "##vso[task.setvariable variable=SNAPSHOT_EXISTS;isOutput=true]True"'
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Detect For Schema Snapshot From Previous Run'
               condition: eq( variables['Agent.OS'], 'Linux')
@@ -173,12 +184,12 @@ stages:
             # ---------------- if the agent is windows, the following steps will be executed ------------------
             
             - powershell: |
-                $path = "${{stage.stage}}"
+                $path = "$(System.TeamProject)/${{stage.stage}}"
                 If(!(test-path $path))
                 {
                       New-Item -ItemType Directory -Force -Path $path
                 }
-              displayName: 'Cross Run Snapshots Folder Per Stage'
+              displayName: 'Dynamically Generate Workspace'
               workingDirectory: '$(Agent.WorkFolder)'
               failOnStderr: true
               condition: eq( variables['Agent.OS'], 'Windows_NT')
@@ -188,29 +199,30 @@ stages:
                 $fileExists = Test-Path -Path $path
                 Write-Output "##vso[task.setvariable variable=SNAPSHOT_EXISTS]$fileExists"
               failOnStderr: true
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               displayName: 'Detect For Schema Snapshot'
               condition: eq( variables['Agent.OS'], 'Windows_NT')
             
             # ---------------- end windows -------------------------------------------------------------------
 
             - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Pre-Release Schema Snapshot'
             
             - script: |
                 "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               failOnStderr: ${{stage.failReleaseIfDriftDetected}}
               displayName: 'Detect For Drift'
               condition: eq(variables['SNAPSHOT_EXISTS'], True)
 
             - task: PublishBuildArtifacts@1
               displayName: 'Publish Drift Report'
+              condition: always()
               inputs:
                 ArtifactName: 'Drift-Report'
-                PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
 
             - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
@@ -244,7 +256,7 @@ stages:
             dependsOn: 'PreRelease'
         
         - job: Deploy
-          displayName: Post Drift Detection Release
+          displayName: Deployment
           dependsOn: 'CodeReview'
           variables:
           - group: ${{ stage.variableGroupName }}
@@ -258,8 +270,8 @@ stages:
                 # clean destroys a target DB, keep disabled except for build step
                 FLYWAY_CLEAN_DISABLED: true
 
-            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+            - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Post Release Schema Snapshot'
 
@@ -268,7 +280,7 @@ stages:
                 If ($lastExitCode == 63) {
                   exit 0
                 }
-              workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
+              workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
               failOnStderr: true
               displayName: 'Write Change Report'
               condition: eq(variables['SNAPSHOT_EXISTS'], True)
