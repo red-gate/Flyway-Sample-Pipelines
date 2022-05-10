@@ -8,6 +8,7 @@ trigger:
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops
 # 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# TODO - maybe install on agent dynamically
 # 3. Install flyway cli on agent, add flyway to PATH
 # 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
