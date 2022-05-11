@@ -8,8 +8,7 @@ trigger:
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops
 # 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
-# TODO - maybe install on agent dynamically
-# 3. Install flyway cli on agent, add flyway to PATH
+# 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
 # 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
 # 5. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
@@ -51,6 +50,7 @@ trigger:
 # 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
 # 13. Either generate a migration and undo script or disable the build steps for the 1st run
 # 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
+# 15. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
 
 # Every parameter in pipelineStages corresponds to an environment - here it's Build, Test, and Prod. 
 # IMPORTANT: Build and all other environments are different - DO NOT COPY PASTE FROM THE BUILD STEP
@@ -268,8 +268,7 @@ stages:
               displayName: ${{stage.displayName}}
               failOnStderr: true
               env:
-                # clean destroys a target DB, keep disabled except for build step
-                FLYWAY_CLEAN_DISABLED: true
+                FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
 
             - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
               workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
