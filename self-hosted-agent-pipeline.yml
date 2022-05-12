@@ -1,8 +1,9 @@
+name: ADO-self-hosted-pipeline
+
 trigger:
   branches:
     include:
     - master
-    # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
     - migrations/*
 
 # INSTRUCTIONS

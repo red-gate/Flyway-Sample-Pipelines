@@ -1,11 +1,10 @@
-name: db-devops-pipeline
+name: docker-ADO-hosted-pipeline
 
 trigger:
   branches:
     include:
     - master
-    # uncomment the below line to only trigger a pipeline run on a change to the migrations folder in master
-    # - migrations/*
+    - migrations/*
 
 pool:
   vmImage: ubuntu-latest
@@ -14,263 +13,155 @@ variables:
   RELEASE_PREVIEW: 'Release-Preview.sql'
   BUILD_NAME: 'Build'
   SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
-  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine flyway
-  FLYWAY_DOCKER_IMAGE: redgate/flyway:9.0.0-beta3-azure #Name of the DockerHub image to use throughout the pipeline (https://hub.docker.com/r/flyway/flyway)
-  FLYWAY_DOCKER_CONTAINER_NAME: flyway-container #The name to provide to any Docker Container created
-  
+  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine flyway                               #https://hub.docker.com/r/flyway/flyway
+  FLYWAY_DOCKER_IMAGE: redgate/flyway:9.0.0-beta3-azure                                         #https://hub.docker.com/r/flyway/flyway
+  FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
+  FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
+  FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/conf
+
+  # userName and password remain environment specific because their values are evaluated at runtime
+  FLYWAY_DOCKER_RUN: 'docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user=$(userName) -password=$(password) -licenseKey=$(FLYWAY_LICENSE_KEY) -enterprise'
+    
   # contains FLYWAY_LICENSE_KEY
   # group: flyway_vars
   FLYWAY_LICENSE_KEY: 'FL012EC30A3EFDE4049459C032ACDE1E0E18074C2040D49D48CC4016B4C1D3C3F15F8E9A90AC3E79BFA5BDDDDC3FA94A0808CCA8B41CBAF32B8669F3E2A2ECD6555EB848BD7DC1A9BF164B90D0A5AC6A26CF430BAE1A4142F1AF20D7F3D547CB34A1EBE1D68D8C7873425455489FE0D1EE4A2E947D620D2A52FE77585FDDA053738873CB6E0C7716D69F3437D722D4F656E2AB223058D7DBADEBD5F1D1DB63826FFAA348B31151EBD3629BBE2C910632FED593899778006B1416D471A22D604F1E307BC41B5365438F4BA8A078D0B8CD23CD7078D80D89BE4B2A1AF7037DA545BDC76658B52308F4FA22EADA8BD51D69F1D089429E3A13FC135E05B019CF2EA12840'
-  FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
-  FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/conf
-  # JDBC_RUNTIME_STRING: 'foo'
-  # userName: 'sa'
-  # Password: 'tYDGovRPko4htX0t'
-  
+  # If the first undo script is U002, this will validate all undo scripts up to and including that
+  FIRST_UNDO_SCRIPT: '002'
+
 parameters:
-  - name: pipelineStages
+  # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
+  - name: buildStage
+    type: object
+    default: 
+      
+      stage: 'Build'
+      databaseName: 'SouthWind_Build'
+      JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
+      displayName: 'Build'
+      manualIntervention: false
+      variableGroupName: 'build_credentials_variable_group'
+
+  # This is the extensible definition of your target environments. 
+  # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
+  # Pay attention to the 'dependsOn' field - this determines order of operations.
+  - name: deploymentStages
     type: object
     default: 
 
-    - stage: 'Build'
-      databaseName: 'SouthWind_Build'
-      # JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
-      JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
-      dependsOn: ''
-      displayName: 'Build'
-      isBuild: true #IMPORTANT: only set isBuild to true if database can be destroyed
-      manualIntervention: false
-      server: WIN2016
-      # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
-      # In this case we have a variable group called build_credentials_variable_group. It contains variables with the following secret values:
-      # userName
-      # password
-      # Define any sensitive data inside of a variable group and reference as a variable
-      # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
-      variableGroupName: 'build_credentials_variable_group'
-
     - stage: 'Test'
       databaseName: 'SouthWind_Test'
-      # JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true'
       JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
-      isDeploy: true
       manualIntervention: false
-      server: WIN2016
-      # test_credentials_variable_group contains userName, password
       variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'SouthWind'
-      # JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind;trustServerCertificate=true;encrypt=true'
       JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
-      isDeploy: true
       manualIntervention: true
-      server: WIN2016
-      # prod_credentials_variable_group contains userName, password
       variableGroupName: 'prod_credentials_variable_group'
 
 stages:
-  - ${{each stage in parameters.pipelineStages}}:
-    - ${{if eq(stage.isBuild, true)}}:
-      - stage: Build
-        displayName: ${{stage.displayName}} 
-        dependsOn: ${{stage.dependsOn}}
-        jobs:
-        - job: Build
-          variables:
-          - group: ${{ stage.variableGroupName }}
-          steps:
-            - script: |
-                docker pull $(FLYWAY_DOCKER_IMAGE)
-              failOnStderr: true
-              displayName: 'Docker Pull'
+  - stage: Build
+    displayName: ${{parameters.buildStage.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{ parameters.buildStage.variableGroupName }}
+      steps:
+        - script: |
+            docker pull $(FLYWAY_DOCKER_IMAGE)
+          failOnStderr: true
+          displayName: 'Docker Pull'
 
-            # - script: |
-            #     $RuntimeJDBCString = "${{stage.JDBC}};user=$(userName);Password=$(password)"
-            #     echo "##vso[task.setvariable variable=JDBC_RUNTIME_STRING;isOutput=true]$RuntimeJDBCString"
-            #   failOnStderr: true
-            #   displayName: 'Set JDBC String'
-            #   name: dynamicVars
+        - script: |
+            $(FLYWAY_DOCKER_RUN) info clean info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='false'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
 
-            # docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway clean info -url=$(dynamicVars.JDBC_RUNTIME_STRING) -licenseKey=$(FLYWAY_LICENSE_KEY) -enterprise -cleanDisabled='false'
-                #         echo "dynamicVars.JDBC_RUNTIME_STRING"
-                # echo $(dynamicVars.JDBC_RUNTIME_STRING)
-                # TODO FLYWAY_PASSWORD ENV VAR
-            - script: 'docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway info clean info -url="${{stage.JDBC}}" -user="$(userName)" -password="$(password)" -licenseKey="$(FLYWAY_LICENSE_KEY)" -enterprise -cleanDisabled="false"'
-              failOnStderr: true
-              displayName: 'Clean Build DB'
+        - script: |
+            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
+          failOnStderr: true
+          displayName: 'Migrate Build DB'
 
-            # - script: |
-            #     docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway info migrate info -url='${{stage.JDBC}};user=$(userName);Password=$(password);' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='true'
-            #   failOnStderr: true
-            #   displayName: 'Migrate Build DB'
+        - script: |
+            $(FLYWAY_DOCKER_RUN) undo info -url='${{parameters.buildStage.JDBC}}' -target="$(FIRST_UNDO_SCRIPT)"? -cleanDisabled='true'
+          failOnStderr: true
+          displayName: 'Undo Build DB'
 
-            # - script: |
-            #     docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway undo info -url='${{stage.JDBC}};user=$(userName);Password=$(password);' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='true'
-            #   failOnStderr: true
-            #   displayName: 'Undo Build DB'
+        # - script: |
+        #     $(FLYWAY_DOCKER_RUN) check -check.tempUrl="${{parameters.buildStage.JDBC}}" -changes info -url='jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true' -user='$(userName)' -password='$(password)' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='false'
+        #   failOnStderr: true
+        #   displayName: 'Check Test DB'
+        
+        - task: CopyFiles@2
+          inputs:
+            targetFolder: '$(System.ArtifactsDirectory)' 
 
-            # - script: |
-            #     docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(System.ArtifactsDirectory):/flyway/reports -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway check -check.tempUrl="${{stage.JDBC}}" -changes info -url='jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true' -user='$(userName)' -password='tYDGovRPko4htX0t' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='false'
-            #   failOnStderr: true
-            #   displayName: 'Check Test DB'
-            
-            # - task: CopyFiles@2
-            #   inputs:
-            #     targetFolder: '$(System.ArtifactsDirectory)' 
-
-            - task: PublishBuildArtifacts@1
-              displayName: 'Publish Build Artifact'
-              inputs:
-                ArtifactName: '$(BUILD_NAME)'
-                PathtoPublish: '$(System.ArtifactsDirectory)'
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Build Artifact'
+          inputs:
+            ArtifactName: '$(BUILD_NAME)'
+            PathtoPublish: '$(System.ArtifactsDirectory)'
+  
+  - ${{each stage in parameters.deploymentStages}}:
     
-    # - ${{if eq(stage.isDeploy, true)}}:
-    #   - stage: ${{stage.stage}} 
-    #     displayName: ${{stage.displayName}} 
-    #     dependsOn: ${{stage.dependsOn}} 
-    #     jobs:
-    #     - job: PreRelease
-    #       displayName: Pre Release Drift Detection
-    #       variables:
-    #       - group: ${{ stage.variableGroupName }}
-    #       steps:
-    #         - task: DownloadBuildArtifacts@0
-    #           inputs:
-    #             buildType: 'current'
-    #             downloadType: 'single'
-    #             artifactName: '$(BUILD_NAME)'
-    #             downloadPath: '$(System.ArtifactsDirectory)'
+    - stage: ${{stage.stage}} 
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+      - job: PreRelease
+        displayName: Pre Release Drift Detection
+        variables:
+        - group: ${{stage.variableGroupName}}
+        steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: '$(BUILD_NAME)'
+              downloadPath: '$(System.ArtifactsDirectory)'
 
-    #         # ---------------- if the agent is linux, the following steps will be executed --------------------
-            
-    #         - bash: 'mkdir -p ${{stage.stage}}'
-    #           workingDirectory: '$(Agent.WorkFolder)'
-    #           failOnStderr: true
-    #           displayName: 'Cross Run Snapshots Folder Per Stage'
-    #           condition: eq( variables['Agent.OS'], 'Linux')
+          # - script: |
+          #     $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true'
+          #   failOnStderr: true
+          #   displayName: 'Pre-Release Deployment Report'
 
-    #         - bash: '-f $(POST_RELEASE_SCHEMA_SNAPSHOT) || echo "##vso[task.setvariable variable=SNAPSHOT_EXISTS;isOutput=true]True"'
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           failOnStderr: true
-    #           displayName: 'Detect For Schema Snapshot From Previous Run'
-    #           condition: eq( variables['Agent.OS'], 'Linux')
-            
-    #         # ---------------- end linux ----------------------------------------------------------------------
+          # - task: PublishBuildArtifacts@1
+          #   displayName: 'Publish Release Preview'
+          #   inputs:
+          #     ArtifactName: 'Release-Preview'
+          #     PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
 
-    #         # ---------------- if the agent is windows, the following steps will be executed ------------------
-            
-    #         - powershell: |
-    #             $path = "${{stage.stage}}"
-    #             If(!(test-path $path))
-    #             {
-    #                   New-Item -ItemType Directory -Force -Path $path
-    #             }
-    #           displayName: 'Cross Run Snapshots Folder Per Stage'
-    #           workingDirectory: '$(Agent.WorkFolder)'
-    #           failOnStderr: true
-    #           condition: eq( variables['Agent.OS'], 'Windows_NT')
+      - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+          steps:
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              timeoutInMinutes: 4320 # job times out in 3 days
+              inputs:
+                notifyUsers: 'user@email.com'
+                instructions: 'Review changes'
+      
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Skipping Code Review
+          dependsOn: 'PreRelease'
+      
+      - job: Deploy
+        displayName: Deployment
+        dependsOn: 'CodeReview'
+        variables:
+        - group: ${{stage.variableGroupName}}
+        steps:
 
-    #         - powershell: |
-    #             $path = "$(POST_RELEASE_SCHEMA_SNAPSHOT)"
-    #             $fileExists = Test-Path -Path $path
-    #             Write-Output "##vso[task.setvariable variable=SNAPSHOT_EXISTS]$fileExists"
-    #           failOnStderr: true
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           displayName: 'Detect For Schema Snapshot'
-    #           condition: eq( variables['Agent.OS'], 'Windows_NT')
-            
-    #         # ---------------- end windows -------------------------------------------------------------------
-
-    #         - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           failOnStderr: true
-    #           displayName: 'Pre-Release Schema Snapshot'
-            
-    #         - script: |
-    #             "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
-    #             If ($lastExitCode == 61) {
-    #               exit 0
-    #             }
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           failOnStderr: true
-    #           displayName: 'Detect For Drift'
-    #           condition: eq(variables['SNAPSHOT_EXISTS'], True)
-
-    #         - task: PublishBuildArtifacts@1
-    #           displayName: 'Publish Drift Report'
-    #           inputs:
-    #             ArtifactName: 'Drift-Report'
-    #             PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)'
-
-    #         - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
-    #           workingDirectory: '$(System.DefaultWorkingDirectory)'
-    #           failOnStderr: true
-    #           displayName: 'Pre-Release Deployment Report'
-    #           env:
-    #             FLYWAY_CLEAN_DISABLED: true
-
-    #         - task: PublishBuildArtifacts@1
-    #           displayName: 'Publish Release Preview'
-    #           inputs:
-    #             ArtifactName: 'Release-Preview'
-    #             PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
-
-    #     - ${{ if eq(stage.manualIntervention, true) }}:
-    #       - job: CodeReview
-    #         displayName: Code Review
-    #         dependsOn: 'PreRelease'
-    #         pool: server
-    #         steps:
-    #           - task: ManualValidation@0
-    #             displayName: 'Review Change Report Prior To Release'
-    #             timeoutInMinutes: 4320 # job times out in 3 days
-    #             inputs:
-    #               notifyUsers: 'user@email.com'
-    #               instructions: 'Review changes'
-        
-    #     - ${{ if ne(stage.manualIntervention, true) }}:
-    #       - job: CodeReview
-    #         displayName: Skipping Code Review
-    #         dependsOn: 'PreRelease'
-        
-    #     - job: Deploy
-    #       displayName: Post Drift Detection Release
-    #       dependsOn: 'CodeReview'
-    #       variables:
-    #       - group: ${{ stage.variableGroupName }}
-    #       steps:
-
-    #         - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
-    #           workingDirectory: $(System.DefaultWorkingDirectory)
-    #           displayName: ${{stage.displayName}}
-    #           failOnStderr: true
-    #           env:
-    #             # clean destroys a target DB, keep disabled except for build step
-    #             FLYWAY_CLEAN_DISABLED: true
-
-    #         - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:Westwind_Test /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           failOnStderr: true
-    #           displayName: 'Post Release Schema Snapshot'
-
-    #         - script: |
-    #             "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical
-    #             If ($lastExitCode == 63) {
-    #               exit 0
-    #             }
-    #           workingDirectory: '$(Agent.WorkFolder)/${{stage.stage}}'
-    #           failOnStderr: true
-    #           displayName: 'Write Change Report'
-    #           condition: eq(variables['SNAPSHOT_EXISTS'], True)
-            
-    #         - task: PublishBuildArtifacts@1
-    #           displayName: 'Publish Change Report'
-    #           inputs:
-    #             ArtifactName: 'Change-Report'
-    #             PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
-        
+          - script: |
+              $(FLYWAY_DOCKER_RUN) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -cleanDisabled='true' 
+            displayName: ${{stage.displayName}}
+            failOnStderr: true
