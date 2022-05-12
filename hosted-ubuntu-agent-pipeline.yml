@@ -162,6 +162,6 @@ stages:
         steps:
 
           - script: |
-              $(FLYWAY_DOCKER_RUN) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -cleanDisabled='true' 
+              $(FLYWAY_DOCKER_RUN) info migrate -outOfOrder=true info -url='${{stage.JDBC}}' -cleanDisabled='true' 
             displayName: ${{stage.displayName}}
             failOnStderr: true
