@@ -96,7 +96,6 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      failReleaseIfDriftDetected: false
       server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
     
@@ -106,7 +105,6 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      failReleaseIfDriftDetected: true
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 
@@ -227,7 +225,7 @@ stages:
           - script: |
               "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
             workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
-            failOnStderr: ${{stage.failReleaseIfDriftDetected}}
+            failOnStderr: true
             displayName: 'Detect For Drift'
             condition: eq(variables['SNAPSHOT_EXISTS'], True)
 
