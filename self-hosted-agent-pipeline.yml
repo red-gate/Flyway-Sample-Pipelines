@@ -7,7 +7,7 @@ trigger:
     - migrations/*
 
 # INSTRUCTIONS
-# 1. This workflow is for a self-hosted Windows agent on Azure Devops
+# 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
 # 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
 # 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
 # 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
@@ -41,7 +41,7 @@ trigger:
           #     }
           #   }
 
-   # B. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
+      # G. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
         # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
 
 # 6. In the flyway.conf file, set flyway.baselineOnMigrate=true

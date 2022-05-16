@@ -20,7 +20,7 @@ variables:
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/conf
 
   # userName and password remain environment specific because their values are evaluated at runtime
-  FLYWAY_DOCKER_RUN: 'docker run -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user=$(userName) -password=$(password) -licenseKey=$(FLYWAY_LICENSE_KEY) -enterprise'
+  FLYWAY_DOCKER_RUN: 'docker run --rm -v $(FLYWAY_MIGRATIONS_PATH):/flyway/sql -v $(FLYWAY_CONFIG_FILES)/$(System.StageDisplayName):/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user=$(userName) -password=$(password) -licenseKey=$(FLYWAY_LICENSE_KEY) -enterprise'
     
   # contains FLYWAY_LICENSE_KEY
   # group: flyway_vars
@@ -65,10 +65,10 @@ parameters:
       variableGroupName: 'prod_credentials_variable_group'
 
 stages:
-  - stage: Build
+  - stage: ${{parameters.buildStage.stage}}
     displayName: ${{parameters.buildStage.displayName}} 
     jobs:
-    - job: Build
+    - job: ${{parameters.buildStage.stage}}
       variables:
       - group: ${{ parameters.buildStage.variableGroupName }}
       steps:
@@ -88,7 +88,7 @@ stages:
           displayName: 'Migrate Build DB'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) undo info -url='${{parameters.buildStage.JDBC}}' -target="$(FIRST_UNDO_SCRIPT)"? -cleanDisabled='true'
+            $(FLYWAY_DOCKER_RUN) info undo info -url='${{parameters.buildStage.JDBC}}' -target="$(FIRST_UNDO_SCRIPT)"? -cleanDisabled='true'
           failOnStderr: true
           displayName: 'Undo Build DB'
 
@@ -114,7 +114,7 @@ stages:
       dependsOn: ${{stage.dependsOn}} 
       jobs:
       - job: PreRelease
-        displayName: Pre Release Drift Detection
+        displayName: Pre Release Artifacts
         variables:
         - group: ${{stage.variableGroupName}}
         steps:
@@ -146,7 +146,9 @@ stages:
               displayName: 'Review Change Report Prior To Release'
               timeoutInMinutes: 4320 # job times out in 3 days
               inputs:
-                notifyUsers: 'user@email.com'
+                notifyUsers: |
+                 'user@email.com'
+                 'foo@foo.com'
                 instructions: 'Review changes'
       
       - ${{if ne(stage.pauseForCodeReview, true)}}:
@@ -160,8 +162,14 @@ stages:
         variables:
         - group: ${{stage.variableGroupName}}
         steps:
+          - script: |
+              docker pull $(FLYWAY_DOCKER_IMAGE)
+            failOnStderr: true
+            displayName: 'Docker Pull'
+
+            # todo echo script name here
 
           - script: |
-              $(FLYWAY_DOCKER_RUN) info migrate -outOfOrder=true info -url='${{stage.JDBC}}' -cleanDisabled='true' 
+              $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true' 
             displayName: ${{stage.displayName}}
             failOnStderr: true
