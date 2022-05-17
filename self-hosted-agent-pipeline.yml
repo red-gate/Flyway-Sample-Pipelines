@@ -79,7 +79,6 @@ parameters:
       databaseName: 'Westwind_Build'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       displayName: 'Build'
-      pauseForCodeReview: false
       server: WIN2016
       variableGroupName: 'build_credentials_variable_group'
 
@@ -96,6 +95,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
+      ignoreDrift: true
       server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
     
@@ -105,6 +105,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
+      ignoreDrift: false
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 
@@ -222,16 +223,22 @@ stages:
             failOnStderr: true
             displayName: 'Pre-Release Schema Snapshot'
           
+          # todo only error 0 if ignore drift false
           - script: |
               "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
+              If ($lastExitCode == 79) {
+                If (${{stage.ignoreDrift}} == true) {
+                  exit 0
+                }
+              }
             workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
             failOnStderr: true
             displayName: 'Detect For Drift'
-            condition: eq(variables['SNAPSHOT_EXISTS'], True)
+            condition: and(eq(variables['SNAPSHOT_EXISTS'], True), eq(${{stage.ignoreDrift}}, false))
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Drift Report'
-            condition: always()
+            condition: and(eq(variables['SNAPSHOT_EXISTS'], True), eq(${{stage.ignoreDrift}}, false))
             inputs:
               ArtifactName: 'Drift-Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
