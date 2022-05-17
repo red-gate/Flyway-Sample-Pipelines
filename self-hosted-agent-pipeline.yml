@@ -134,20 +134,20 @@ stages:
       - group: ${{parameters.buildStage.variableGroupName}}
       steps:
         
-        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Clean Build DB'
-          env:
-            FLYWAY_CLEAN_DISABLED: false
+        # - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Clean Build DB'
+        #   env:
+        #     FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Validate Migrate Scripts'
+        # - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Validate Migrate Scripts'
 
-        # TODO - don't error out if no undo script exists
-        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
-          failOnStderr: true
-          displayName: 'Validate Undo Scripts'
+        # # TODO - don't error out if no undo script exists
+        # - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+        #   failOnStderr: true
+        #   displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
           inputs:
@@ -177,24 +177,6 @@ stages:
               downloadType: 'single'
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
-
-          # ---------------- if the agent is linux, the following steps will be executed --------------------
-          
-          - bash: 'mkdir -p $(System.TeamProject)/${{stage.stage}}'
-            workingDirectory: '$(Agent.WorkFolder)'
-            failOnStderr: true
-            displayName: 'Dynamically Generate Workspace'
-            condition: eq( variables['Agent.OS'], 'Linux')
-
-          - bash: '-f $(POST_RELEASE_SCHEMA_SNAPSHOT) || echo "##vso[task.setvariable variable=SNAPSHOT_EXISTS;isOutput=true]True"'
-            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
-            failOnStderr: true
-            displayName: 'Detect For Schema Snapshot From Previous Run'
-            condition: eq( variables['Agent.OS'], 'Linux')
-          
-          # ---------------- end linux ----------------------------------------------------------------------
-
-          # ---------------- if the agent is windows, the following steps will be executed ------------------
           
           - powershell: |
               $path = "$(System.TeamProject)/${{stage.stage}}"
@@ -216,29 +198,21 @@ stages:
             displayName: 'Detect For Schema Snapshot'
             condition: eq( variables['Agent.OS'], 'Windows_NT')
           
-          # ---------------- end windows -------------------------------------------------------------------
-
           - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
             workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
             failOnStderr: true
             displayName: 'Pre-Release Schema Snapshot'
           
-          # todo only error 0 if ignore drift false
           - script: |
               "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
-              If ($lastExitCode == 79) {
-                If (${{stage.ignoreDrift}} == true) {
-                  exit 0
-                }
-              }
             workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
-            failOnStderr: true
+            continueOnError: ${{stage.ignoreDrift}}
             displayName: 'Detect For Drift'
-            condition: and(eq(variables['SNAPSHOT_EXISTS'], True), eq(${{stage.ignoreDrift}}, false))
+            condition: eq(variables['SNAPSHOT_EXISTS'], True)
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Drift Report'
-            condition: and(eq(variables['SNAPSHOT_EXISTS'], True), eq(${{stage.ignoreDrift}}, false))
+            condition: eq(variables['SNAPSHOT_EXISTS'], True)
             inputs:
               ArtifactName: 'Drift-Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
