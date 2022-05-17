@@ -134,20 +134,19 @@ stages:
       - group: ${{parameters.buildStage.variableGroupName}}
       steps:
         
-        # - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-        #   failOnStderr: true
-        #   displayName: 'Clean Build DB'
-        #   env:
-        #     FLYWAY_CLEAN_DISABLED: false
+        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
+          env:
+            FLYWAY_CLEAN_DISABLED: false
 
-        # - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-        #   failOnStderr: true
-        #   displayName: 'Validate Migrate Scripts'
+        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Validate Migrate Scripts'
 
-        # # TODO - don't error out if no undo script exists
-        # - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
-        #   failOnStderr: true
-        #   displayName: 'Validate Undo Scripts'
+        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
           inputs:
