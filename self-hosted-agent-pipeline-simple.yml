@@ -8,16 +8,16 @@ trigger:
 
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
-# 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
-# 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
+# 2. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# 3. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
-# 5. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
+# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
   # TODO make clear to create FWD project 1st, will know successful if migrations is on same folder level as .git
       # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
       # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
       # C. - Initialize a git project (git init). In your Azure Devops project, go to your repository, and follow the instructions listed to push up your local git repository to the centralized repository.
       # D. - The migrations and schema-model folders should be in the same directory as the .gitignore and .git files
-      # D. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
+      # E. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
       # F. - The following is a recommendation for some comparison options. Every team's needs are different, so review your options here:
           #  https://documentation.red-gate.com/fd/sql-server-comparison-options-138347108.html
           #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
@@ -43,12 +43,12 @@ trigger:
       # G. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
         # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
 
-# 6. In the flyway.conf file, set flyway.baselineOnMigrate=true
-# 7. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
-# 8. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
-# 9. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
+# 5. In the flyway.conf file, set flyway.baselineOnMigrate=true
+# 6. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
+# 7. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
+# 8. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
 
-# 10. Under Pipelines -> Library, set up variable groups. In this example, they are named :
+# 9. Under Pipelines -> Library, set up variable groups. In this example, they are named :
     # "build_credentials_variable_group" 
     # "test_credentials_variable_group" 
     # "prod_credentials_variable_group"
@@ -59,13 +59,13 @@ trigger:
     # userName, password
     # Define any sensitive data inside of a variable group and reference as a variable
     # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
-# 11. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+# 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
 
-# 12. Define build and deployment steps. Be sure to carefully look at every variable.
-# 13. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
-# 14. Either generate a migration and undo script or disable the build steps for the 1st run
-# 15. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
-# 16. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
+# 11. Define build and deployment steps. Be sure to carefully look at every variable.
+# 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 13. Either generate a migration and undo script or disable the build steps for the 1st run
+# 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
+# 15. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
 
 parameters:
   
