@@ -12,15 +12,14 @@ pool:
 variables:
   RELEASE_PREVIEW: 'Release-Preview.sql'
   BUILD_NAME: 'Build'
-  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
-  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine flyway                               #https://hub.docker.com/r/flyway/flyway
+  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine                               #https://hub.docker.com/r/flyway/flyway
   FLYWAY_DOCKER_IMAGE: redgate/flyway:9.0.0-beta3-azure                                         #https://hub.docker.com/r/flyway/flyway
   FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
   FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/$(Build.Repository.Name)
 
   # userName and password remain environment specific because their values are evaluated at runtime
-  FLYWAY_DOCKER_RUN: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/sql -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user=$(userName) -password=$(password) -licenseKey=$(FLYWAY_LICENSE_KEY)'
+  FLYWAY_DOCKER_RUN: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user=$(userName) -password=$(password) -licenseKey=$(FLYWAY_LICENSE_KEY)'
   
   # contains FLYWAY_LICENSE_KEY
   # group: flyway_vars
@@ -72,25 +71,25 @@ stages:
       variables:
       - group: ${{ parameters.buildStage.variableGroupName }}
       steps:
-        # - script: |
-        #     docker pull $(FLYWAY_DOCKER_IMAGE)
-        #   failOnStderr: true
-        #   displayName: 'Docker Pull'
+        - script: |
+            docker pull $(FLYWAY_DOCKER_IMAGE)
+          failOnStderr: true
+          displayName: 'Docker Pull'
 
-        # - script: |
-        #     $(FLYWAY_DOCKER_RUN) info clean info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='false'
-        #   failOnStderr: true
-        #   displayName: 'Clean Build DB'
+        - script: |
+            $(FLYWAY_DOCKER_RUN) info clean info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='false'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
 
-        # - script: |
-        #     $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
-        #   failOnStderr: true
-        #   displayName: 'Migrate Build DB'
+        - script: |
+            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
+          failOnStderr: true
+          displayName: 'Migrate Build DB'
 
-        # - script: |
-        #     $(FLYWAY_DOCKER_RUN) info undo info -url='${{parameters.buildStage.JDBC}}' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
-        #   failOnStderr: true
-        #   displayName: 'Undo Build DB'
+        - script: |
+            $(FLYWAY_DOCKER_RUN) info undo info -url='${{parameters.buildStage.JDBC}}' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
+          failOnStderr: true
+          displayName: 'Undo Build DB'
 
         # - script: |
         #     $(FLYWAY_DOCKER_RUN) check -check.tempUrl="${{parameters.buildStage.JDBC}}" -changes info -url='jdbc:sqlserver://instances.spawn.cc:30459;user=sa;Password=tYDGovRPko4htX0t;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true' -user='$(userName)' -password='$(password)' -licenseKey='$(FLYWAY_LICENSE_KEY)' -enterprise -cleanDisabled='false'
@@ -114,7 +113,7 @@ stages:
       dependsOn: ${{stage.dependsOn}} 
       jobs:
       - job: PreRelease
-        displayName: Pre Release Artifacts
+        displayName: Configure Release
         variables:
         - group: ${{stage.variableGroupName}}
         steps:
@@ -125,16 +124,21 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          # - script: |
-          #     $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true'
-          #   failOnStderr: true
-          #   displayName: 'Pre-Release Deployment Report'
+          - script: |
+              docker pull $(FLYWAY_DOCKER_IMAGE)
+            failOnStderr: true
+            displayName: 'Docker Pull'
+            
+          - script: |
+              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true'
+            failOnStderr: true
+            displayName: 'Pre-Release Deployment Report'
 
-          # - task: PublishBuildArtifacts@1
-          #   displayName: 'Publish Release Preview'
-          #   inputs:
-          #     ArtifactName: 'Release-Preview'
-          #     PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Release Preview'
+            inputs:
+              ArtifactName: 'Release-Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
@@ -169,34 +173,6 @@ stages:
             displayName: 'Docker Pull'
 
           - script: |
-              ls '$(FLYWAY_CONFIG_FILES)'
-            failOnStderr: true
-            displayName: 'ls FLYWAY_CONFIG_FILES'
-          
-          - script: |
-              ls '$(FLYWAY_MIGRATIONS_PATH)'
-            failOnStderr: true
-            displayName: 'ls FLYWAY_MIGRATIONS_PATH'
-
-          # - script: |
-          #     ls '$(FLYWAY_DOCKER_RUN) > $(System.ArtifactsDirectory)/foo.txt'
-          #   failOnStderr: true
-          #   displayName: 'ls FLYWAY_DOCKER_RUN'
-
-          - script: |
-              echo "$(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -outOfOrder='true' -cleanDisabled='true'" > $(System.ArtifactsDirectory)/foo.txt
-            displayName: echo script
-            failOnStderr: true
-
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Echo'
-            inputs:
-              ArtifactName: 'foo.txt'
-              PathtoPublish: '$(System.ArtifactsDirectory)'
-          
-          - script: |
               $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true' 
             displayName: ${{stage.displayName}}
             failOnStderr: true
-
-          
