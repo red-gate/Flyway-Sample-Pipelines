@@ -8,16 +8,17 @@ trigger:
 
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
-# 2. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
-# 3. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
+# 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
+# 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
-# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
+# 5. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
   # TODO make clear to create FWD project 1st, will know successful if migrations is on same folder level as .git
       # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
       # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
       # C. - Initialize a git project (git init). In your Azure Devops project, go to your repository, and follow the instructions listed to push up your local git repository to the centralized repository.
       # D. - The migrations and schema-model folders should be in the same directory as the .gitignore and .git files
-      # E. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
+      # D. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
       # F. - The following is a recommendation for some comparison options. Every team's needs are different, so review your options here:
           #  https://documentation.red-gate.com/fd/sql-server-comparison-options-138347108.html
           #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
@@ -43,12 +44,12 @@ trigger:
       # G. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
         # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
 
-# 5. In the flyway.conf file, set flyway.baselineOnMigrate=true
-# 6. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
-# 7. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
-# 8. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
+# 6. In the flyway.conf file, set flyway.baselineOnMigrate=true
+# 7. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
+# 8. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
+# 9. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
 
-# 9. Under Pipelines -> Library, set up variable groups. In this example, they are named :
+# 10. Under Pipelines -> Library, set up variable groups. In this example, they are named :
     # "build_credentials_variable_group" 
     # "test_credentials_variable_group" 
     # "prod_credentials_variable_group"
@@ -59,13 +60,13 @@ trigger:
     # userName, password
     # Define any sensitive data inside of a variable group and reference as a variable
     # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
-# 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+# 11. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
 
-# 11. Define build and deployment steps. Be sure to carefully look at every variable.
-# 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
-# 13. Either generate a migration and undo script or disable the build steps for the 1st run
-# 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
-# 15. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
+# 12. Define build and deployment steps. Be sure to carefully look at every variable.
+# 13. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 14. Either generate a migration and undo script or disable the build steps for the 1st run
+# 15. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
+# 16. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
 
 parameters:
   
@@ -109,7 +110,14 @@ parameters:
       variableGroupName: 'prod_credentials_variable_group'
 
 variables:
+  SNAPSHOT_EXISTS: True
+  CHANGE_REPORT: 'Change-Report.html'
+  DRIFT_REPORT: 'Drift-Report.html'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
   BUILD_NAME: 'Build'
+  PRE_RELEASE_SCHEMA_SNAPSHOT: 'pre-release-snapshot.snp'
+  POST_RELEASE_SCHEMA_SNAPSHOT: 'post-release-snapshot.snp'
+  SCHEMA_COMPARE: '%dlmas_home%sc\sqlcompare'
   FLYWAY: 'flyway'
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
@@ -158,7 +166,7 @@ stages:
       dependsOn: ${{stage.dependsOn}} 
       jobs:
       - job: PreRelease
-        displayName: Release Preview
+        displayName: Pre Release Drift Detection
         variables:
         - group: ${{stage.variableGroupName}}
         steps:
@@ -168,8 +176,47 @@ stages:
               downloadType: 'single'
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
+          
+          - powershell: |
+              $path = "$(System.TeamProject)/${{stage.stage}}"
+              If(!(test-path $path))
+              {
+                    New-Item -ItemType Directory -Force -Path $path
+              }
+            displayName: 'Dynamically Generate Workspace'
+            workingDirectory: '$(Agent.WorkFolder)'
+            failOnStderr: true
+            condition: eq( variables['Agent.OS'], 'Windows_NT')
 
-          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY)'
+          - powershell: |
+              $path = "$(POST_RELEASE_SCHEMA_SNAPSHOT)"
+              $fileExists = Test-Path -Path $path
+              Write-Output "##vso[task.setvariable variable=SNAPSHOT_EXISTS]$fileExists"
+            failOnStderr: true
+            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
+            displayName: 'Detect For Schema Snapshot'
+            condition: eq( variables['Agent.OS'], 'Windows_NT')
+          
+          - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)"'
+            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
+            failOnStderr: true
+            displayName: 'Pre-Release Schema Snapshot'
+          
+          - script: |
+              "$(SCHEMA_COMPARE)" /Snapshot1:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)/${{stage.stage}}-$(DRIFT_REPORT)" /force /ReportType:html /assertidentical
+            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
+            continueOnError: ${{stage.ignoreDrift}}
+            displayName: 'Detect For Drift'
+            condition: eq(variables['SNAPSHOT_EXISTS'], True)
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Drift Report'
+            condition: eq(variables['SNAPSHOT_EXISTS'], True)
+            inputs:
+              ArtifactName: 'Drift-Report'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
+
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -213,3 +260,25 @@ stages:
             failOnStderr: true
             env:
               FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
+
+          - script: '"$(SCHEMA_COMPARE)" /Server1:"${{stage.server}}" /userName1:"$(userName)" /password1:"$(password)" /Database1:${{stage.databaseName}} /Makesnapshot:"$(POST_RELEASE_SCHEMA_SNAPSHOT)"'
+            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
+            failOnStderr: true
+            displayName: 'Post Release Schema Snapshot'
+
+          - script: |
+              "$(SCHEMA_COMPARE)" /Snapshot1:"$(POST_RELEASE_SCHEMA_SNAPSHOT)" /Snapshot2:"$(PRE_RELEASE_SCHEMA_SNAPSHOT)" /report:"$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" /force /ReportType:html /include:Identical
+              If ($lastExitCode == 63) {
+                exit 0
+              }
+            workingDirectory: '$(Agent.WorkFolder)/$(System.TeamProject)/${{stage.stage}}'
+            failOnStderr: true
+            displayName: 'Write Change Report'
+            condition: eq(variables['SNAPSHOT_EXISTS'], True)
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Change Report'
+            inputs:
+              ArtifactName: 'Change-Report'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
+      
