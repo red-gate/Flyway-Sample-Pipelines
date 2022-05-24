@@ -11,8 +11,10 @@ trigger:
 # 2. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
 # 3. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
+# There are two ways to get the correct folder structure in this project. The first is to follow the steps in poiunt 4. 
+# The second way is to adjust the PATH_TO_MIGRATIONS_DIR variable to point to the migrations folder inside the project. 
 # 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
-  # TODO make clear to create FWD project 1st, will know successful if migrations is on same folder level as .git
+   # You will know successful if migrations is on same folder level as .git
       # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
       # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
       # C. - Initialize a git project (git init). In your Azure Devops project, go to your repository, and follow the instructions listed to push up your local git repository to the centralized repository.
@@ -80,6 +82,7 @@ parameters:
       displayName: 'Build'
       server: WIN2016
       variableGroupName: 'build_credentials_variable_group'
+      flywayLocations: '$(PATH_TO_MIGRATIONS_DIR)'
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -97,6 +100,7 @@ parameters:
       ignoreDrift: true
       server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
+      flywayLocations: '$(PATH_TO_MIGRATIONS_DIR)'
     
     - stage: 'Prod'
       databaseName: 'Westwind'
@@ -107,6 +111,7 @@ parameters:
       ignoreDrift: false
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
+      flywayLocations: '$(PATH_TO_MIGRATIONS_DIR)'
 
 variables:
   BUILD_NAME: 'Build'
@@ -115,6 +120,7 @@ variables:
   FIRST_UNDO_SCRIPT: '002'
   # contains FLYWAY_LICENSE_KEY
   group: flyway_vars
+  PATH_TO_MIGRATIONS_DIR: 'filesystem:$(Build.SourcesDirectory)\*\migrations'
 
 stages:
   - stage: Build
