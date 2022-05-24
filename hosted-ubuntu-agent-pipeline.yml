@@ -130,7 +130,7 @@ stages:
             displayName: 'Docker Pull'
             
           - script: |
-              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true'
+              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true' -user=$(userName) -password=$(password)
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
 
