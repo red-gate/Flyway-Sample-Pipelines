@@ -133,17 +133,17 @@ stages:
       - group: ${{parameters.buildStage.variableGroupName}}
       steps:
         
-        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -locations=${{parameters.buildStage.flywayLocations}}'
           failOnStderr: true
           displayName: 'Clean Build DB'
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -locations=${{parameters.buildStage.flywayLocations}}'
           failOnStderr: true
           displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY) -locations=${{parameters.buildStage.flywayLocations}}'
           continueOnError: true
           displayName: 'Validate Undo Scripts'
         
@@ -176,7 +176,7 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -locations=${{stage.flywayLocations}}'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -214,7 +214,7 @@ stages:
         - group: ${{stage.variableGroupName}}
         steps:
 
-          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -locations=${{stage.flywayLocations}}'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
             failOnStderr: true
