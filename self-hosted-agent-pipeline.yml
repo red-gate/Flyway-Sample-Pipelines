@@ -96,7 +96,6 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      ignoreDrift: true
       server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
     
@@ -106,7 +105,6 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      ignoreDrift: false
       server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 

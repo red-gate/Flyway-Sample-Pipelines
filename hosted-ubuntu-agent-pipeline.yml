@@ -37,7 +37,7 @@ parameters:
       databaseName: 'SouthWind_Build'
       JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind_Build;trustServerCertificate=true;encrypt=true'
       displayName: 'Build'
-      manualIntervention: false
+      pauseForCodeReview: false
       variableGroupName: 'build_credentials_variable_group'
 
   # This is the extensible definition of your target environments. 
@@ -52,7 +52,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind_Test;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
-      manualIntervention: false
+      pauseForCodeReview: false
       variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
@@ -60,7 +60,7 @@ parameters:
       JDBC: 'jdbc:sqlserver://instances.spawn.cc:30459;databaseName=SouthWind;trustServerCertificate=true;encrypt=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
-      manualIntervention: true
+      pauseForCodeReview: true
       variableGroupName: 'prod_credentials_variable_group'
 
 stages:
