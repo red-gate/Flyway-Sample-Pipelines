@@ -12,7 +12,7 @@ pool:
 variables:
   RELEASE_PREVIEW: 'Release-Preview.sql'
   BUILD_NAME: 'Build'
-  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine                               #https://hub.docker.com/r/flyway/flyway
+  # FLYWAY_DOCKER_IMAGE: flyway/flyway-azure:latest-alpine                                      #https://hub.docker.com/r/flyway/flyway
   FLYWAY_DOCKER_IMAGE: redgate/flyway:9.0.0-beta3-azure                                         #https://hub.docker.com/r/flyway/flyway
   FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
   FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
@@ -26,6 +26,7 @@ variables:
   FLYWAY_LICENSE_KEY: 'FL012EC30A3EFDE4049459C032ACDE1E0E18074C2040D49D48CC4016B4C1D3C3F15F8E9A90AC3E79BFA5BDDDDC3FA94A0808CCA8B41CBAF32B8669F3E2A2ECD6555EB848BD7DC1A9BF164B90D0A5AC6A26CF430BAE1A4142F1AF20D7F3D547CB34A1EBE1D68D8C7873425455489FE0D1EE4A2E947D620D2A52FE77585FDDA053738873CB6E0C7716D69F3437D722D4F656E2AB223058D7DBADEBD5F1D1DB63826FFAA348B31151EBD3629BBE2C910632FED593899778006B1416D471A22D604F1E307BC41B5365438F4BA8A078D0B8CD23CD7078D80D89BE4B2A1AF7037DA545BDC76658B52308F4FA22EADA8BD51D69F1D089429E3A13FC135E05B019CF2EA12840'
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
+  PATH_TO_MIGRATIONS_DIR: 'filesystem:$(Build.SourcesDirectory)\*\migrations'
 
 parameters:
   # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
@@ -77,17 +78,17 @@ stages:
           displayName: 'Docker Pull'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) info clean info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='false'
+            $(FLYWAY_DOCKER_RUN) info clean info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='false' -locations=$(PATH_TO_MIGRATIONS_DIR)
           failOnStderr: true
           displayName: 'Clean Build DB'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
+            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true' -locations=$(PATH_TO_MIGRATIONS_DIR)
           failOnStderr: true
           displayName: 'Migrate Build DB'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) info undo info -url='${{parameters.buildStage.JDBC}}' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
+            $(FLYWAY_DOCKER_RUN) info undo info -url='${{parameters.buildStage.JDBC}}' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true' -locations=$(PATH_TO_MIGRATIONS_DIR)
           failOnStderr: true
           displayName: 'Undo Build DB'
 
@@ -130,7 +131,7 @@ stages:
             displayName: 'Docker Pull'
             
           - script: |
-              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true' -user=$(userName) -password=$(password)
+              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true' -user=$(userName) -password=$(password) -locations=$(PATH_TO_MIGRATIONS_DIR)
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
 
@@ -173,6 +174,6 @@ stages:
             displayName: 'Docker Pull'
 
           - script: |
-              $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true' 
+              $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true' -locations=$(PATH_TO_MIGRATIONS_DIR)
             displayName: ${{stage.displayName}}
             failOnStderr: true
