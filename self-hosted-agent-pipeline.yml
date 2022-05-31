@@ -80,7 +80,6 @@ parameters:
       databaseName: 'Westwind_Build'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
       displayName: 'Build'
-      server: WIN2016
       variableGroupName: 'build_credentials_variable_group'
 
   # This is the extensible definition of your target environments. 
@@ -96,7 +95,6 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      server: WIN2016
       variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
@@ -105,7 +103,6 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      server: WIN2016
       variableGroupName: 'prod_credentials_variable_group'
 
 variables:
