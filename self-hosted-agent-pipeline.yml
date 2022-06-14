@@ -122,6 +122,7 @@ stages:
     - job: Build
       variables:
       - group: ${{parameters.buildStage.variableGroupName}}
+      - group: flyway_vars
       steps:
         
         - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
@@ -203,6 +204,7 @@ stages:
         dependsOn: 'CodeReview'
         variables:
         - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
         steps:
 
           - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
