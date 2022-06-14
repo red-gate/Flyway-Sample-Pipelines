@@ -160,6 +160,7 @@ stages:
         displayName: Release Preview
         variables:
         - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
         steps:
           - task: DownloadBuildArtifacts@0
             inputs:
