@@ -25,6 +25,8 @@ variables:
   group: flyway_vars
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
+  # This number should always be just below the first migration script
+  ABOVE_BASELINE_VERSION: '001_99999999999999'
 
 parameters:
   # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
@@ -82,7 +84,7 @@ stages:
           displayName: 'Clean Build DB'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
+            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true' -baselineOnMigrate=true -baselineVersion='$(ABOVE_BASELINE_VERSION)'
           failOnStderr: true
           displayName: 'Migrate Build DB'
 
@@ -131,7 +133,7 @@ stages:
             displayName: 'Docker Pull'
             
           - script: |
-              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true' -user=$(userName) -password=$(password)
+              $(FLYWAY_DOCKER_RUN) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='${{stage.JDBC}}' -cleanDisabled='true' -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion='$(ABOVE_BASELINE_VERSION)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
 
@@ -175,6 +177,6 @@ stages:
             displayName: 'Docker Pull'
 
           - script: |
-              $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true'
+              $(FLYWAY_DOCKER_RUN) info migrate info -url='${{stage.JDBC}}' -outOfOrder='true' -cleanDisabled='true' -baselineOnMigrate=true -baselineVersion='$(ABOVE_BASELINE_VERSION)'
             displayName: ${{stage.displayName}}
             failOnStderr: true
