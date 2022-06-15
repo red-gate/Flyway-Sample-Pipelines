@@ -84,7 +84,7 @@ stages:
           displayName: 'Clean Build DB'
 
         - script: |
-            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true' -baselineOnMigrate=true -baselineVersion='$(ABOVE_BASELINE_VERSION)'
+            $(FLYWAY_DOCKER_RUN) info migrate info -url='${{parameters.buildStage.JDBC}}' -cleanDisabled='true'
           failOnStderr: true
           displayName: 'Migrate Build DB'
 

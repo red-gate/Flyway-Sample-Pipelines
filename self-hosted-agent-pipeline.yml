@@ -133,7 +133,7 @@ stages:
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
+        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
           failOnStderr: true
           displayName: 'Validate Migrate Scripts'
 

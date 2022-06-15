@@ -121,6 +121,8 @@ variables:
   FLYWAY: 'flyway'
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
+  # This number should always be just below the first migration script
+  ABOVE_BASELINE_VERSION: '001_99999999999999'
   # contains FLYWAY_LICENSE_KEY
   group: flyway_vars
 
@@ -132,6 +134,7 @@ stages:
     - job: Build
       variables:
       - group: ${{parameters.buildStage.variableGroupName}}
+      - group: flyway_vars
       steps:
         
         - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
@@ -169,6 +172,7 @@ stages:
         displayName: Pre Release Drift Detection
         variables:
         - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
         steps:
           - task: DownloadBuildArtifacts@0
             inputs:
@@ -216,7 +220,7 @@ stages:
               ArtifactName: 'Drift-Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
 
-          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -252,9 +256,10 @@ stages:
         dependsOn: 'CodeReview'
         variables:
         - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
         steps:
 
-          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
             failOnStderr: true
