@@ -1,0 +1,58 @@
+name: ADO-self-hosted-pipeline
+
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - migrations/*
+    # exclude:
+    #   - src/**/md/
+
+parameters:
+  - name: deploymentStages
+    type: object
+    default: 
+
+    # - stage: 'Test'
+    #   databaseName: 'Westwind_Test'
+    #   JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+    #   dependsOn: 'Build'
+    #   displayName: 'Deploy Test'
+    #   pauseForCodeReview: false
+    #   variableGroupName: 'test_credentials_variable_group'
+    
+    - stage: 'Prod'
+      databaseName: 'Westwind'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
+      dependsOn: 'Test'
+      displayName: 'Deploy Prod'
+      pauseForCodeReview: true
+      variableGroupName: 'prod_credentials_variable_group'
+
+variables:
+  FLYWAY: 'flyway'
+  SCRIPTS_TO_UNDO: '002,003'
+  group: flyway_vars
+
+stages:
+
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: Default
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+        steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: '$(BUILD_NAME)'
+              downloadPath: '$(System.ArtifactsDirectory)'
+              
+          - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(SCRIPTS_TO_UNDO)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            continueOnError: true
+            displayName: 'Validate Undo Scripts'
