@@ -3,8 +3,12 @@ name: docker-ADO-hosted-pipeline
 trigger:
   branches:
     include:
-    - master
-    - migrations/*
+      - master
+  paths:
+    include:
+      - migrations/*
+    exclude:
+      - undo-pipeline.yml
 
 pool:
   vmImage: ubuntu-latest

@@ -3,8 +3,12 @@ name: ADO-self-hosted-pipeline
 trigger:
   branches:
     include:
-    - master
-    - migrations/*
+      - master
+  paths:
+    include:
+      - migrations/*
+    exclude:
+      - undo-pipeline.yml
 
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
