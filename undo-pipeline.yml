@@ -18,7 +18,6 @@ parameters:
     # - stage: 'Test'
     #   databaseName: 'Westwind_Test'
     #   JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
-    #   dependsOn: 'Build'
     #   displayName: 'Deploy Test'
     #   pauseForCodeReview: false
     #   variableGroupName: 'test_credentials_variable_group'
@@ -26,7 +25,6 @@ parameters:
     - stage: 'Prod'
       databaseName: 'Westwind'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
-      dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
       variableGroupName: 'prod_credentials_variable_group'
@@ -43,16 +41,15 @@ stages:
     - stage: ${{stage.stage}} 
       pool: Default
       displayName: ${{stage.displayName}} 
-      dependsOn: ${{stage.dependsOn}} 
       jobs:
-        steps:
-          - task: DownloadBuildArtifacts@0
-            inputs:
-              buildType: 'current'
-              downloadType: 'single'
-              artifactName: '$(BUILD_NAME)'
-              downloadPath: '$(System.ArtifactsDirectory)'
-              
-          - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(SCRIPTS_TO_UNDO)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
-            continueOnError: true
-            displayName: 'Validate Undo Scripts'
+        - job: Undo
+          displayName: Undo
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+                
+            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(SCRIPTS_TO_UNDO)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+              failOnStderr: true
+              workingDirectory: #Add working directory location if required
+              displayName: 'Execute Undo Scripts'
