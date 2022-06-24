@@ -1,14 +1,6 @@
 name: ADO-self-hosted-pipeline
 
-trigger:
-  branches:
-    include:
-      - master
-  paths:
-    include:
-      - migrations/*
-    # exclude:
-    #   - src/**/md/
+trigger: none
 
 parameters:
   - name: deploymentStages
@@ -31,7 +23,8 @@ parameters:
 
 variables:
   FLYWAY: 'flyway'
-  SCRIPTS_TO_UNDO: '002,003'
+  # comma separated list of the entire version number (everything up to the double underscore __)
+  # SCRIPTS_TO_UNDO: '005,006'
   group: flyway_vars
 
 stages:
