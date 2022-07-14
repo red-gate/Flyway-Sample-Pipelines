@@ -9,14 +9,14 @@ parameters:
 
     # - stage: 'Test'
     #   databaseName: 'Westwind_Test'
-    #   JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+    #   JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
     #   displayName: 'Deploy Test'
     #   pauseForCodeReview: false
     #   variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'Westwind'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
       variableGroupName: 'prod_credentials_variable_group'

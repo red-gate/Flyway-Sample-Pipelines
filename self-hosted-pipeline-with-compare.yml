@@ -81,7 +81,7 @@ parameters:
 
       stage: 'Build'
       databaseName: 'Westwind_Build'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;trustServerCertificate=true'
       displayName: 'Build'
       server: WIN2016
       variableGroupName: 'build_credentials_variable_group'
@@ -95,7 +95,7 @@ parameters:
 
     - stage: 'Test'
       databaseName: 'Westwind_Test'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
@@ -105,7 +105,7 @@ parameters:
     
     - stage: 'Prod'
       databaseName: 'Westwind'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;integratedSecurity=true'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
