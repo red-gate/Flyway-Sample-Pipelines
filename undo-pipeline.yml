@@ -3,28 +3,32 @@ name: ADO-self-hosted-pipeline
 trigger: none
 
 parameters:
+
+  - name: cherryPickVersions
+    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+
   - name: deploymentStages
     type: object
     default: 
 
-    # - stage: 'Test'
-    #   databaseName: 'Westwind_Test'
-    #   JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
-    #   displayName: 'Deploy Test'
-    #   pauseForCodeReview: false
-    #   variableGroupName: 'test_credentials_variable_group'
+    - stage: 'Test'
+      databaseName: 'Westwind_Test'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
+      displayName: 'Undo Test'
+      pauseForCodeReview: false
+      variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
       databaseName: 'Westwind'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
-      displayName: 'Deploy Prod'
+      displayName: 'Undo Prod'
       pauseForCodeReview: true
       variableGroupName: 'prod_credentials_variable_group'
 
 variables:
   FLYWAY: 'flyway'
-  # comma separated list of the entire version number (everything up to the double underscore __)
-  # SCRIPTS_TO_UNDO: '005,006'
   group: flyway_vars
 
 stages:
@@ -40,9 +44,10 @@ stages:
           variables:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
+            cherryPickVersions: ${{parameters.cherryPickVersions}}
           steps:
                 
-            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(SCRIPTS_TO_UNDO)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(cherryPickVersions)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'
