@@ -96,6 +96,7 @@ parameters:
     - stage: 'Test'
       databaseName: 'Westwind_Test'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
+      check_JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Check_Test;trustServerCertificate=true' # IMPORTANT: will get destroyed
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
@@ -104,6 +105,7 @@ parameters:
     - stage: 'Prod'
       databaseName: 'Westwind'
       JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
+      check_JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Check_Prod;trustServerCertificate=true' # IMPORTANT: will get destroyed
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
@@ -113,6 +115,8 @@ variables:
   BUILD_NAME: 'Build'
   FLYWAY: 'flyway'
   RELEASE_PREVIEW: 'Release-Preview.sql'
+  CHANGE_REPORT: 'Change-Report.html'
+  DRIFT_REPORT: 'Drift-Report.html'
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
   # This number should always be just below the first migration script
@@ -131,19 +135,19 @@ stages:
       - group: flyway_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Clean Build DB'
-          env:
-            FLYWAY_CLEAN_DISABLED: false
+        # - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Clean Build DB'
+        #   env:
+        #     FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Validate Migrate Scripts'
+        # - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
-          continueOnError: true
-          displayName: 'Validate Undo Scripts'
+        # - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+        #   continueOnError: true
+        #   displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
           inputs:
@@ -187,6 +191,32 @@ stages:
             inputs:
               ArtifactName: 'Release-Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+          
+          - script: '$(FLYWAY) check -changes -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: true
+            displayName: 'Change Report'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Change Report'
+            inputs:
+              ArtifactName: 'Release-Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
+          
+          - script: '$(FLYWAY) check -drift -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: true
+            displayName: 'Drift Report'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Change Report'
+            inputs:
+              ArtifactName: 'Release-Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
