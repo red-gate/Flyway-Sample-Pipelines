@@ -30,7 +30,7 @@ parameters:
 variables:
   FLYWAY: 'flyway'
   group: flyway_vars
-
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
 stages:
 
   - ${{each stage in parameters.deploymentStages}}:
@@ -44,10 +44,9 @@ stages:
           variables:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
-            cherryPickVersions: ${{parameters.cherryPickVersions}}
           steps:
                 
-            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick="$(cherryPickVersions)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick=$(cherryPickVersions) -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'
