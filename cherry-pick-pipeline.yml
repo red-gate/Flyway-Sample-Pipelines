@@ -1,0 +1,157 @@
+name: ADO-self-hosted-pipeline
+
+trigger: none
+
+parameters:
+
+  - name: cherryPickVersions
+    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+  
+  # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
+  - name: buildStage
+    type: object
+    default: 
+
+      stage: 'Build'
+      databaseName: 'Westwind_Build'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;trustServerCertificate=true'
+      displayName: 'Build'
+      variableGroupName: 'build_credentials_variable_group'
+
+  # This is the extensible definition of your target environments. 
+  # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
+  # Pay attention to the 'dependsOn' field - this determines order of operations.
+  - name: deploymentStages
+    type: object
+    default: 
+
+    - stage: 'Test'
+      databaseName: 'Westwind_Test'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
+      dependsOn: 'Build'
+      displayName: 'Deploy Test'
+      pauseForCodeReview: false
+      variableGroupName: 'test_credentials_variable_group'
+    
+    - stage: 'Prod'
+      databaseName: 'Westwind'
+      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
+      dependsOn: 'Test'
+      displayName: 'Deploy Prod'
+      pauseForCodeReview: true
+      variableGroupName: 'prod_credentials_variable_group'
+
+variables:
+  BUILD_NAME: 'Build'
+  FLYWAY: 'flyway'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  # If the first undo script is U002, this will validate all undo scripts up to and including that
+  FIRST_UNDO_SCRIPT: '002'
+  # This number should always be just below the first migration script
+  ABOVE_BASELINE_VERSION: '001_99999999999999'
+  # Contains FLYWAY_LICENSE_KEY
+  group: flyway_vars
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
+
+stages:
+  - stage: Build
+    pool: Default
+    displayName: ${{parameters.buildStage.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{parameters.buildStage.variableGroupName}}
+      - group: flyway_vars
+      steps:
+        
+        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+
+        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Validate Migrate Scripts'
+
+        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'
+        
+        - task: CopyFiles@2
+          inputs:
+            targetFolder: '$(System.ArtifactsDirectory)' 
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Build Artifact'
+          inputs:
+            ArtifactName: '$(BUILD_NAME)'
+            PathtoPublish: '$(System.ArtifactsDirectory)'
+
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: Default
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+      - job: PreRelease
+        displayName: Release Preview
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: '$(BUILD_NAME)'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+          - script: '$(FLYWAY) migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: true
+            displayName: 'Pre-Release Deployment Report'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Release Preview'
+            inputs:
+              ArtifactName: 'Release-Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+
+      - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+          steps:
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              timeoutInMinutes: 4320 # job times out in 3 days
+              inputs:
+                notifyUsers: 'user@email.com'
+                instructions: 'Review changes'
+      
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Skipping Code Review
+          dependsOn: 'PreRelease'
+      
+      - job: Deploy
+        displayName: Deployment
+        dependsOn: 'CodeReview'
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+
+          - script: '$(FLYWAY) info migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
+            workingDirectory: $(System.DefaultWorkingDirectory)
+            displayName: ${{stage.displayName}}
+            failOnStderr: true
+            env:
+              FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
