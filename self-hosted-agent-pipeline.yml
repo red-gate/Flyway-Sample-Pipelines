@@ -189,7 +189,7 @@ stages:
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Release Preview'
             inputs:
-              ArtifactName: 'Release-Preview'
+              ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
           
           - script: '$(FLYWAY) check -changes -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
@@ -202,7 +202,7 @@ stages:
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Change Report'
             inputs:
-              ArtifactName: 'Release-Preview'
+              ArtifactName: 'Change Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
           
           - script: '$(FLYWAY) check -drift -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
@@ -213,9 +213,9 @@ stages:
               FLYWAY_CLEAN_DISABLED: true
           
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Drift Report'
+            displayName: 'Publish Change Report'
             inputs:
-              ArtifactName: 'Release-Preview'
+              ArtifactName: 'Drift Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
