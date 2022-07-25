@@ -213,7 +213,7 @@ stages:
               FLYWAY_CLEAN_DISABLED: true
           
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Change Report'
+            displayName: 'Publish Drift Report'
             inputs:
               ArtifactName: 'Drift Report'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
