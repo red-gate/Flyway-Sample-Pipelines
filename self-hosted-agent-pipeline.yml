@@ -59,10 +59,11 @@ trigger:
     # "test_credentials_variable_group" 
     # "prod_credentials_variable_group"
 
-    #  Each variable group must have the exact same keys (userName, password) and the values can be different
+    #  Each variable group after the build must have the exact same keys (userName, password, JDBC, databaseName, check_JDBC) and the values can be different
     # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
-    # In this case we have a variable group called build_credentials_variable_group. It contains variables with the following secret values:
-    # userName, password
+    # In this case we have a variable group called test_credentials_variable_group. It contains variables with the following secret values:
+    # userName, password, JDBC, databaseName, check_JDBC
+    # 'build_credentials_variable_group' does not require check_JDBC
     # Define any sensitive data inside of a variable group and reference as a variable
     # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
 # 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
@@ -81,10 +82,8 @@ parameters:
     default: 
 
       stage: 'Build'
-      databaseName: 'Westwind_Build'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Build;trustServerCertificate=true'
-      displayName: 'Build'
-      variableGroupName: 'build_credentials_variable_group'
+      displayName: 'Deploy Build'
+      variableGroupName: 'build_credentials_variable_group' #contains userName, password, JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -94,29 +93,25 @@ parameters:
     default: 
 
     - stage: 'Test'
-      databaseName: 'Westwind_Test'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
-      check_JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Check_Test;trustServerCertificate=true' # IMPORTANT: will get destroyed
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      variableGroupName: 'test_credentials_variable_group'
+      variableGroupName: 'test_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC
+        # IMPORTANT: check_JDBC will get destroyed
     
     - stage: 'Prod'
-      databaseName: 'Westwind'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
-      check_JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Check_Prod;trustServerCertificate=true' # IMPORTANT: will get destroyed
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      variableGroupName: 'prod_credentials_variable_group'
+      variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
+        # IMPORTANT: check_JDBC will get destroyed
 
 variables:
   BUILD_NAME: 'Build'
   FLYWAY: 'flyway'
   RELEASE_PREVIEW: 'Release-Preview.sql'
-  CHANGE_REPORT: 'Change-Report.html'
-  DRIFT_REPORT: 'Drift-Report.html'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   # If the first undo script is U002, this will validate all undo scripts up to and including that
   FIRST_UNDO_SCRIPT: '002'
   # This number should always be just below the first migration script
@@ -135,19 +130,19 @@ stages:
       - group: flyway_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Clean Build DB'
-          env:
-            FLYWAY_CLEAN_DISABLED: false
+        # - script: '$(FLYWAY) clean info -url=$(JDBC) -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Clean Build DB'
+        #   env:
+        #     FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password)'
-          failOnStderr: true
-          displayName: 'Validate Migrate Scripts'
+        # - script: '$(FLYWAY) migrate info -url=$(JDBC) -user=$(userName) -password=$(password)'
+        #   failOnStderr: true
+        #   displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url=${{parameters.buildStage.JDBC}} -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
-          continueOnError: true
-          displayName: 'Validate Undo Scripts'
+        # - script: '$(FLYWAY) undo info -url=$(JDBC) -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+        #   continueOnError: true
+        #   displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
           inputs:
@@ -179,7 +174,7 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -192,31 +187,18 @@ stages:
               ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
           
-          - script: '$(FLYWAY) check -changes -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-${{stage.stage}}-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
-            displayName: 'Change Report'
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: true
           
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Change Report'
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             inputs:
-              ArtifactName: 'Change Report'
-              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(CHANGE_REPORT)'
-          
-          - script: '$(FLYWAY) check -drift -check.buildUrl=${{stage.check_JDBC}} -url=${{stage.JDBC}} -check.reportFilename="$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            failOnStderr: true
-            displayName: 'Drift Report'
-            env:
-              FLYWAY_CLEAN_DISABLED: true
-          
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Drift Report'
-            inputs:
-              ArtifactName: 'Drift Report'
-              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(DRIFT_REPORT)'
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-${{stage.stage}}-$(DRIFT_AND_CHANGE_REPORT)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
@@ -228,7 +210,9 @@ stages:
               displayName: 'Review Change Report Prior To Release'
               timeoutInMinutes: 4320 # job times out in 3 days
               inputs:
-                notifyUsers: 'user@email.com'
+                notifyUsers: |
+                  user@email.com
+                  example@example.com
                 instructions: 'Review changes'
       
       - ${{if ne(stage.pauseForCodeReview, true)}}:
@@ -244,7 +228,7 @@ stages:
         - group: flyway_vars
         steps:
 
-          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=${{stage.JDBC}} -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(ABOVE_BASELINE_VERSION)'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
             failOnStderr: true

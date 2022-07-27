@@ -14,25 +14,19 @@ parameters:
     default: 
 
     - stage: 'Test'
-      databaseName: 'Westwind_Test'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind_Test;trustServerCertificate=true'
       displayName: 'Undo Test'
-      pauseForCodeReview: false
       variableGroupName: 'test_credentials_variable_group'
     
     - stage: 'Prod'
-      databaseName: 'Westwind'
-      JDBC: 'jdbc:sqlserver://localhost;database=Westwind;trustServerCertificate=true'
       displayName: 'Undo Prod'
-      pauseForCodeReview: true
       variableGroupName: 'prod_credentials_variable_group'
 
 variables:
   FLYWAY: 'flyway'
   group: flyway_vars
   cherryPickVersions: ${{parameters.cherryPickVersions}}
-stages:
 
+stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
@@ -46,7 +40,7 @@ stages:
           - group: flyway_vars
           steps:
                 
-            - script: '$(FLYWAY) undo info -url=${{stage.JDBC}} -user=$(userName) -password=$(password) -cherryPick=$(cherryPickVersions) -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            - script: '$(FLYWAY) undo info -url=$(JDBC) -user=$(userName) -password=$(password) -cherryPick=$(cherryPickVersions) -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'
