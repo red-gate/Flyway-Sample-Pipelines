@@ -130,19 +130,19 @@ stages:
       - group: flyway_vars
       steps:
         
-        # - script: '$(FLYWAY) clean info -url=$(JDBC) -user=$(userName) -password=$(password)'
-        #   failOnStderr: true
-        #   displayName: 'Clean Build DB'
-        #   env:
-        #     FLYWAY_CLEAN_DISABLED: false
+        - script: '$(FLYWAY) clean info -url=$(JDBC) -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
+          env:
+            FLYWAY_CLEAN_DISABLED: false
 
-        # - script: '$(FLYWAY) migrate info -url=$(JDBC) -user=$(userName) -password=$(password)'
-        #   failOnStderr: true
-        #   displayName: 'Validate Migrate Scripts'
+        - script: '$(FLYWAY) migrate info -url=$(JDBC) -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Validate Migrate Scripts'
 
-        # - script: '$(FLYWAY) undo info -url=$(JDBC) -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
-        #   continueOnError: true
-        #   displayName: 'Validate Undo Scripts'
+        - script: '$(FLYWAY) undo info -url=$(JDBC) -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
           inputs:
@@ -187,7 +187,7 @@ stages:
               ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
           
-          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-${{stage.stage}}-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -198,7 +198,7 @@ stages:
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             inputs:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-${{stage.stage}}-$(DRIFT_AND_CHANGE_REPORT)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
