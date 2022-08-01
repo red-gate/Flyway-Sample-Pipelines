@@ -1,4 +1,4 @@
-name: ADO-self-hosted-undo-pipeline
+name: undo-pipeline
 
 trigger: none
 

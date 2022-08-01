@@ -1,0 +1,236 @@
+name: ADO-self-hosted-pipeline
+
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - migrations/*
+    exclude:
+      - undo-pipeline.yml
+
+# INSTRUCTIONS
+# 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
+# 2. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# 3. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
+
+# There are two ways to get the correct folder structure in this project. The first is to follow the steps in poiunt 4. 
+# The second way is to adjust the PATH_TO_MIGRATIONS_DIR variable to point to the migrations folder inside the project. 
+# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
+   # You will know successful if migrations is on same folder level as .git
+      # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
+      # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
+      # C. - Initialize a git project (git init). In your Azure Devops project, go to your repository, and follow the instructions listed to push up your local git repository to the centralized repository.
+      # D. - The migrations and schema-model folders should be in the same directory as the .gitignore and .git files
+      # E. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
+      # F. - The following is a recommendation for some comparison options. Every team's needs are different, so review your options here:
+          #  https://documentation.red-gate.com/fd/sql-server-comparison-options-138347108.html
+          #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
+          #  In the top right of FWD, there is a blue folder icon. Open the project folder, and edit "flyway-dev.json" to have the following properties (or the ones of your choice):
+
+          # "deployment": {
+          #     "flywayConfFiles": [
+          #       "./flyway.conf"
+          #     ],
+          #     "generateUndoScripts": true
+          #   },
+          #   "capabilities": {
+          #     "comparison": {
+          #         "filter": "./Filter.scpf",
+          #         "options": {
+          #             "ObjectExistenceChecks": true,
+          #             "IgnorePermissions": true,
+          #             "IgnoreDataCompression": false
+          #         }
+          #     }
+          #   }
+
+      # G. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
+        # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
+
+# 5. In the flyway.conf file, set flyway.baselineOnMigrate=true
+# 6. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
+# 7. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
+# 8. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
+
+# 9. Under Pipelines -> Library, set up variable groups. In this example, they are named :
+    # "build_credentials_variable_group" 
+    # "test_credentials_variable_group" 
+    # "prod_credentials_variable_group"
+
+    #  Each variable group after the build must have the exact same keys (userName, password, JDBC, databaseName, check_JDBC) and the values can be different
+    # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
+    # In this case we have a variable group called test_credentials_variable_group. It contains variables with the following secret values:
+    # userName, password, JDBC, databaseName, check_JDBC
+    # 'build_credentials_variable_group' does not require check_JDBC
+    # Define any sensitive data inside of a variable group and reference as a variable
+    # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
+# 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
+
+# 11. Define build and deployment steps. Be sure to carefully look at every variable.
+# 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
+# 13. Either generate a migration and undo script or disable the build steps for the 1st run
+# 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
+# 15. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
+
+parameters:
+  
+  # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
+  - name: buildStage
+    type: object
+    default: 
+
+      stage: 'Build'
+      displayName: 'Deploy Build'
+      variableGroupName: 'build_credentials_variable_group' #contains userName, password, JDBC, databaseName
+
+  # This is the extensible definition of your target environments. 
+  # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
+  # Pay attention to the 'dependsOn' field - this determines order of operations.
+  - name: deploymentStages
+    type: object
+    default: 
+
+    - stage: 'Test'
+      dependsOn: 'Build'
+      displayName: 'Deploy Test'
+      pauseForCodeReview: false
+      variableGroupName: 'test_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC
+        # IMPORTANT: check_JDBC will get destroyed
+    
+    - stage: 'Prod'
+      dependsOn: 'Test'
+      displayName: 'Deploy Prod'
+      pauseForCodeReview: true
+      variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
+        # IMPORTANT: check_JDBC will get destroyed
+
+variables:
+
+  BUILD_NAME: 'Build'
+  FLYWAY: 'flyway'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  
+  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  # Make BASELINE_VERSION match the baseline version in your project
+  # Make FIRST_UNDO_SCRIPT match the first undo version in your project
+  group: flyway_vars
+
+stages:
+  - stage: Build
+    pool: Default
+    displayName: ${{parameters.buildStage.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{parameters.buildStage.variableGroupName}}
+      - group: flyway_vars
+      steps:
+        
+        - script: '$(FLYWAY) clean info -url=$(JDBC) -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+
+        - script: '$(FLYWAY) migrate info -url=$(JDBC) -user=$(userName) -password=$(password)'
+          failOnStderr: true
+          displayName: 'Validate Migrate Scripts'
+
+        - script: '$(FLYWAY) undo info -url=$(JDBC) -user=$(userName) -password=$(password) -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'
+        
+        - task: CopyFiles@2
+          inputs:
+            targetFolder: '$(System.ArtifactsDirectory)' 
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Build Artifact'
+          inputs:
+            ArtifactName: '$(BUILD_NAME)'
+            PathtoPublish: '$(System.ArtifactsDirectory)'
+
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: Default
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+      - job: PreRelease
+        displayName: Release Preview
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: '$(BUILD_NAME)'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: true
+            displayName: 'Pre-Release Deployment Report'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Release Preview'
+            inputs:
+              ArtifactName: 'Release Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+          
+          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password)'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: true
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+      - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+          steps:
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              timeoutInMinutes: 4320 # job times out in 3 days
+              inputs:
+                notifyUsers: |
+                  user@email.com
+                  example@example.com
+                instructions: 'Review changes'
+      
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Skipping Code Review
+          dependsOn: 'PreRelease'
+      
+      - job: Deploy
+        displayName: Deployment
+        dependsOn: 'CodeReview'
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            workingDirectory: $(System.DefaultWorkingDirectory)
+            displayName: ${{stage.displayName}}
+            failOnStderr: true
+            env:
+              FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step

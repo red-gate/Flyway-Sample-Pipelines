@@ -1,0 +1,105 @@
+name: hotfix-pipeline
+
+trigger: none
+
+parameters:
+
+  - name: cherryPickVersions
+    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+  
+  # This is the extensible definition of your target environments. 
+  # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
+  # Pay attention to the 'dependsOn' field - this determines order of operations.
+  - name: deploymentStages
+    type: object
+    default: 
+
+    # - stage: 'Test'
+    #   displayName: 'Hotfix Test'
+    #   pauseForCodeReview: false
+    #   variableGroupName: 'test_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC
+    #     # IMPORTANT: check_JDBC will get destroyed
+    
+    - stage: 'Prod'
+      displayName: 'Hotfix Prod'
+      pauseForCodeReview: true
+      variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
+        # IMPORTANT: check_JDBC will get destroyed
+
+variables:
+
+  BUILD_NAME: 'Build'
+  FLYWAY: 'flyway'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  
+  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  # Make BASELINE_VERSION match the baseline version in your project
+  # Make FIRST_UNDO_SCRIPT match the first undo version in your project
+  group: flyway_vars
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
+
+stages:
+  
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: Default
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+      - job: PreRelease
+        displayName: Release Preview
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+
+          - script: '$(FLYWAY) migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            failOnStderr: true
+            displayName: 'Pre-Release Deployment Report'
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Release Preview'
+            inputs:
+              ArtifactName: 'Release Preview'
+              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+
+      - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+          steps:
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              timeoutInMinutes: 4320 # job times out in 3 days
+              inputs:
+                notifyUsers: |
+                  user@email.com
+                  example@example.com
+                instructions: 'Review changes'
+      
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Skipping Code Review
+          dependsOn: 'PreRelease'
+      
+      - job: Deploy
+        displayName: Deployment
+        dependsOn: 'CodeReview'
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+
+          - script: '$(FLYWAY) info migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true info -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            displayName: ${{stage.displayName}}
+            failOnStderr: true
+            env:
+              FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
