@@ -116,14 +116,14 @@ parameters:
 variables:
   # Make this number match the baseline version in your project
   BASELINE_VERSION: '001_20220405200487'
+  # Make this number match the first undo version in your project
+  FIRST_UNDO_SCRIPT: '002'
 
   BUILD_NAME: 'Build'
   FLYWAY: 'flyway'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
-  # If the first undo script is U002, this will validate all undo scripts up to and including that
-  FIRST_UNDO_SCRIPT: '002'
   # Contains FLYWAY_LICENSE_KEY
   group: flyway_vars
 
