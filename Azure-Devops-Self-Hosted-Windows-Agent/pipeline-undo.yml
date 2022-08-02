@@ -1,5 +1,8 @@
 name: undo-pipeline
 
+# This pipeline is for rollbacks. You will have to input a comma-separated list of version scripts
+# prior to running it (otherwise it will fail at execution).
+
 trigger: none
 
 parameters:

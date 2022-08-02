@@ -1,5 +1,7 @@
 name: ADO-self-hosted-pipeline
 
+# This is the default pipeline.
+
 trigger:
   branches:
     include:

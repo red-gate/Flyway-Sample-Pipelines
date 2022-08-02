@@ -1,5 +1,8 @@
 name: cherrypick-pipeline
 
+# This pipeline will go through the build process and generate all artifacts as normal, it just
+# requires a manual trigger and inputting a comma-separated list of version scripts.
+
 trigger: none
 
 parameters:

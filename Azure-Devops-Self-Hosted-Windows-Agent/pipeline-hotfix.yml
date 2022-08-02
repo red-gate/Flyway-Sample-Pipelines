@@ -1,5 +1,9 @@
 name: hotfix-pipeline
 
+# This pipeline is intended to execute as quickly as possible. There are no manual interventions by default,
+# no artifacts are generated to review unless pauseForCodeReview is set to true.
+# Use only when needed.
+
 trigger: none
 
 parameters:
@@ -24,7 +28,7 @@ parameters:
     
     - stage: 'Prod'
       displayName: 'Hotfix Prod'
-      pauseForCodeReview: true
+      pauseForCodeReview: false
       variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
         # IMPORTANT: check_JDBC will get destroyed
 
@@ -51,26 +55,27 @@ stages:
       displayName: ${{stage.displayName}} 
       dependsOn: ${{stage.dependsOn}} 
       jobs:
-      - job: PreRelease
-        displayName: Release Preview
-        variables:
-        - group: ${{stage.variableGroupName}}
-        - group: flyway_vars
-        steps:
-
-          - script: '$(FLYWAY) migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
-            failOnStderr: true
-            displayName: 'Pre-Release Deployment Report'
-            env:
-              FLYWAY_CLEAN_DISABLED: true
-
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Release Preview'
-            inputs:
-              ArtifactName: 'Release Preview'
-              PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
-
+      
       - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: PreRelease
+          displayName: Release Preview
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+
+            - script: '$(FLYWAY) migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+              failOnStderr: true
+              displayName: 'Pre-Release Deployment Report'
+              env:
+                FLYWAY_CLEAN_DISABLED: true
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Release Preview'
+              inputs:
+                ArtifactName: 'Release Preview'
+                PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
+      
         - job: CodeReview
           displayName: Code Review
           dependsOn: 'PreRelease'
