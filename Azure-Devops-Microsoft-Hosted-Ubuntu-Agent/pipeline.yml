@@ -7,8 +7,6 @@ trigger:
   paths:
     include:
       - migrations/*
-    exclude:
-      - undo-pipeline.yml
 
 pool:
   vmImage: ubuntu-latest
@@ -19,17 +17,15 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  FLYWAY_DOCKER_IMAGE: redgate/flyway:9.1.5-azure                                               #https://hub.docker.com/r/redgate/flyway
-  FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
   FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
-
-  # userName and password remain environment specific because their values are evaluated at runtime
   FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
   
-  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, FLYWAY_DOCKER_IMAGE
   # Make BASELINE_VERSION match the baseline version in your project
   # Make FIRST_UNDO_SCRIPT match the first undo version in your project
+  # FLYWAY_DOCKER_IMAGE is currently at: redgate/flyway:9.1.5-azure
+  # Look for images at https://hub.docker.com/r/redgate/flyway
   group: flyway_vars
 
 parameters:
