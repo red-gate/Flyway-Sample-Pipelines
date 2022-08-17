@@ -21,8 +21,8 @@ variables:
   
   FLYWAY_DOCKER_IMAGE: redgate/flyway:9.1.5-azure                                               #https://hub.docker.com/r/redgate/flyway
   FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
-  FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/$(Build.Repository.Name)/migrations
-  FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)/$(Build.Repository.Name)
+  FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
+  FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
 
   # userName and password remain environment specific because their values are evaluated at runtime
   FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'

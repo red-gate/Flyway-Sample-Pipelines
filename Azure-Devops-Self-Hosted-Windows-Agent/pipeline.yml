@@ -111,7 +111,7 @@ parameters:
 variables:
 
   BUILD_NAME: 'Build'
-  FLYWAY: 'flyway'
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
@@ -132,17 +132,17 @@ stages:
       - group: flyway_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url="$(JDBC)" -user="$(userName)" -password="$(password)"'
+        - script: '$(FLYWAY) clean info -url="$(JDBC)"'
           failOnStderr: true
           displayName: 'Clean Build DB'
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url="$(JDBC)" -user="$(userName)" -password="$(password)"'
+        - script: '$(FLYWAY) migrate info -url="$(JDBC)"'
           failOnStderr: true
           displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url="$(JDBC)" -user="$(userName)" -password="$(password)" -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
+        - script: '$(FLYWAY) undo info -url="$(JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
           displayName: 'Validate Undo Scripts'
         
@@ -176,7 +176,7 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) migrate -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -189,7 +189,7 @@ stages:
               ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
           
-          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)"'
+          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -230,7 +230,7 @@ stages:
         - group: flyway_vars
         steps:
 
-          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
             failOnStderr: true
