@@ -66,7 +66,6 @@ variables:
 
 stages:
   - stage: Build
-    pool: Default
     displayName: ${{parameters.buildStage.displayName}} 
     jobs:
     - job: Build
@@ -76,13 +75,13 @@ stages:
       steps:
         
         - script: '$(FLYWAY) clean info -url=$(JDBC) -user="$(userName)" -password="$(password)"'
-          failOnStderr: true
+          failOnStderr: false
           displayName: 'Clean Build DB'
           env:
             FLYWAY_CLEAN_DISABLED: false
 
         - script: '$(FLYWAY) migrate info -url=$(JDBC) -user="$(userName)" -password="$(password)"'
-          failOnStderr: true
+          failOnStderr: false
           displayName: 'Validate Migrate Scripts'
 
         - script: '$(FLYWAY) undo info -url=$(JDBC) -user="$(userName)" -password="$(password)" -target="$(FIRST_UNDO_SCRIPT)"? -licenseKey=$(FLYWAY_LICENSE_KEY)'
@@ -121,7 +120,7 @@ stages:
 
           - script: '$(FLYWAY) migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
-            failOnStderr: true
+            failOnStderr: false
             displayName: 'Pre-Release Deployment Report'
             env:
               FLYWAY_CLEAN_DISABLED: true
@@ -132,12 +131,12 @@ stages:
               ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
           
-          - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)"'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            failOnStderr: true
-            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            env:
-              FLYWAY_CLEAN_DISABLED: true
+          # - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -check.buildUrl=$(check_JDBC) -url=$(JDBC) -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)"'
+          #   workingDirectory: '$(System.DefaultWorkingDirectory)'
+          #   failOnStderr: false
+          #   displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+          #   env:
+          #     FLYWAY_CLEAN_DISABLED: true
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -176,6 +175,6 @@ stages:
           - script: '$(FLYWAY) info migrate -cherryPick=$(cherryPickVersions) -outOfOrder=true info -url=$(JDBC) -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
-            failOnStderr: true
+            failOnStderr: false
             env:
               FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step

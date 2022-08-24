@@ -44,7 +44,6 @@ stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
-      pool: Default
       displayName: ${{stage.displayName}} 
       jobs:
         - job: Undo
@@ -55,6 +54,6 @@ stages:
           steps:
                 
             - script: '$(FLYWAY) undo info -url="$(JDBC)" -user="$(userName)" -password="$(password)" -cherryPick="$(cherryPickVersions)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
-              failOnStderr: true
+              failOnStderr: false
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'

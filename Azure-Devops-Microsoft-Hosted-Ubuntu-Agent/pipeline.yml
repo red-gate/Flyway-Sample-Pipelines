@@ -19,12 +19,12 @@ variables:
   
   FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
-  FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+  FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
   
   # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, FLYWAY_DOCKER_IMAGE
   # Make BASELINE_VERSION match the baseline version in your project
   # Make FIRST_UNDO_SCRIPT match the first undo version in your project
-  # FLYWAY_DOCKER_IMAGE is currently at: redgate/flyway:9.1.5-azure
+  # FLYWAY_DOCKER_IMAGE is currently at: redgate/flyway:latest-azure
   # Look for images at https://hub.docker.com/r/redgate/flyway
   group: flyway_vars
 
@@ -68,24 +68,20 @@ stages:
       - group: ${{ parameters.buildStage.variableGroupName }}
       - group: flyway_vars
       steps:
-        - script: |
-            docker pull $(FLYWAY_DOCKER_IMAGE)
-          failOnStderr: true
-          displayName: 'Docker Pull'
 
         - script: |
             $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
-          failOnStderr: true
+          failOnStderr: false
           displayName: 'Clean Build DB'
 
         - script: |
             $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'
-          failOnStderr: true
+          failOnStderr: false
           displayName: 'Migrate Build DB'
 
         - script: |
             $(FLYWAY) info undo info -url='$(JDBC)' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
-          failOnStderr: true
+          failOnStderr: false
           displayName: 'Undo Build DB'
         
         - task: CopyFiles@2
@@ -116,15 +112,10 @@ stages:
               downloadType: 'single'
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
-
-          - script: |
-              docker pull $(FLYWAY_DOCKER_IMAGE)
-            failOnStderr: true
-            displayName: 'Docker Pull'
             
           - script: |
-              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' -url='$(JDBC)' -cleanDisabled='true' -user=$(userName) -password=$(password) -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
-            failOnStderr: true
+              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' '-url=$(JDBC)' '-cleanDisabled=true' -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
+            failOnStderr: false
             displayName: 'Pre-Release Deployment Report'
 
           - task: PublishBuildArtifacts@1
@@ -133,12 +124,12 @@ stages:
               ArtifactName: 'Release-Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)'
 
-          # - script: '$(FLYWAY) check -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          # - script: '$(FLYWAY) check  -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
           #   workingDirectory: '$(System.DefaultWorkingDirectory)'
-          #   failOnStderr: true
+          #   failOnStderr: false
           #   displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
           #   env:
-          #     FLYWAY_CLEAN_DISABLED: true
+          #     FLYWAY_CLEAN_DISABLED: false
           
           # - task: PublishBuildArtifacts@1
           #   displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -175,11 +166,6 @@ stages:
         steps:
 
           - script: |
-              docker pull $(FLYWAY_DOCKER_IMAGE)
-            failOnStderr: true
-            displayName: 'Docker Pull'
-
-          - script: |
               $(FLYWAY) info migrate info -url='$(JDBC)' -outOfOrder='true' -cleanDisabled='true' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
             displayName: ${{stage.displayName}}
-            failOnStderr: true
+            failOnStderr: false

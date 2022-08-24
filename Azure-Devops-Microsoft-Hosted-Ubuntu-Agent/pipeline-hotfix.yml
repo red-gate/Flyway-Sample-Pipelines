@@ -59,7 +59,6 @@ stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
-      pool: Default
       displayName: ${{stage.displayName}} 
       jobs:
       
@@ -72,7 +71,7 @@ stages:
           steps:
 
             - script: '$(FLYWAY) migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
-              failOnStderr: true
+              failOnStderr: false
               displayName: 'Pre-Release Deployment Report'
               env:
                 FLYWAY_CLEAN_DISABLED: true
@@ -107,7 +106,7 @@ stages:
 
             - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
               displayName: ${{stage.displayName}}
-              failOnStderr: true
+              failOnStderr: false
               env:
                 FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
       
@@ -121,6 +120,6 @@ stages:
 
             - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
               displayName: ${{stage.displayName}}
-              failOnStderr: true
+              failOnStderr: false
               env:
                 FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
