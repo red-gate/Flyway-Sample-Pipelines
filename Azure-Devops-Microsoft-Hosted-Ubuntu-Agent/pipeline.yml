@@ -114,7 +114,7 @@ stages:
               downloadPath: '$(System.ArtifactsDirectory)'
             
           - script: |
-              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)' '-url=$(JDBC)' '-cleanDisabled=true' -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
+              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='reports/${{stage.stage}}-$(RELEASE_PREVIEW)' '-url=$(JDBC)' '-cleanDisabled=true' -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
             failOnStderr: false
             displayName: 'Pre-Release Deployment Report'
 
@@ -122,20 +122,19 @@ stages:
             displayName: 'Publish Release Preview'
             inputs:
               ArtifactName: 'Release-Preview'
-              PathtoPublish: '$(System.ArtifactsDirectory)'
+              PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(RELEASE_PREVIEW)'
 
-          # - script: '$(FLYWAY) check  -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
-          #   workingDirectory: '$(System.DefaultWorkingDirectory)'
-          #   failOnStderr: false
-          #   displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-          #   env:
-          #     FLYWAY_CLEAN_DISABLED: false
+          - script: |
+              $(FLYWAY) check -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='true'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            failOnStderr: false
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
           
-          # - task: PublishBuildArtifacts@1
-          #   displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-          #   inputs:
-          #     ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-          #     PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
