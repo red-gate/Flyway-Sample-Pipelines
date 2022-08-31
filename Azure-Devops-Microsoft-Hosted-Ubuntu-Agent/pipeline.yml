@@ -125,7 +125,7 @@ stages:
               PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(RELEASE_PREVIEW)'
 
           - script: |
-              $(FLYWAY) check -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='true'
+              $(FLYWAY) check -changes -drift "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='false'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
