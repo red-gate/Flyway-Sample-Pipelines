@@ -12,7 +12,7 @@ pool:
 parameters:
 
   - name: cherryPickVersions
-    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    displayName: 'Scripts To CherryPick: Comma Separated List Of Full Version Numbers'
     default: ''
     type: string
   

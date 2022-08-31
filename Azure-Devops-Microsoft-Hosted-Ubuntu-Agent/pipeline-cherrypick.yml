@@ -11,7 +11,7 @@ pool:
 parameters:
 
   - name: cherryPickVersions
-    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    displayName: 'Scripts To CherryPick: Comma Separated List Of Full Version Numbers'
     default: ''
     type: string
   
@@ -131,7 +131,7 @@ stages:
               PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(RELEASE_PREVIEW)'
           
           - script: |
-              $(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='false'
+              $(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='false' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
