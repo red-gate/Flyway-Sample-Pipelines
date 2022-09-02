@@ -69,20 +69,20 @@ stages:
       - group: flyway_vars
       steps:
 
-        # - script: |
-        #     $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
-        #   failOnStderr: false
-        #   displayName: 'Clean Build DB'
+        - script: |
+            $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
+          failOnStderr: false
+          displayName: 'Clean Build DB'
 
-        # - script: |
-        #     $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'
-        #   failOnStderr: false
-        #   displayName: 'Migrate Build DB'
+        - script: |
+            $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'
+          failOnStderr: false
+          displayName: 'Migrate Build DB'
 
-        # - script: |
-        #     $(FLYWAY) info undo info -url='$(JDBC)' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
-        #   failOnStderr: false
-        #   displayName: 'Undo Build DB'
+        - script: |
+            $(FLYWAY) info undo info -url='$(JDBC)' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
+          failOnStderr: false
+          displayName: 'Undo Build DB'
         
         - task: CopyFiles@2
           inputs:
