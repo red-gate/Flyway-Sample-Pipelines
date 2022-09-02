@@ -69,20 +69,20 @@ stages:
       - group: flyway_vars
       steps:
 
-        - script: |
-            $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
-          failOnStderr: false
-          displayName: 'Clean Build DB'
+        # - script: |
+        #     $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
+        #   failOnStderr: false
+        #   displayName: 'Clean Build DB'
 
-        - script: |
-            $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'
-          failOnStderr: false
-          displayName: 'Migrate Build DB'
+        # - script: |
+        #     $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'
+        #   failOnStderr: false
+        #   displayName: 'Migrate Build DB'
 
-        - script: |
-            $(FLYWAY) info undo info -url='$(JDBC)' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
-          failOnStderr: false
-          displayName: 'Undo Build DB'
+        # - script: |
+        #     $(FLYWAY) info undo info -url='$(JDBC)' -target='$(FIRST_UNDO_SCRIPT)'? -cleanDisabled='true'
+        #   failOnStderr: false
+        #   displayName: 'Undo Build DB'
         
         - task: CopyFiles@2
           inputs:
@@ -114,7 +114,7 @@ stages:
               downloadPath: '$(System.ArtifactsDirectory)'
             
           - script: |
-              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='reports/${{stage.stage}}-$(RELEASE_PREVIEW)' '-url=$(JDBC)' '-cleanDisabled=true' -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
+              $(FLYWAY) migrate -outOfOrder=true -dryRunOutput='reports/${{stage.stage}}-$(RELEASE_PREVIEW)' '-url=$(JDBC)' '-cleanDisabled=true' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
             failOnStderr: false
             displayName: 'Pre-Release Deployment Report'
 
@@ -125,8 +125,7 @@ stages:
               PathtoPublish: '$(System.ArtifactsDirectory)/${{stage.stage}}-$(RELEASE_PREVIEW)'
 
           - script: |
-              $(FLYWAY) check -changes -drift "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='false' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
+              $(FLYWAY) check -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -cleanDisabled='false' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
             failOnStderr: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
           
