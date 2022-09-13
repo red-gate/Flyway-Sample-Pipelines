@@ -132,7 +132,7 @@ stages:
 
           - script: |
               $(FLYWAY) check -changes -drift -code "-check.buildUrl=$(check_JDBC)" "-url=$(JDBC)" "-check.reportFilename=reports/$(databaseName)-$(Build.BuildId)-$(REPORTS)" -cleanDisabled='false' -baselineOnMigrate=true -baselineVersion='$(BASELINE_VERSION)'
-            failOnStderr: false
+            continueOnError: true
             displayName: '$(REPORTS_DISPLAY_NAME)'
           
           - task: PublishBuildArtifacts@1
