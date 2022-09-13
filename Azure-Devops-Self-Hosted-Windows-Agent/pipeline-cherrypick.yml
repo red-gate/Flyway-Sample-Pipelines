@@ -32,7 +32,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateDriftAndChangeReport: true
+      generateDriftAndChangeReport: false
       staticCodeAnalysis: false
       variableGroupName: 'test_credentials_variable_group'
     
@@ -40,7 +40,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateDriftAndChangeReport: true                    
+      generateDriftAndChangeReport: false                    
       staticCodeAnalysis: false
       variableGroupName: 'prod_credentials_variable_group' 
 
