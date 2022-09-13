@@ -9,7 +9,7 @@ trigger:
       - migrations/*
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: $(AGENT_POOL)
 
 variables:
   RELEASE_PREVIEW: 'Release-Preview.sql'
@@ -21,10 +21,11 @@ variables:
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
   FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
   
-  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, FLYWAY_DOCKER_IMAGE
+  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, FLYWAY_DOCKER_IMAGE, AGENT_POOL
   # Make BASELINE_VERSION match the baseline version in your project
   # Make FIRST_UNDO_SCRIPT match the first undo version in your project
   # FLYWAY_DOCKER_IMAGE is currently at: redgate/flyway:latest-azure
+  # AGENT_POOL here is ubuntu-latest
   # Look for images at https://hub.docker.com/r/redgate/flyway
   group: flyway_vars
 

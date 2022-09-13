@@ -33,7 +33,7 @@ stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
-      pool: Default
+      pool: $(AGENT_POOL)
       displayName: ${{stage.displayName}} 
       jobs:
         - job: Undo
@@ -47,3 +47,5 @@ stages:
               failOnStderr: true
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'
+              env:
+                FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step

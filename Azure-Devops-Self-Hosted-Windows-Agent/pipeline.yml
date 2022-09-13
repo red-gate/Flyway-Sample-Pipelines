@@ -1,6 +1,13 @@
 name: ADO-self-hosted-pipeline
 
-# This is the default pipeline.
+# This is the default pipeline for a self-hosted Windows agent on Azure Devops.
+
+# Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# Install python3 on agent and add pip to PATH if staticCodeAnalysis is set to true
+# Make sure this file is in the same directory as the migrations folder of the Flyway Enterprise project. 
+# Provision a dev, shadow, build databases, as well as any target environments that need to be created: https://documentation.red-gate.com/fd/proof-of-concept-checklist-152109292.html
+# Further instructions if needed here: https://documentation.red-gate.com/fd/self-hosted-windows-agent-yaml-pipeline-in-azure-devops-158564470.html
+# For video reference, see: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop/setting-up-a-flyway-desktop-project/basic-flyway-desktop-project-setup-and-configuration
 
 trigger:
   branches:
@@ -9,72 +16,6 @@ trigger:
   paths:
     include:
       - migrations/*
-    exclude:
-      - undo-pipeline.yml
-
-# INSTRUCTIONS
-# 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
-# 2. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
-# 3. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
-
-# There are two ways to get the correct folder structure in this project. The first is to follow the steps in poiunt 4. 
-# The second way is to adjust the PATH_TO_MIGRATIONS_DIR variable to point to the migrations folder inside the project. 
-# 4. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:
-   # You will know successful if migrations is on same folder level as .git
-      # A. - When configuring FWD for the first time, open Flyway Desktop, create a NEW project. 
-      # B. - Once your project is open, open a terminal or git GUI if your choice (there's a shortcut to open your terminal in the top right of Flyway Desktop). 
-      # C. - Initialize a git project (git init). In your Azure Devops project, go to your repository, and follow the instructions listed to push up your local git repository to the centralized repository.
-      # D. - The migrations and schema-model folders should be in the same directory as the .gitignore and .git files
-      # E. - For other team members, they should clone down the repository and in Flyway Desktop, OPEN an existing project.
-      # F. - The following is a recommendation for some comparison options. Every team's needs are different, so review your options here:
-          #  https://documentation.red-gate.com/fd/sql-server-comparison-options-138347108.html
-          #  Configure the development database, and on the 'generate migrations' tab, configure the shadow database. 
-          #  In the top right of FWD, there is a blue folder icon. Open the project folder, and edit "flyway-dev.json" to have the following properties (or the ones of your choice):
-
-          # "deployment": {
-          #     "flywayConfFiles": [
-          #       "./flyway.conf"
-          #     ],
-          #     "generateUndoScripts": true
-          #   },
-          #   "capabilities": {
-          #     "comparison": {
-          #         "filter": "./Filter.scpf",
-          #         "options": {
-          #             "ObjectExistenceChecks": true,
-          #             "IgnorePermissions": true,
-          #             "IgnoreDataCompression": false
-          #         }
-          #     }
-          #   }
-
-      # G. If the flyway desktop project has already been created by a teammate, clone the repo it to a local folder, then OPEN a flyway desktop project. 
-        # It will be necessary to elect a development and shadow database still. The shadow database should be unique for every developer.
-
-# 5. In the flyway.conf file, set flyway.baselineOnMigrate=true
-# 6. Save this pipeline file alongside the migrations and schema-model folders and commit and push.
-# 7. When setting up an azure devops project, go to pipelines, create pipeline, define where your code is (azure repos git in this case), add "Existing Azure Pipelines YAML file", then point to this file
-# 8. When creating the new pipeline, select empty job and create azure devops pipeline from existing YAML file, and point to this file
-
-# 9. Under Pipelines -> Library, set up variable groups. In this example, they are named :
-    # "build_credentials_variable_group" 
-    # "test_credentials_variable_group" 
-    # "prod_credentials_variable_group"
-
-    #  Each variable group after the build must have the exact same keys (userName, password, JDBC, databaseName, check_JDBC) and the values can be different
-    # 'build_credentials_variable_group' is the name of an Azure DevOps Variable Group. These can be created under Pipelines -> Library
-    # In this case we have a variable group called test_credentials_variable_group. It contains variables with the following secret values:
-    # userName, password, JDBC, databaseName, check_JDBC
-    # 'build_credentials_variable_group' does not require check_JDBC
-    # Define any sensitive data inside of a variable group and reference as a variable
-    # Ensure that the keys remain the same across variable groups, only change the name of the group itself and the respective values
-# 10. Create a separate variable group for common variables across environments. In this example, it's called "flyway_vars". It contains FLYWAY_LICENSE_KEY
-
-# 11. Define build and deployment steps. Be sure to carefully look at every variable.
-# 12. Only set isBuild to true ONCE - be aware that that flag will DESTROY the database it's pointed at.
-# 13. Either generate a migration and undo script or disable the build steps for the 1st run
-# 14. Once your pipeline is working, uncomment line 6 to only trigger a release on a change to the migrations folder
-# 15. If you would like to add callbacks to your migrations folder, see here: https://flywaydb.org/documentation/concepts/callbacks
 
 parameters:
   
@@ -85,11 +26,12 @@ parameters:
 
       stage: 'Build'
       displayName: 'Deploy Build'
-      variableGroupName: 'build_credentials_variable_group' #contains userName, password, JDBC, databaseName
+      variableGroupName: 'build_credentials_variable_group' #userName, password, JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
   # Pay attention to the 'dependsOn' field - this determines order of operations.
+  # IMPORTANT: check_JDBC will have schema dropped
   - name: deploymentStages
     type: object
     default: 
@@ -98,15 +40,17 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      variableGroupName: 'test_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC
-        # IMPORTANT: check_JDBC will get destroyed
+      generateDriftAndChangeReport: true                    #requires check database to be provisioned
+      staticCodeAnalysis: true                              #requires python3 installed on agent and pip on PATH
+      variableGroupName: 'test_credentials_variable_group'  #userName, password, JDBC, databaseName, check_JDBC 
     
     - stage: 'Prod'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
-        # IMPORTANT: check_JDBC will get destroyed
+      generateDriftAndChangeReport: true                    #requires check database to be provisioned
+      staticCodeAnalysis: true                              #requires python3 installed on agent and pip on PATH
+      variableGroupName: 'prod_credentials_variable_group'  #userName, password, JDBC, databaseName, check_JDBC 
 
 variables:
 
@@ -116,14 +60,15 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  # FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, POOL
   # Make BASELINE_VERSION match the baseline version in your project
   # Make FIRST_UNDO_SCRIPT match the first undo version in your project
+  # AGENT_POOL is the agent pool your pipeline will use
   group: flyway_vars
 
 stages:
   - stage: Build
-    pool: Default
+    pool: $(AGENT_POOL)
     displayName: ${{parameters.buildStage.displayName}} 
     jobs:
     - job: Build
@@ -138,7 +83,7 @@ stages:
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url="$(JDBC)"'
+        - script: '$(FLYWAY) migrate info -url="$(JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
           failOnStderr: true
           displayName: 'Validate Migrate Scripts'
 
@@ -159,7 +104,7 @@ stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
-      pool: Default
+      pool: $(AGENT_POOL)
       displayName: ${{stage.displayName}} 
       dependsOn: ${{stage.dependsOn}} 
       jobs:
@@ -188,39 +133,78 @@ stages:
             inputs:
               ArtifactName: 'Release Preview'
               PathtoPublish: '$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)'
-          
-          - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            failOnStderr: true
-            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            env:
-              FLYWAY_CLEAN_DISABLED: true
-          
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            inputs:
-              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+      
+      - ${{if eq(stage.staticCodeAnalysis, true)}}:
+        - job: ChangeReport
+          dependsOn: 'PreRelease'
+          displayName: Change Report With Code Analysis
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+            - script: 'pip install sqlfluff==1.2.1'
+              displayName: 'Install SQL Fluff'
+              failOnStderr: true
+            
+            - script: '$(FLYWAY) check -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              failOnStderr: true
+              displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              inputs:
+                ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
+      - ${{if and(eq( stage.generateDriftAndChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
+        - job: ChangeReport
+          displayName: Change Report
+          dependsOn: 'PreRelease'
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+            - script: '$(FLYWAY) check -changes -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              failOnStderr: true
+              displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              inputs:
+                ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+      
+      - ${{if and(ne( stage.generateDriftAndChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
+        - job: ChangeReport
+          displayName: Skipping Change Report
+          dependsOn: 'PreRelease'
+      
       - ${{if eq(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
           displayName: Code Review
-          dependsOn: 'PreRelease'
+          dependsOn: 'ChangeReport'
           pool: server
           steps:
             - task: ManualValidation@0
               displayName: 'Review Change Report Prior To Release'
-              timeoutInMinutes: 4320 # job times out in 3 days
+              timeoutInMinutes: 4320 # job times out in 1 hour
               inputs:
                 notifyUsers: |
                   user@email.com
                   example@example.com
                 instructions: 'Review changes'
       
-      - ${{if ne(stage.pauseForCodeReview, true)}}:
+      - ${{if eq(stage.pauseForCodeReview, false)}}:
         - job: CodeReview
+          pool: server
           displayName: Skipping Code Review
-          dependsOn: 'PreRelease'
+          dependsOn: 'ChangeReport'
       
       - job: Deploy
         displayName: Deployment
@@ -235,4 +219,4 @@ stages:
             displayName: ${{stage.displayName}}
             failOnStderr: true
             env:
-              FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
+              FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step

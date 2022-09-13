@@ -23,14 +23,13 @@ parameters:
     - stage: 'Test'
       displayName: 'Hotfix Test'
       pauseForCodeReview: false
-      variableGroupName: 'test_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC
+      variableGroupName: 'test_credentials_variable_group' 
     
     - stage: 'Prod'
       dependsOn: 'Test'
       displayName: 'Hotfix Prod'
       pauseForCodeReview: false
-      variableGroupName: 'prod_credentials_variable_group' #contains userName, password, JDBC, databaseName, check_JDBC 
-        # IMPORTANT: check_JDBC will get destroyed
+      variableGroupName: 'prod_credentials_variable_group'  
 
 variables:
 
@@ -40,9 +39,6 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT
-  # Make BASELINE_VERSION match the baseline version in your project
-  # Make FIRST_UNDO_SCRIPT match the first undo version in your project
   group: flyway_vars
   cherryPickVersions: ${{parameters.cherryPickVersions}}
 
@@ -51,7 +47,7 @@ stages:
   - ${{each stage in parameters.deploymentStages}}:
     
     - stage: ${{stage.stage}} 
-      pool: Default
+      pool: $(AGENT_POOL)
       displayName: ${{stage.displayName}} 
       jobs:
       
