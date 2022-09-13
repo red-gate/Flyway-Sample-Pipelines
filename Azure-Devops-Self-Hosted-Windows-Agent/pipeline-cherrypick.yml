@@ -194,6 +194,7 @@ stages:
         - job: CodeReview
           displayName: Skipping Code Review
           dependsOn: 'PreRelease'
+          pool: server
       
       - job: Deploy
         displayName: Deployment
