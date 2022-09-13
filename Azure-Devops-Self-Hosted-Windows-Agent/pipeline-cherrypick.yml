@@ -32,7 +32,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateDriftAndChangeReport: false
+      generateDriftAndChangeReport: true
       staticCodeAnalysis: false
       variableGroupName: 'test_credentials_variable_group'
     
@@ -40,7 +40,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateDriftAndChangeReport: false                    
+      generateDriftAndChangeReport: true                    
       staticCodeAnalysis: false
       variableGroupName: 'prod_credentials_variable_group' 
 
@@ -110,7 +110,7 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - script: '$(FLYWAY) migrate -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -cherryPick=$(cherryPickVersions) -url=$(JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) migrate -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -135,7 +135,7 @@ stages:
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
-            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -190,11 +190,10 @@ stages:
                   example@example.com
                 instructions: 'Review changes'
       
-      - ${{if eq(stage.pauseForCodeReview, false)}}:
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
         - job: CodeReview
           displayName: Skipping Code Review
           dependsOn: 'PreRelease'
-          pool: server
       
       - job: Deploy
         displayName: Deployment

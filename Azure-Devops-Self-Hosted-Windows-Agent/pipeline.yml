@@ -40,7 +40,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateDriftAndChangeReport: false                    #requires check database to be provisioned
+      generateDriftAndChangeReport: true                    #requires check database to be provisioned
       staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
       variableGroupName: 'test_credentials_variable_group'  #userName, password, JDBC, databaseName, check_JDBC 
     
