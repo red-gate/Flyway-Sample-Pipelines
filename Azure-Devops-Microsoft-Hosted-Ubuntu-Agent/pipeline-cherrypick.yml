@@ -137,6 +137,7 @@ stages:
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(REPORTS_DISPLAY_NAME)'
+            continueOnError: true
             inputs:
               ArtifactName: '$(REPORTS_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)/$(databaseName)-$(Build.BuildId)-$(REPORTS)'
