@@ -190,10 +190,11 @@ stages:
                   example@example.com
                 instructions: 'Review changes'
       
-      - ${{if ne(stage.pauseForCodeReview, true)}}:
+      - ${{if eq(stage.pauseForCodeReview, false)}}:
         - job: CodeReview
           displayName: Skipping Code Review
           dependsOn: 'PreRelease'
+          pool: server
       
       - job: Deploy
         displayName: Deployment
