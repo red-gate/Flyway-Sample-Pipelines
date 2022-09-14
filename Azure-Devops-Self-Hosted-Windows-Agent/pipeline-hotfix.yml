@@ -99,7 +99,7 @@ stages:
               env:
                 FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
       
-      - ${{if ne(stage.pauseForCodeReview, true)}}:
+      - ${{if eq(stage.pauseForCodeReview, false)}}:
         - job: Deploy
           displayName: Deployment
           variables:

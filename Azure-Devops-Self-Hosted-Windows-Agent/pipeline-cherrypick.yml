@@ -32,7 +32,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateDriftAndChangeReport: false
+      generateChangeReport: false
       staticCodeAnalysis: false
       variableGroupName: 'test_credentials_variable_group'
     
@@ -40,7 +40,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateDriftAndChangeReport: false                    
+      generateChangeReport: false                    
       staticCodeAnalysis: false
       variableGroupName: 'prod_credentials_variable_group' 
 
@@ -135,7 +135,7 @@ stages:
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
-            - script: '$(FLYWAY) check -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -148,7 +148,7 @@ stages:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
-      - ${{if and(eq( stage.generateDriftAndChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
+      - ${{if and(eq( stage.generateChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
         - job: ChangeReport
           displayName: Change Report
           dependsOn: 'PreRelease'
@@ -156,7 +156,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
-            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -169,7 +169,7 @@ stages:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
       
-      - ${{if and(eq( stage.generateDriftAndChangeReport, false), eq( stage.staticCodeAnalysis, false))}}:
+      - ${{if and(eq( stage.generateChangeReport, false), eq( stage.staticCodeAnalysis, false))}}:
         - job: ChangeReport
           displayName: Skipping Change Report
           pool: server
