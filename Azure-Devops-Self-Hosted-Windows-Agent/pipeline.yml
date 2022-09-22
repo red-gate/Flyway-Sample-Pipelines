@@ -12,7 +12,7 @@ name: ADO-self-hosted-pipeline
 trigger:
   branches:
     include:
-      - release
+      - $(RELEASE_BRANCH)
   paths:
     include:
       - migrations/*
@@ -60,10 +60,12 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  # FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL
-  # Make BASELINE_VERSION match the baseline version in your project
-  # Make FIRST_UNDO_SCRIPT match the first undo version in your project
-  # AGENT_POOL is the agent pool your pipeline will use
+  # Place following in flyway_vars variable group
+  # FLYWAY_LICENSE_KEY
+  # BASELINE_VERSION - make match the baseline version in your project
+  # FIRST_UNDO_SCRIPT match the first undo version in your project
+  # AGENT_POOL is the agent pool your pipeline will use - default to default
+  # RELEASE_BRANCH  - default to release
   group: flyway_vars
 
 stages:
