@@ -19,7 +19,7 @@ parameters:
 
       stage: 'Build'
       displayName: 'Deploy Build'
-      variableGroupName: 'build_credentials_variable_group' #contains userName, password, JDBC, databaseName
+      variableGroupName: 'build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -32,7 +32,7 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateChangeReport: false
+      generateDriftAndChangeReport: false
       staticCodeAnalysis: false
       variableGroupName: 'test_credentials_variable_group'
     
@@ -40,7 +40,7 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateChangeReport: false                    
+      generateDriftAndChangeReport: false                    
       staticCodeAnalysis: false
       variableGroupName: 'prod_credentials_variable_group' 
 
@@ -66,17 +66,17 @@ stages:
       - group: flyway_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url="$(JDBC)"'
+        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
           failOnStderr: true
           displayName: 'Clean Build DB'
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url="$(JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
           failOnStderr: true
           displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url="$(JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
           displayName: 'Validate Undo Scripts'
         
@@ -110,7 +110,7 @@ stages:
               artifactName: '$(BUILD_NAME)'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - script: '$(FLYWAY) migrate -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) migrate -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url=$(target_database_JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: '$(System.DefaultWorkingDirectory)'
             failOnStderr: true
             displayName: 'Pre-Release Deployment Report'
@@ -135,7 +135,7 @@ stages:
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
-            - script: '$(FLYWAY) check -drift -code -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -changes -drift -code -check.buildUrl=$(check_JDBC) -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -148,7 +148,7 @@ stages:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
-      - ${{if and(eq( stage.generateChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
+      - ${{if and(eq( stage.generateDriftAndChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
         - job: ChangeReport
           displayName: Change Report
           dependsOn: 'PreRelease'
@@ -156,7 +156,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
-            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -drift -check.buildUrl=$(check_JDBC) -url="$(JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -check.buildUrl=$(check_JDBC) -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -169,7 +169,7 @@ stages:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
       
-      - ${{if and(eq( stage.generateChangeReport, false), eq( stage.staticCodeAnalysis, false))}}:
+      - ${{if and(eq( stage.generateDriftAndChangeReport, false), eq( stage.staticCodeAnalysis, false))}}:
         - job: ChangeReport
           displayName: Skipping Change Report
           pool: server
@@ -204,7 +204,7 @@ stages:
         - group: flyway_vars
         steps:
 
-          - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: $(System.DefaultWorkingDirectory)
             displayName: ${{stage.displayName}}
             failOnStderr: true

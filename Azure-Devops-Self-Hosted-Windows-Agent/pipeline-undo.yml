@@ -43,7 +43,7 @@ stages:
           - group: flyway_vars
           steps:
                 
-            - script: '$(FLYWAY) undo info -url="$(JDBC)" -user="$(userName)" -password="$(password)" -cherryPick="$(cherryPickVersions)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+            - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -user="$(userName)" -password="$(password)" -cherryPick="$(cherryPickVersions)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
               failOnStderr: true
               workingDirectory: #Add working directory location if required
               displayName: 'Execute Undo Scripts'

@@ -59,7 +59,7 @@ stages:
           - group: flyway_vars
           steps:
 
-            - script: '$(FLYWAY) migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            - script: '$(FLYWAY) migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(target_database_JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
               failOnStderr: true
               displayName: 'Pre-Release Deployment Report'
               env:
@@ -93,13 +93,13 @@ stages:
           - group: flyway_vars
           steps:
 
-            - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(target_database_JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
               displayName: ${{stage.displayName}}
               failOnStderr: true
               env:
                 FLYWAY_CLEAN_DISABLED: true # clean destroys a target DB, keep disabled except for build step
       
-      - ${{if eq(stage.pauseForCodeReview, false)}}:
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
         - job: Deploy
           displayName: Deployment
           variables:
@@ -107,7 +107,7 @@ stages:
           - group: flyway_vars
           steps:
 
-            - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(target_database_JDBC)" -licenseKey=$(FLYWAY_LICENSE_KEY) -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
               displayName: ${{stage.displayName}}
               failOnStderr: true
               env:
