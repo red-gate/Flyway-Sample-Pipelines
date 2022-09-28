@@ -12,7 +12,7 @@ name: ADO-self-hosted-pipeline
 trigger:
   branches:
     include:
-      - $(RELEASE_BRANCH)
+      - release
   paths:
     include:
       - migrations/*
@@ -65,7 +65,6 @@ variables:
   # BASELINE_VERSION - make match the baseline version in your project
   # FIRST_UNDO_SCRIPT match the first undo version in your project
   # AGENT_POOL is the agent pool your pipeline will use - default to default
-  # RELEASE_BRANCH  - default to release
   group: flyway_vars
 
 stages:
