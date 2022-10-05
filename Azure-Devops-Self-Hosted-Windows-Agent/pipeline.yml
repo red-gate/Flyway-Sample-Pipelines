@@ -40,17 +40,17 @@ parameters:
       dependsOn: 'Build'
       displayName: 'Deploy Test'
       pauseForCodeReview: false
-      generateDriftAndChangeReport: true                    #requires check database to be provisioned
-      staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
-      variableGroupName: 'test_credentials_variable_group'  #userName, password, target_database_JDBC, databaseName, check_JDBC 
+      generateDriftAndChangeReport: true                      #requires check database to be provisioned, requires .Net 6 https://dotnet.microsoft.com/en-us/download/dotnet/6.0
+      staticCodeAnalysis: false                               #requires python3 installed on agent and pip on PATH
+      variableGroupName: 'test_credentials_variable_group'    #userName, password, target_database_JDBC, databaseName, check_JDBC 
     
     - stage: 'Prod'
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateDriftAndChangeReport: true                   #requires check database to be provisioned
-      staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
-      variableGroupName: 'prod_credentials_variable_group'  #userName, password, target_database_JDBC, databaseName, check_JDBC 
+      generateDriftAndChangeReport: true                      #requires check database to be provisioned, requires .Net 6 https://dotnet.microsoft.com/en-us/download/dotnet/6.0
+      staticCodeAnalysis: false                               #requires python3 installed on agent and pip on PATH
+      variableGroupName: 'prod_credentials_variable_group'    #userName, password, target_database_JDBC, databaseName, check_JDBC 
 
 variables:
 
