@@ -19,6 +19,7 @@ parameters:
 
       stage: 'Build'
       displayName: 'Deploy Build'
+      executeBuild: true
       variableGroupName: 'build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
@@ -75,15 +76,18 @@ stages:
         - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
           failOnStderr: true
           displayName: 'Clean Build DB'
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
           env:
             FLYWAY_CLEAN_DISABLED: false
 
         - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
           failOnStderr: true
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
           displayName: 'Validate Migrate Scripts'
 
         - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
           displayName: 'Validate Undo Scripts'
         
         - task: CopyFiles@2
