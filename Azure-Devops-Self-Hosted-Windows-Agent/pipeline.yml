@@ -144,7 +144,7 @@ stages:
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
-            - script: '$(FLYWAY) check -dryrun -changes -drift -code -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -changes -drift -code -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -165,7 +165,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
-            - script: '$(FLYWAY) check -dryrun -changes -drift -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -changes -drift -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -186,7 +186,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
-            - script: '$(FLYWAY) check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
