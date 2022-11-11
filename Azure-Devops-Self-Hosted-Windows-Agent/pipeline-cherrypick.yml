@@ -34,6 +34,7 @@ parameters:
       displayName: 'Deploy Test'
       pauseForCodeReview: false
       generateDriftAndChangeReport: false
+      failReleaseIfDriftDetected: false
       staticCodeAnalysis: false
       variableGroupName: 'test_credentials_variable_group'
     
@@ -41,7 +42,8 @@ parameters:
       dependsOn: 'Test'
       displayName: 'Deploy Prod'
       pauseForCodeReview: true
-      generateDriftAndChangeReport: false                    
+      generateDriftAndChangeReport: false 
+      failReleaseIfDriftDetected: false                   
       staticCodeAnalysis: false
       variableGroupName: 'prod_credentials_variable_group' 
 
@@ -132,6 +134,7 @@ stages:
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
+            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
             - script: '$(FLYWAY) -baselineOnMigrate=true check -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
@@ -153,6 +156,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
+            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
             - script: '$(FLYWAY) -baselineOnMigrate=true check -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
@@ -174,6 +178,7 @@ stages:
           - group: ${{stage.variableGroupName}}
           - group: flyway_vars
           steps:
+            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" 
             - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
