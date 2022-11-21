@@ -1,0 +1,57 @@
+name: undo-pipeline
+
+# This pipeline is for rollbacks. You will have to input a comma-separated list of version scripts
+# prior to running it (otherwise it will fail at execution).
+
+trigger: none
+
+parameters:
+
+  - name: cherryPickVersions
+    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+
+  - name: deploymentStages
+    type: object
+    default: 
+
+    - stage: 'Test'
+      displayName: 'Undo Test'
+      variableGroupName: 'test_credentials_variable_group'
+    
+    - stage: 'Prod'
+      displayName: 'Undo Prod'
+      variableGroupName: 'prod_credentials_variable_group'
+
+variables:
+
+  # This is the relative path to the migrations folder in your project, such as:
+  # $(System.DefaultWorkingDirectory)\project
+  # The default is to have the migrations folder in the same directory as the yml file
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+
+  group: flyway_vars
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
+
+stages:
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: $(AGENT_POOL)
+      displayName: ${{stage.displayName}} 
+      jobs:
+        - job: Undo
+          displayName: Undo
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+                
+            - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -cherryPick="$(cherryPickVersions)"'
+              failOnStderr: true
+              displayName: 'Execute Undo Scripts'
+              env:
+                FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step

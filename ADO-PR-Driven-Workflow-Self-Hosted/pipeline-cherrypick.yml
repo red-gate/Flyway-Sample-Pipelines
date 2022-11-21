@@ -1,0 +1,224 @@
+name: cherrypick-pipeline
+
+# This pipeline will go through the build process and generate all artifacts as normal, it just
+# requires a manual trigger and inputting a comma-separated list of version scripts.
+
+trigger: none
+
+parameters:
+
+  - name: cherryPickVersions
+    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+  
+  # IMPORTANT: DO NOT ADD DEPLOYMENT STEPS TO THE BUILD STAGE - THE BUILD IS A DESTRUCTIVE ACTION
+  - name: buildStage
+    type: object
+    default: 
+
+      stage: 'Build'
+      displayName: 'Deploy Build'
+      executeBuild: true
+      variableGroupName: 'build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
+
+  # This is the extensible definition of your target environments. 
+  # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
+  # Pay attention to the 'dependsOn' field - this determines order of operations.
+  - name: deploymentStages
+    type: object
+    default: 
+
+    - stage: 'Test'
+      dependsOn: 'Build'
+      displayName: 'Deploy Test'
+      pauseForCodeReview: false
+      generateDriftAndChangeReport: false
+      staticCodeAnalysis: false
+      variableGroupName: 'test_credentials_variable_group'
+    
+    - stage: 'Prod'
+      dependsOn: 'Test'
+      displayName: 'Deploy Prod'
+      pauseForCodeReview: true
+      generateDriftAndChangeReport: false                    
+      staticCodeAnalysis: false
+      variableGroupName: 'prod_credentials_variable_group' 
+
+variables:
+
+  # This is the relative path to the migrations folder in your project, such as:
+  # $(System.DefaultWorkingDirectory)\project
+  # The default is to have the migrations folder in the same directory as the yml file
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+
+  BUILD_NAME: 'Build'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  
+  group: flyway_vars
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
+
+stages:
+  - stage: Build
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.buildStage.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{parameters.buildStage.variableGroupName}}
+      - group: flyway_vars
+      steps:
+        
+        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+          failOnStderr: true
+          displayName: 'Clean Build DB'
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          failOnStderr: true
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
+          displayName: 'Validate Migrate Scripts'
+
+        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+          continueOnError: true
+          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
+          displayName: 'Validate Undo Scripts'
+        
+        - task: CopyFiles@2
+          inputs:
+            targetFolder: '$(System.ArtifactsDirectory)' 
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Build Artifact'
+          inputs:
+            ArtifactName: '$(BUILD_NAME)'
+            PathtoPublish: '$(System.ArtifactsDirectory)'
+
+  - ${{each stage in parameters.deploymentStages}}:
+    
+    - stage: ${{stage.stage}} 
+      pool: $(AGENT_POOL)
+      displayName: ${{stage.displayName}} 
+      dependsOn: ${{stage.dependsOn}} 
+      jobs:
+      - job: PreRelease
+        displayName: Release Preview
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: '$(BUILD_NAME)'
+              downloadPath: '$(System.ArtifactsDirectory)'
+          
+      - ${{if eq(stage.staticCodeAnalysis, true)}}:
+        - job: ChangeReport
+          dependsOn: 'PreRelease'
+          displayName: Change Report With Code Analysis
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+            - script: 'pip install sqlfluff==1.2.1'
+              displayName: 'Install SQL Fluff'
+              failOnStderr: true
+            
+            - script: '$(FLYWAY) check -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+              workingDirectory: '$(WORKING_DIRECTORY)'
+              failOnStderr: true
+              displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              inputs:
+                ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+      - ${{if and(eq( stage.generateDriftAndChangeReport, true), eq( stage.staticCodeAnalysis, false))}}:
+        - job: ChangeReport
+          displayName: Change Report
+          dependsOn: 'PreRelease'
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+            - script: '$(FLYWAY) check -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+              workingDirectory: '$(WORKING_DIRECTORY)'
+              failOnStderr: true
+              displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              inputs:
+                ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+      
+      - ${{if and(eq( stage.generateDriftAndChangeReport, false), eq( stage.staticCodeAnalysis, false))}}:
+        - job: ChangeReport
+          displayName: Change Report
+          dependsOn: 'PreRelease'
+          variables:
+          - group: ${{stage.variableGroupName}}
+          - group: flyway_vars
+          steps:
+            - script: '$(FLYWAY) check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+              workingDirectory: '$(WORKING_DIRECTORY)'
+              failOnStderr: true
+              displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              env:
+                FLYWAY_CLEAN_DISABLED: false
+            
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              inputs:
+                ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+                PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+      - ${{if eq(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+          steps:
+            - task: ManualValidation@0
+              displayName: 'Review Change Report Prior To Release'
+              timeoutInMinutes: 4320 # job times out in 3 days
+              inputs:
+                notifyUsers: |
+                  user@email.com
+                  example@example.com
+                instructions: 'Review changes'
+      
+      - ${{if ne(stage.pauseForCodeReview, true)}}:
+        - job: CodeReview
+          displayName: Skipping Code Review
+          dependsOn: 'PreRelease'
+          pool: server
+      
+      - job: Deploy
+        displayName: Deployment
+        dependsOn: 'CodeReview'
+        variables:
+        - group: ${{stage.variableGroupName}}
+        - group: flyway_vars
+        steps:
+
+          - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+            workingDirectory: $(System.DefaultWorkingDirectory)
+            displayName: ${{stage.displayName}}
+            failOnStderr: true
+            env:
+              FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step
