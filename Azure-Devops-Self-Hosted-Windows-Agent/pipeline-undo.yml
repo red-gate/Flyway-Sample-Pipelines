@@ -18,11 +18,11 @@ parameters:
 
     - stage: 'Test'
       displayName: 'Undo Test'
-      variableGroupName: 'test_credentials_variable_group'
+      variableGroupName: 'rg_test_credentials_variable_group'
     
     - stage: 'Prod'
       displayName: 'Undo Prod'
-      variableGroupName: 'prod_credentials_variable_group'
+      variableGroupName: 'rg_prod_credentials_variable_group'
 
 variables:
 
@@ -33,7 +33,7 @@ variables:
 
   FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
 
-  group: flyway_vars
+  group: rg_flyway_vars
   cherryPickVersions: ${{parameters.cherryPickVersions}}
 
 stages:
@@ -47,7 +47,7 @@ stages:
           displayName: Undo
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
                 
             - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -cherryPick="$(cherryPickVersions)"'

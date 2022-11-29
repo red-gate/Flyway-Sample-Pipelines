@@ -23,13 +23,13 @@ parameters:
     - stage: 'Test'
       displayName: 'Hotfix Test'
       pauseForCodeReview: false
-      variableGroupName: 'test_credentials_variable_group' 
+      variableGroupName: 'rg_test_credentials_variable_group' 
     
     - stage: 'Prod'
       dependsOn: 'Test'
       displayName: 'Hotfix Prod'
       pauseForCodeReview: false
-      variableGroupName: 'prod_credentials_variable_group'  
+      variableGroupName: 'rg_prod_credentials_variable_group'  
 
 variables:
 
@@ -45,7 +45,7 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  group: flyway_vars
+  group: rg_flyway_vars
   cherryPickVersions: ${{parameters.cherryPickVersions}}
 
 stages:
@@ -62,7 +62,7 @@ stages:
           displayName: Release Preview
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
 
             - script: '$(FLYWAY) migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true -dryRunOutput="$(System.ArtifactsDirectory)\${{stage.stage}}-$(RELEASE_PREVIEW)" -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
@@ -96,7 +96,7 @@ stages:
           dependsOn: 'CodeReview'
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
 
             - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
@@ -110,7 +110,7 @@ stages:
           displayName: Deployment
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
 
             - script: '$(FLYWAY) info migrate -cherryPick="$(cherryPickVersions)" -outOfOrder=true info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'

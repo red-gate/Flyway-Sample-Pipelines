@@ -20,7 +20,7 @@ parameters:
       stage: 'Build'
       displayName: 'Deploy Build'
       executeBuild: true
-      variableGroupName: 'build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
+      variableGroupName: 'rg_build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -36,7 +36,7 @@ parameters:
       generateDriftAndChangeReport: false
       failReleaseIfDriftDetected: false
       staticCodeAnalysis: false
-      variableGroupName: 'test_credentials_variable_group'
+      variableGroupName: 'rg_test_credentials_variable_group'
     
     - stage: 'Prod'
       dependsOn: 'Test'
@@ -45,7 +45,7 @@ parameters:
       generateDriftAndChangeReport: false 
       failReleaseIfDriftDetected: false                   
       staticCodeAnalysis: false
-      variableGroupName: 'prod_credentials_variable_group' 
+      variableGroupName: 'rg_prod_credentials_variable_group' 
 
 variables:
 
@@ -61,7 +61,7 @@ variables:
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  group: flyway_vars
+  group: rg_flyway_vars
   cherryPickVersions: ${{parameters.cherryPickVersions}}
 
 stages:
@@ -72,7 +72,7 @@ stages:
     - job: Build
       variables:
       - group: ${{parameters.buildStage.variableGroupName}}
-      - group: flyway_vars
+      - group: rg_flyway_vars
       steps:
         
         - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
@@ -113,7 +113,7 @@ stages:
         displayName: Release Preview
         variables:
         - group: ${{stage.variableGroupName}}
-        - group: flyway_vars
+        - group: rg_flyway_vars
         steps:
           - task: DownloadBuildArtifacts@0
             inputs:
@@ -128,14 +128,13 @@ stages:
           displayName: Change Report With Code Analysis
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
             - script: 'pip install sqlfluff==1.2.1'
               displayName: 'Install SQL Fluff'
               failOnStderr: true
             
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -154,10 +153,10 @@ stages:
           dependsOn: 'PreRelease'
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -176,10 +175,10 @@ stages:
           dependsOn: 'PreRelease'
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" 
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+
+            - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -218,7 +217,7 @@ stages:
         dependsOn: 'CodeReview'
         variables:
         - group: ${{stage.variableGroupName}}
-        - group: flyway_vars
+        - group: rg_flyway_vars
         steps:
 
           - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'

@@ -27,7 +27,7 @@ parameters:
       stage: 'Build'
       displayName: 'Deploy Build'
       executeBuild: true
-      variableGroupName: 'build_credentials_variable_group' #userName, password, target_database_JDBC, databaseName
+      variableGroupName: 'rg_build_credentials_variable_group' #userName, password, target_database_JDBC, databaseName
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -44,7 +44,7 @@ parameters:
       generateDriftAndChangeReport: true                     #requires check database to be provisioned
       failReleaseIfDriftDetected: false                      #only works if generateDriftAndChangeReport is set to true
       staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
-      variableGroupName: 'test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC 
+      variableGroupName: 'rg_test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC 
     
     - stage: 'Prod'
       dependsOn: 'Test'
@@ -53,7 +53,7 @@ parameters:
       generateDriftAndChangeReport: true
       failReleaseIfDriftDetected: true                  
       staticCodeAnalysis: false                             
-      variableGroupName: 'prod_credentials_variable_group' 
+      variableGroupName: 'rg_prod_credentials_variable_group' 
 
 variables:
 
@@ -62,19 +62,19 @@ variables:
   # The default is to have the migrations folder in the same directory as the yml file
   WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
 
-  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
   
   BUILD_NAME: 'Build'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
-  # Place following in flyway_vars variable group
+  # Place following in rg_flyway_vars variable group
   # FLYWAY_LICENSE_KEY
   # BASELINE_VERSION - make match the baseline version in your project
   # FIRST_UNDO_SCRIPT match the first undo version in your project
   # AGENT_POOL is the agent pool your pipeline will use - default to default
-  group: flyway_vars
+  group: rg_flyway_vars
 
 stages:
   - stage: Build
@@ -84,7 +84,7 @@ stages:
     - job: Build
       variables:
       - group: ${{parameters.buildStage.variableGroupName}}
-      - group: flyway_vars
+      - group: rg_flyway_vars
       steps:
         
         - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
@@ -94,7 +94,7 @@ stages:
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineVersion=$(BASELINE_VERSION)'
           failOnStderr: true
           condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
           displayName: 'Validate Migrate Scripts'
@@ -125,7 +125,7 @@ stages:
         displayName: Release Preview
         variables:
         - group: ${{stage.variableGroupName}}
-        - group: flyway_vars
+        - group: rg_flyway_vars
         steps:
           - task: DownloadBuildArtifacts@0
             inputs:
@@ -140,14 +140,14 @@ stages:
           displayName: Change Report With Code Analysis
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
+            # pip throws an error if an update is pending, hence continueOnError set to true
             - script: 'pip install sqlfluff==1.3.2'
               displayName: 'Install SQL Fluff'
-              failOnStderr: true
+              continueOnError: true
             
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -changes -drift -code  -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -dryrun -changes -drift -code -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -156,6 +156,7 @@ stages:
             
             - task: PublishBuildArtifacts@1
               displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              condition: always()
               inputs:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
@@ -166,10 +167,10 @@ stages:
           dependsOn: 'PreRelease'
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -changes -drift -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+
+            - script: '$(FLYWAY) check -dryrun -changes -drift -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -178,6 +179,7 @@ stages:
             
             - task: PublishBuildArtifacts@1
               displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              condition: always()
               inputs:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
@@ -188,10 +190,10 @@ stages:
           dependsOn: 'PreRelease'
           variables:
           - group: ${{stage.variableGroupName}}
-          - group: flyway_vars
+          - group: rg_flyway_vars
           steps:
-            # -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}"
-            - script: '$(FLYWAY) -baselineOnMigrate=true check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+
+            - script: '$(FLYWAY) check -dryrun -url="$(target_database_JDBC)" -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -200,6 +202,7 @@ stages:
             
             - task: PublishBuildArtifacts@1
               displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              condition: always()
               inputs:
                 ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
                 PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
@@ -230,10 +233,10 @@ stages:
         dependsOn: 'CodeReview'
         variables:
         - group: ${{stage.variableGroupName}}
-        - group: flyway_vars
+        - group: rg_flyway_vars
         steps:
 
-          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(target_database_JDBC)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+          - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(target_database_JDBC)" -baselineVersion=$(BASELINE_VERSION)'
             workingDirectory: $(WORKING_DIRECTORY)
             displayName: ${{stage.displayName}}
             failOnStderr: true
