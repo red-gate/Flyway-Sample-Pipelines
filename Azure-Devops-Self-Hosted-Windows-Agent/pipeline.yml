@@ -44,7 +44,7 @@ parameters:
       generateDriftAndChangeReport: true                     #requires check database to be provisioned
       failReleaseIfDriftDetected: false                      #only works if generateDriftAndChangeReport is set to true
       staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
-      variableGroupName: 'rg_test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC 
+      variableGroupName: 'rg_test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password 
     
     - stage: 'Prod'
       dependsOn: 'Test'
@@ -147,7 +147,7 @@ stages:
               displayName: 'Install SQL Fluff'
               continueOnError: true
             
-            - script: '$(FLYWAY) check -dryrun -changes -drift -code -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -dryrun -changes -drift -code -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -170,7 +170,7 @@ stages:
           - group: rg_flyway_vars
           steps:
 
-            - script: '$(FLYWAY) check -dryrun -changes -drift -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -dryrun -changes -drift -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -193,7 +193,7 @@ stages:
           - group: rg_flyway_vars
           steps:
 
-            - script: '$(FLYWAY) check -dryrun -url="$(target_database_JDBC)" -check.failOnDrift="${{stage.failReleaseIfDriftDetected}}" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            - script: '$(FLYWAY) check -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
               workingDirectory: '$(WORKING_DIRECTORY)'
               failOnStderr: true
               displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
