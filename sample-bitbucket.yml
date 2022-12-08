@@ -1,0 +1,33 @@
+# This is the top-level "document" in the YAML file
+# It defines the pipeline and its stages
+pipeline:
+  # The pipeline has a "name" and a list of "stages"
+  name: Migrate SQL Server data
+  stages:
+    # Each stage has a "name" and a list of "steps"
+name: Migrate data
+      steps:
+        # Each step has a "name" and a "script" to run
+name: Install Flyway
+          script: |
+            # This script installs the Flyway command-line tool
+            curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/6.5.8/flyway-commandline-6.5.8-linux-x64.tar.gz | tar xz
+          mv flyway-6.5.8/ flyway/
+            export PATH=$PWD/flyway/:$PATH
+
+name: Migrate database
+          script: |
+            # This script uses the Flyway tool to migrate the database
+            flyway -url="jdbc:sqlserver://<server>:<port>;databaseName=<database>" \
+                   -user=<username> \
+                   -password=<password> \
+                   migrate
+    # The pipeline has a second stage that deploys the migrated database
+name: Deploy database
+      steps:
+name: Deploy to server
+          script: |
+            # This script deploys the migrated database to the server
+            # Replace the placeholders with the appropriate values
+            ssh <user>@<server> "mkdir -p <deployment_path>"
+            scp <database_file> <user>@<server>:<deployment_path>/

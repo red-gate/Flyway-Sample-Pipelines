@@ -1,0 +1,25 @@
+name: ADO-self-hosted-pipeline-templatized
+ 
+trigger:
+  branches:
+    include:
+      - production
+  paths:
+    include:
+      - migrations/*
+
+variables:
+- template: templates/vars.yml
+
+stages:
+- template: templates/deploy.yml
+  parameters:
+    stage: Prod
+    displayName: Deploy Prod
+    # dependsOn: Build
+    pauseForCodeReview: false
+    failReleaseIfDriftDetected: false
+    generateDriftAndChangeReport: true                   
+    staticCodeAnalysis: false                             
+    targetCredentialsVariableGroup: rg_prod_credentials_variable_group
+    pipelineParamsVariableGroup: rg_flyway_pipeline_vars

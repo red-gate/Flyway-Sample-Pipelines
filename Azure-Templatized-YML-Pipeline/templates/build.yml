@@ -1,0 +1,38 @@
+parameters:
+- name: stage
+  default: Build
+- name: displayName
+  default: Deploy Build
+- name: executeBuild
+  default: true
+- name: targetCredentialsVariableGroup
+  default: ''
+- name: pipelineParamsVariableGroup
+  default: ''
+  
+stages:
+  - ${{if eq(parameters.executeBuild, true)}}:
+    - stage: Build
+      pool: $(AGENT_POOL)
+      displayName: ${{parameters.displayName}} 
+      jobs:
+      - job: Build
+        variables:
+        - group: ${{parameters.targetCredentialsVariableGroup}}
+        - group: rg_flyway_vars
+        - group: ${{parameters.pipelineParamsVariableGroup}}
+        steps:
+          
+          - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+            failOnStderr: true
+            displayName: 'Clean Build DB'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+
+          - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
+            failOnStderr: true
+            displayName: 'Validate Migrate Scripts'
+
+          - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+            continueOnError: true
+            displayName: 'Validate Undo Scripts'

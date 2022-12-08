@@ -1,0 +1,8 @@
+variables:
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+  BUILD_NAME: 'Repository-Snapshot'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
