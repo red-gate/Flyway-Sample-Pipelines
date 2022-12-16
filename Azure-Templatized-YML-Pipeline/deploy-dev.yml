@@ -1,30 +1,32 @@
 name: ADO-self-hosted-pipeline-templatized
  
-trigger:
-  branches:
-    include:
-      - test
-  paths:
-    include:
-      - migrations/*
+# trigger:
+#   branches:
+#     include:
+#       - development
+#   paths:
+#     include:
+#       - migrations/*
+
+trigger: none
 
 variables:
 - template: templates/vars.yml
 
 stages:
-- template: templates/build.yml
-  parameters:
-    stage: Build
-    displayName: Deploy Build
-    executeBuild: true
-    targetCredentialsVariableGroup: rg_build_credentials_variable_group
-    pipelineParamsVariableGroup: rg_flyway_pipeline_vars
+# - template: templates/build.yml
+#   parameters:
+#     stage: Build
+#     displayName: Deploy Build
+#     executeBuild: false
+#     targetCredentialsVariableGroup: rg_build_credentials_variable_group
+#     pipelineParamsVariableGroup: rg_flyway_pipeline_vars
 
 - template: templates/deploy.yml
   parameters:
     stage: Test
     displayName: Deploy Test
-    dependsOn: Build
+    # dependsOn: Build
     pauseForCodeReview: false
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   

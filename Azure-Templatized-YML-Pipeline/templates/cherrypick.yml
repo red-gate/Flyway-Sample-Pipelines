@@ -17,33 +17,19 @@ parameters:
   default: ''
 - name: pipelineParamsVariableGroup
   default: ''
-
-variables:
-  cherryPickVersions: ''
+- name: cherryPickVersions
+  displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+  default: ''
+  type: string
 
 stages:
   - stage: ${{parameters.stage}} 
     pool: $(AGENT_POOL)
     displayName: ${{parameters.displayName}} 
-    dependsOn: ${{parameters.dependsOn}} 
+    dependsOn: ${{parameters.dependsOn}}
     jobs:
-    - job: PreRelease
-      displayName: Release Preview
-      variables:
-      - group: ${{parameters.targetCredentialsVariableGroup}}
-      - group: rg_flyway_vars
-      - group: ${{parameters.pipelineParamsVariableGroup}}
-      steps:
-        - task: DownloadBuildArtifacts@0
-          inputs:
-            buildType: 'current'
-            downloadType: 'single'
-            artifactName: '$(BUILD_NAME)'
-            downloadPath: '$(System.ArtifactsDirectory)'
-        
     - ${{if eq(parameters.staticCodeAnalysis, true)}}:
       - job: ChangeReport
-        dependsOn: 'PreRelease'
         displayName: Change Report With Code Analysis
         variables:
         - group: ${{parameters.targetCredentialsVariableGroup}}
@@ -54,7 +40,7 @@ stages:
             displayName: 'Install SQL Fluff'
             failOnStderr: true
           
-          - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -70,14 +56,13 @@ stages:
     - ${{if and(eq( parameters.generateDriftAndChangeReport, true), eq( parameters.staticCodeAnalysis, false))}}:
       - job: ChangeReport
         displayName: Change Report
-        dependsOn: 'PreRelease'
         variables:
         - group: ${{parameters.targetCredentialsVariableGroup}}
         - group: rg_flyway_vars
         - group: ${{parameters.pipelineParamsVariableGroup}}
         steps:
 
-          - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -93,14 +78,13 @@ stages:
     - ${{if and(eq( parameters.generateDriftAndChangeReport, false), eq( parameters.staticCodeAnalysis, false))}}:
       - job: ChangeReport
         displayName: Change Report
-        dependsOn: 'PreRelease'
         variables:
         - group: ${{parameters.targetCredentialsVariableGroup}}
         - group: rg_flyway_vars
         - group: ${{parameters.pipelineParamsVariableGroup}}
         steps:
 
-          - script: '$(FLYWAY) -baselineOnMigrate=true check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -116,7 +100,6 @@ stages:
     - ${{if eq(parameters.pauseForCodeReview, true)}}:
       - job: CodeReview
         displayName: Code Review
-        dependsOn: 'PreRelease'
         pool: server
         steps:
           - task: ManualValidation@0
@@ -131,7 +114,6 @@ stages:
     - ${{if ne(parameters.pauseForCodeReview, true)}}:
       - job: CodeReview
         displayName: Skipping Code Review
-        dependsOn: 'PreRelease'
         pool: server
     
     - job: Deploy
@@ -143,7 +125,7 @@ stages:
       - group: ${{parameters.pipelineParamsVariableGroup}}
       steps:
 
-        - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC) -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)'
+        - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC)'
           workingDirectory: $(System.DefaultWorkingDirectory)
           displayName: ${{parameters.displayName}}
           failOnStderr: true

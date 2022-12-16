@@ -12,6 +12,19 @@ variables:
 - template: templates/vars.yml
 
 stages:
+
+- template: templates/deploy.yml
+  parameters:
+    stage: Stage
+    displayName: Deploy Stage
+    # dependsOn: Build
+    pauseForCodeReview: false
+    failReleaseIfDriftDetected: false
+    generateDriftAndChangeReport: true                   
+    staticCodeAnalysis: false                             
+    targetCredentialsVariableGroup: rg_stage_credentials_variable_group
+    pipelineParamsVariableGroup: rg_flyway_pipeline_vars
+
 - template: templates/deploy.yml
   parameters:
     stage: Prod
