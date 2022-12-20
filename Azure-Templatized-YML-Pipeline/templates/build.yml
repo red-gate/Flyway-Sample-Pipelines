@@ -5,9 +5,9 @@ parameters:
   default: Deploy Build
 - name: executeBuild
   default: true
-- name: targetCredentialsVariableGroup
+- name: targetCredentials
   default: ''
-- name: pipelineParamsVariableGroup
+- name: pipelineParameters
   default: ''
   
 stages:
@@ -18,9 +18,9 @@ stages:
       jobs:
       - job: Build
         variables:
-        - group: ${{parameters.targetCredentialsVariableGroup}}
-        - group: rg_flyway_vars
-        - group: ${{parameters.pipelineParamsVariableGroup}}
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
         steps:
           
           - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'

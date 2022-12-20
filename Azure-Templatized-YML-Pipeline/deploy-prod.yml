@@ -1,3 +1,14 @@
+# NOTE: This pipeline depends on the following variable groups: 
+
+# Name of variable group          Keys inside variable group
+# ----------------------          --------------------------
+# redgate_global_vars             FLYWAY_LICENSE_KEY, AGENT_POOL
+# redgate_pipeline_vars           BASELINE_VERSION, FIRST_UNDO_SCRIPT
+# redgate_build_credentials       userName, password, target_database_JDBC, databaseName
+# redgate_test_credentials        userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
+
+# Every target database will need its own variable group, which is referenced in a YML deployment script
+
 name: ADO-self-hosted-pipeline-templatized
  
 trigger:
@@ -22,8 +33,8 @@ stages:
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   
     staticCodeAnalysis: false                             
-    targetCredentialsVariableGroup: rg_stage_credentials_variable_group
-    pipelineParamsVariableGroup: rg_flyway_pipeline_vars
+    targetCredentials: redgate_stage_credentials
+    pipelineParameters: redgate_pipeline_vars
 
 - template: templates/deploy.yml
   parameters:
@@ -34,5 +45,5 @@ stages:
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   
     staticCodeAnalysis: false                             
-    targetCredentialsVariableGroup: rg_prod_credentials_variable_group
-    pipelineParamsVariableGroup: rg_flyway_pipeline_vars
+    targetCredentials: redgate_prod_credentials
+    pipelineParameters: redgate_pipeline_vars

@@ -13,9 +13,9 @@ parameters:
   default: false
 - name: staticCodeAnalysis
   default: false
-- name: targetCredentialsVariableGroup
+- name: targetCredentials
   default: ''
-- name: pipelineParamsVariableGroup
+- name: pipelineParameters
   default: ''
 - name: cherryPickVersions
   displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
@@ -32,9 +32,9 @@ stages:
       - job: ChangeReport
         displayName: Change Report With Code Analysis
         variables:
-        - group: ${{parameters.targetCredentialsVariableGroup}}
-        - group: rg_flyway_vars
-        - group: ${{parameters.pipelineParamsVariableGroup}}
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
         steps:
           - script: 'pip install sqlfluff==1.2.1'
             displayName: 'Install SQL Fluff'
@@ -57,9 +57,9 @@ stages:
       - job: ChangeReport
         displayName: Change Report
         variables:
-        - group: ${{parameters.targetCredentialsVariableGroup}}
-        - group: rg_flyway_vars
-        - group: ${{parameters.pipelineParamsVariableGroup}}
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
         steps:
 
           - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
@@ -79,9 +79,9 @@ stages:
       - job: ChangeReport
         displayName: Change Report
         variables:
-        - group: ${{parameters.targetCredentialsVariableGroup}}
-        - group: rg_flyway_vars
-        - group: ${{parameters.pipelineParamsVariableGroup}}
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
         steps:
 
           - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -dryrun -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
@@ -121,7 +121,7 @@ stages:
       dependsOn: 'CodeReview'
       variables:
       - group: ${{parameters.targetCredentialsVariableGroup}}
-      - group: rg_flyway_vars
+      - group: redgate_global_vars
       - group: ${{parameters.pipelineParamsVariableGroup}}
       steps:
 
