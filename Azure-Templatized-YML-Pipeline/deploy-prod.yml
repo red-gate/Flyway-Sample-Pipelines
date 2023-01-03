@@ -20,15 +20,14 @@ trigger:
       - migrations/*
 
 variables:
-- template: templates/vars.yml
+- template: vars.yml@templates
 
 stages:
 
-- template: templates/deploy.yml
+- template: deploy.yml@templates
   parameters:
     stage: Stage
     displayName: Deploy Stage
-    # dependsOn: Build
     pauseForCodeReview: false
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   
@@ -36,11 +35,11 @@ stages:
     targetCredentials: redgate_stage_credentials
     pipelineParameters: redgate_pipeline_vars
 
-- template: templates/deploy.yml
+- template: deploy.yml@templates
   parameters:
     stage: Prod
     displayName: Deploy Prod
-    # dependsOn: Build
+    dependsOn: Stage
     pauseForCodeReview: false
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   

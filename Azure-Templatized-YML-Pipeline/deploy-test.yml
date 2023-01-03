@@ -20,22 +20,13 @@ trigger:
       - migrations/*
 
 variables:
-- template: templates/vars.yml
+- template: vars.yml@templates
 
 stages:
-- template: templates/build.yml
-  parameters:
-    stage: Build
-    displayName: Deploy Build
-    executeBuild: true
-    targetCredentials: redgate_build_credentials
-    pipelineParameters: redgate_pipeline_vars
-
-- template: templates/deploy.yml
+- template: deploy.yml@templates
   parameters:
     stage: Test
     displayName: Deploy Test
-    dependsOn: Build
     pauseForCodeReview: false
     failReleaseIfDriftDetected: false
     generateDriftAndChangeReport: true                   
