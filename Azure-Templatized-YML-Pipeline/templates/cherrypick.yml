@@ -18,9 +18,7 @@ parameters:
 - name: pipelineParameters
   default: ''
 - name: cherryPickVersions
-  displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
   default: ''
-  type: string
 
 stages:
   - stage: ${{parameters.stage}} 
@@ -120,9 +118,9 @@ stages:
       displayName: Deployment
       dependsOn: 'CodeReview'
       variables:
-      - group: ${{parameters.targetCredentialsVariableGroup}}
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
       - group: redgate_global_vars
-      - group: ${{parameters.pipelineParamsVariableGroup}}
       steps:
 
         - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC)'
