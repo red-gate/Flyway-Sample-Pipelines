@@ -14,35 +14,47 @@ name: ADO-self-hosted-pipeline-templatized
 trigger:
   branches:
     include:
-      - production
+      - prod
   paths:
     include:
       - migrations/*
+      
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: templates
 
 variables:
 - template: vars.yml@templates
 
 stages:
 
-- template: deploy.yml@templates
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
   parameters:
-    stage: Stage
-    displayName: Deploy Stage
-    pauseForCodeReview: false
-    failReleaseIfDriftDetected: false
-    generateDriftAndChangeReport: true                   
-    staticCodeAnalysis: false                             
-    targetCredentials: redgate_stage_credentials
+    stage: Test
+    displayName: Deploy Test
+    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
+    staticCodeAnalysis: true                            # optional flag, defaults to false            
+    targetCredentials: redgate_test_credentials
     pipelineParameters: redgate_pipeline_vars
 
-- template: deploy.yml@templates
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
   parameters:
-    stage: Prod
-    displayName: Deploy Prod
-    dependsOn: Stage
-    pauseForCodeReview: false
-    failReleaseIfDriftDetected: false
-    generateDriftAndChangeReport: true                   
-    staticCodeAnalysis: false                             
+    stage: Prod1
+    dependsOn: Test
+    pauseForCodeReview: true                            # optional flag, defaults to false
+    failReleaseIfDriftDetected: true                    # optional flag, defaults to false
+    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
+    staticCodeAnalysis: true                            # optional flag, defaults to false 
+    displayName: Deploy Prod1
     targetCredentials: redgate_prod_credentials
+    pipelineParameters: redgate_pipeline_vars
+
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Prod2
+    displayName: Deploy Prod2
+    dependsOn: Test           
+    targetCredentials: redgate_prod2_credentials
     pipelineParameters: redgate_pipeline_vars

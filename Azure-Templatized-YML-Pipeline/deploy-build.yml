@@ -18,14 +18,13 @@
 
 name: ADO-self-hosted-pipeline-templatized
  
-trigger: none
-# trigger:
-#   branches:
-#     include:
-#       - development
-#   paths:
-#     include:
-#       - migrations/*
+trigger:
+  branches:
+    include:
+      - development
+  paths:
+    include:
+      - migrations/*
 
 # Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
 # They can be included in the same repository if preferred: templates/vars.yml would work for the file below
@@ -45,32 +44,4 @@ stages:
     displayName: Deploy Build
     executeBuild: true
     targetCredentials: redgate_build_credentials
-    pipelineParameters: redgate_pipeline_vars
-
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
-  parameters:
-    stage: Test
-    displayName: Deploy Test
-    dependsOn: Build                          
-    targetCredentials: redgate_test_credentials
-    pipelineParameters: redgate_pipeline_vars
-
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
-  parameters:
-    stage: Stage
-    displayName: Deploy Stage
-    dependsOn: Test                           
-    targetCredentials: redgate_stage_credentials
-    pipelineParameters: redgate_pipeline_vars
-
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
-  parameters:
-    stage: Prod
-    displayName: Deploy Prod
-    dependsOn: Test
-    pauseForCodeReview: true                            # optional flag, defaults to false
-    failReleaseIfDriftDetected: true                    # optional flag, defaults to false
-    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
-    staticCodeAnalysis: true                            # optional flag, defaults to false            
-    targetCredentials: redgate_prod_credentials
     pipelineParameters: redgate_pipeline_vars
