@@ -1,6 +1,6 @@
-// This is an example of a Declarative Pipelineusing Flyway in a Jenkinsfile.
+// This is an example of a Declarative Pipeline using Flyway in a Jenkinsfile.
 // This example uses a self-hosted Windows agent.  The Flyway command line will need to be installed on the agent.
-// See the Redgate documentation downloading the command line or for a Jenkinsfile with Linux and other examples.
+// See the Redgate documentation for downloading the command line or for a Jenkinsfile with Linux and other examples.
 // You might also want to consider using the Flyway Docker image - https://hub.docker.com/r/redgate/flyway. 
 
 pipeline {
