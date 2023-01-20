@@ -1,0 +1,178 @@
+node {
+    def OutputDirectory = "C:/Program Files (x86)/Jenkins/jobs/Oracle DevOps (migrations)"
+     
+    def CiDatabaseJdbc = "jdbc:oracle:thin:@//localhost:1521/ci"
+    def AcceptanceDatabaseJdbc = "jdbc:oracle:thin:@//localhost:1521/acceptance"
+    def ProductionDatabaseJdbc = "jdbc:oracle:thin:@//localhost:1521/production"
+     
+    def Schema = "HR"
+    def User = "HR"
+    def Password = "Redg@te1"
+    def FlywayLicenseKey = "FL01432C1B675A8C13F71A7E7A3EA1622590EF0A660162F220976D98412B8040E10E36776A3A191A2627618C714AB04696C7D7B78099A03A214D0F58E0927B4C16DED077944C549FA4BDC98CA0C78D2BC8CAA7339BC7237E9BC4FACDEC632D8E73392070C71C321D0B72ADDCAE658A138EF6A118D00B78806B81064F52FF4EB03A144C2EAF42703EBCFA836870D9974A4E58A56940847252F826B322C1171B121665D8D2E050D9EB7934535526D0B5D894ECFFF4DD2D0E7EA710772742C3FDB24CC0DEFE16718D83BCA6C31F8396F9E0F8C543A181418F169EF4DAE41EEDF9E6C3ADD1FC4979063D4523C6A756F2FFB5010A1FF0CA4A95CB984F11C1B9F0FF503C5B"
+    def CodeAnalysisReportName = "RegexAnalysisReport.html"
+    
+    // def SQLCOMPARE='"C:\\Program Files\\Red Gate\\Schema Compare for Oracle 6\\sco.exe"'
+    // def SQLDATACOMPARE='"C:\\Program Files\\Red Gate\\Data Compare for Oracle 6\\dco.exe"'
+    def CODEANALYSIS='"C:\\Program Files\\Red Gate\\Code Analysis for Oracle\\cao.cmd"'
+     
+    stage ('Prep') {
+        echo "Ensure the pipeline is configured to clean the Jenkins workspace before checkout"
+        //bat('set')
+        deleteDir()
+        checkout scm
+    }
+ 
+    stage ('Build') {
+        echo "DB Build"
+        
+        def status
+        // Clean the CI DB to get a fresh build
+        status = bat returnStatus: true, label: "Clean", script:" FLYWAY -cleanDisabled=\"false\" clean info -url=${CiDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "Status of Running CI build: $status"
+        if (status != 0) { error('Running CI build failed') }
+         
+        // Generate the dry run script for later review
+        status = bat returnStatus: true, label: "DryRun", script:" FLYWAY migrate info -dryRunOutput=\"${OutputDirectory}/workspace/Build.sql\" -url=${CiDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "Status of Running CI build: $status"
+        if (status != 0) { error('Running CI build failed') }
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'Build.sql'
+ 
+        // Migrate the CI db
+        status = bat returnStatus: true, label: "Build", script:" FLYWAY migrate info -url=${CiDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "Status of Running CI build: $status"
+        if (status != 0) { error('Running CI build failed') }
+ 
+        // Execute the code analysis to check for issues
+        status = bat returnStatus: true, label: "Code Analysis", script:"${CODEANALYSIS} /source:migrations /outfile:CodeAnalysisResults.html /IAgreeToTheEula"
+        archiveArtifacts allowEmptyArchive: true, artifacts:'CodeAnalysisResults.html'
+        echo "Status of Running CI build: $status"
+        if (status != 0) {
+            if (status == 1) { error('Redgate Code Analysis for Oracle failed to complete due to a fatal error') }
+            else if (status == 2) {
+                status = 1
+                echo "Redgate Code Analysis for Oracle only partially completed - often this is because one or more SQL files could not be parsed (such files are currently excluded from the generated reports)"
+                }
+            else if (status == 3) { error('Redgate Code Analysis for Oracle ran successfully but reported one or more errors in the analyzed SQL files') }
+            else if (status == 4) {
+                status = 1
+                echo "Redgate Code Analysis for Oracle ran successfully but reported one or more warnings in the analyzed SQL files"
+                }
+            else {  error('Code Analysis failed')  }
+        }
+         
+        // Take a snapshot of the CI db after deploying to it to use in change reports for downstream environments
+        // Comparing the target environment to this snapshot will show an object level report of the expected changes
+        // status = bat returnStatus: true, label: "Snapshot", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:${User}/${Password}@localhost/CI{${Schema}} /snp:BuildStatePostDeploy.onp"
+        // if (status != 0) { error('Failed to create a snapshot of the CI database after deploying to it') }
+        // archiveArtifacts allowEmptyArchive: true, artifacts:'BuildStatePostDeploy.onp'
+         
+    }
+  
+    stage ('Unit Tests') {
+        echo "Running utPLSQL database Unit Tests"
+        /*
+        // status = bat returnStatus: true, label: "Unit Tests", script: "exec ut.Run();"
+        echo "Status of utPLSQL database Unit Tests: $status"
+        if (status != 0) { error('ERROR: Running Unit Tests failed') }
+     
+        status = junit allowEmptyResults: true, testResults: 'testResults.xml'
+        echo "Failed JUnit tests: $status.failCount"
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'testResults.xml'
+ 
+        zip zipFile: 'codeCoverage.zip', archive: true, glob: 'codeCoverage.html, codeCoverage.html_assets/*'
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'codeCoverage.zip', fingerprint: true
+        */
+    }
+ 
+    stage ('Deploy to Acceptance') {
+        echo "Deploying project to Acceptance Database"
+         
+        // status = bat returnStatus: true, label: "Acceptance Deployment report", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:BuildStatePostDeploy.onp{${Schema}} /target:${User}/${Password}@localhost/Acceptance{${Schema}} /report:Acceptance_schema_changes.html /reportType=interactive"
+        // archiveArtifacts allowEmptyArchive: true, artifacts: 'Acceptance_schema_changes.html'
+         
+        status = bat returnStatus: true, label: "Acceptance DryRun", script:" FLYWAY migrate -dryRunOutput=\"${OutputDirectory}/workspace/Acceptance.sql\" -url=${AcceptanceDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "Generating the dryrun script for Acceptance: $status"
+        if (status != 0) { error('Generating Dryrun script for Acceptance failed') }
+         
+        status = bat returnStatus: true, label: "Acceptance Static Code Analysis", script:" FLYWAY check -code -url=${AcceptanceDatabaseJdbc} -\"check.reportFilename=${CodeAnalysisReportName}\" -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "deploying to Acceptance: $status"
+        archiveArtifacts allowEmptyArchive: true, artifacts: "RegexAnalysisReport.html"
+        if (status != 0) { error('Code Analysis Failed') }
+        
+        status = bat returnStatus: true, label: "Acceptance Deployment", script:" FLYWAY migrate info -url=${AcceptanceDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "deploying to Acceptance: $status"
+        if (status != 0) { error('Deployment to Acceptance failed') }
+         
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'Acceptance.sql'
+        archiveArtifacts allowEmptyArchive: true, artifacts: '**/Acceptance_schema_changes_images/**'
+          
+    }
+     
+    stage ('Approval Gate'){
+        def message = "Approve release to Production?"
+        // wrapping in a time out so it does not block the agent and simply fails the build if there is no user intervention.
+        timeout(time: 30, unit: 'MINUTES') {
+            def userInput = input(
+                id: 'userInput',
+                message: "$message",
+                parameters: [
+                  [$class: 'TextParameterDefinition', defaultValue: 'I Approve The Deployment', description: 'To Proceed, type I Approve The Deployment', name: 'Review deployment artifacts before proceeding']
+                ]
+            )
+            if (userInput.indexOf('I Approve The Deployment') == -1) {
+                currentBuild.result = 'ABORTED'
+                error('Deployment aborted')
+            }
+        }
+    }
+     
+    stage ('Deploy to Production') {
+        echo "Deploying to Production Database"
+         
+        // Create a pre-deployment snapshot of Production
+        // status = bat returnStatus: true, label: "Production snapshot", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:${User}/${Password}@localhost/Production{${Schema}} /snp:ProductionStatePreDeploy.onp"
+        // if (status != 0) { error('Generating Production snapshot failed') }
+        // archiveArtifacts allowEmptyArchive: true, artifacts: 'ProductionStatePreDeploy.onp'
+         
+        // Checking for Production drift by using the Build snapshot from the previous build
+        // more logic needed to get latest successful build or possibly skip with warning/input from user if not found
+        // Integer previousBuildNumber = 0
+        // previousBuildNumber = "$BUILD_NUMBER" as Integer
+        // previousBuildNumber = previousBuildNumber - 1
+ 
+         
+        // status = bat returnStatus: true, label: "Production drift check", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:../builds/$previousBuildNumber/archive/BuildStatePostDeploy.onp{${Schema}} /target:ProductionStatePreDeploy.onp{${Schema}} /report=ProductionDriftReport.html /reportType=interactive"
+        // echo "Checking for Production Drift using /builds/$previousBuildNumber/archive/BuildStatePostDeploy.onp: $status"
+        // if (status == 61) {
+        //     // Stop the build because Production has drifted or get ok from user to continue
+        //     archiveArtifacts allowEmptyArchive: true, artifacts: 'ProductionDriftReport.html'
+        //     archiveArtifacts allowEmptyArchive: true, artifacts: '**/ProductionDriftReport_images/**'
+        //     error('Production has drifted since the last deployment')
+        // }
+ 
+        // Create a change report for Production
+        // status = bat returnStatus: true, label: "Production Deployment report", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:BuildStatePostDeploy.onp{${Schema}} /target:ProductionStatePreDeploy.onp{${Schema}} /report:Production_schema_changes.html /reportType=interactive"
+        // echo "Generating the change report for Production: $status"
+        // if (status != 0 && status != 61) { error('ERROR: Generating Production change report failed') }   // 0 = no diffs found; 61 = diffs found
+        // archiveArtifacts allowEmptyArchive: true, artifacts: 'Production_schema_changes.html'
+        // archiveArtifacts allowEmptyArchive: true, artifacts: '**/Production_schema_changes_images/**'
+ 
+        // Create the dry run script
+        status = bat returnStatus: true, label: "Production DryRun", script:" FLYWAY migrate -dryRunOutput=\"${OutputDirectory}/workspace/Production.sql\" -url=${ProductionDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "Generating the dryrun script for Production: $status"
+        if (status != 0) { error('Generating Dryrun script for Production failed') }
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'Production.sql'
+         
+        // Deploy to Production      
+        status = bat returnStatus: true, label: "Production Deployment", script:" FLYWAY migrate info -url=${ProductionDatabaseJdbc} -user=${User} -password=${Password} -schemas=${Schema} -licenseKey=${FlywayLicenseKey}"
+        echo "deploying to Production: $status"
+        if (status != 0) { error('Deployment to Production failed') }
+         
+        // Generate a rollback script for Production
+        // status = bat returnStatus: true, label: "Production rollback script", script:"${SQLCOMPARE} /i:sdwgvac /b:hdrg /forceservicename /source:ProductionStatePreDeploy.onp{${Schema}} /target:BuildStatePostDeploy.onp{${Schema}} /scriptfile:Production_rollback_script.sql"
+        // echo "Generating the rollback script for Production: $status"
+        // //if (status != 0 && status != 61) { error('ERROR: Generating Production rollback script report failed') }
+        // archiveArtifacts allowEmptyArchive: true, artifacts: 'Production_rollback_script.sql'
+ 
+    }
+}
