@@ -1,0 +1,134 @@
+// This is a very basic example of a Declarative Pipeline using Flyway in a Jenkinsfile (Build > Manual Approval Gate > Production).
+// This example uses a self-hosted Linux agent.  The Flyway command line will need to be installed on the agent.
+// See the Redgate documentation for downloading the command line or for other CI/CD examples to incorporate more flyway commands like flyway check.
+// You might also want to consider using the Flyway Docker image - https://hub.docker.com/r/redgate/flyway. 
+
+pipeline {
+   agent {
+      label "" // Specifying a label is optional. However, can be valuable to ensure only specific agents are used.
+   }
+   environment {
+      buildDirectory = "/home/Redgate/Build/Build-${BUILD_NUMBER}" // This will be the location where the GIT repo is cloned to (You can use the default ${env.WORKSPACE} location if preferred.)
+      releaseName = "Build_${env.BUILD_NUMBER}"
+      FLYWAY_LICENSE_KEY = "" // Enter your Flyway Teams license here. For added security, this could also be passed in as a secure environment variable if required.
+   }
+   triggers {
+      pollSCM('') // GIT can be polled every minute for changes, simply insert * * * * * - This has been disabled for testing, therefore manually trigger the pipeline run - Best Practice - GIT Repo to inform Jenkins when a PUSH request is made to preferred branch.
+   }
+   stages {
+      stage('Build') {
+         environment {
+            databaseHost = "10.0.0.4" // Database Host Address for Build Database
+            databasePort = "1433" // Database Port for Build Database
+            databaseInstance = "" // Optional - Database Instance for Build Database
+            databaseName = "DatabaseName_${env.STAGE_NAME}" // Build Database Name - {env.STAGE_NAME} will take the active stage name to append to DB name
+            databaseUsername = "UserName" // Username If Applicable - This is redundant if config file is used
+            databasePassword = "SecurePasswordGoesHere" //  Password If Applicable. For security, this could be entered within Jenkins credential manager and called. - This is redundant if config file is used
+            flywayJDBC = "-url=jdbc:sqlserver://${env.databaseHost};databaseName=${env.databaseName};instanceName=${env.databaseInstance}" //Add ;integratedSecurity=true to the end of this string if you do not require a Username/Password - Add ;instanceName=$(env.databaseinstance) to the end of this string if you have a named instance you'd like to use
+            flywayLocations = "-locations=filesystem:migrations" // This is the location of the local cloned GIT repo. {env.WORKSPACE} refers to the Jenkins Agent workspace area. It might be necessary to add some sub-folders to point to the migrations folder
+
+         }
+         steps {
+            echo 'Carrying Out Build Activities'
+
+            dir("${env.buildDirectory}") {
+               checkout scm // Checkout latest changes from GIT to Build Directory variable, as set in global evironment variable section.
+            }
+
+            echo "Current stage is - ${env.STAGE_NAME}"
+
+            echo "Running Flyway Build Script"
+
+            script {
+
+               echo "Running Flyway Build Using Username and Password"
+               def buildStatus
+               buildStatus = sh(returnStatus: true, label: "Run Flyway Build Process Against: ${env.DatabaseName}", script: ""
+                  "#!/bin/bash
+
+                  echo "Running Flyway Build Commands on: '${env.flywayJDBC}' '${env.flywayLocations}'"
+
+                  cd '${env.buildDirectory}/FlywayDB'
+
+                  flyway clean migrate info '${env.flywayJDBC}'
+                  '${env.flywayLocations}'
+                  '-user=${env.databaseUsername}'
+                  '-password=${env.databasePassword}'
+                  ""
+                  ")
+
+                  echo "Status of Running CI build: $buildStatus"
+                  if (buildStatus != 0) {
+                     error('Running ${env.STAGE_NAME} deployment failed')
+                  }
+               }
+            }
+         }
+
+         stage('Approval Gate') {
+            steps {
+               script {
+                  def message = "Approve Database Changes Before Proceeding"
+
+                  // Wrapping in a time out so it doesn't block the agent and simply fails the build after 5 minutes if there's no user intervention
+                  timeout(time: 30, unit: 'MINUTES') {
+                     def userInput = input(
+                        id: 'userInput', message: "$message", parameters: [
+                           [$class: 'TextParameterDefinition', defaultValue: 'I Approve The Deployment', description: 'To Proceed, type I Approve The Deployment', name: 'Review deployment artifacts before proceeding']
+                        ])
+                     // echo ("Env: "+userInput)
+                     if (userInput.indexOf('I Approve The Deployment') == -1) {
+                        currentBuild.result = 'ABORTED'
+                        error('Deployment aborted')
+                     }
+                  }
+               }
+            }
+         }
+         
+         stage('Prod') {
+            environment {
+               databaseHost = "10.0.0.4" // Database Host Address for Prod Database
+               databasePort = "1433" // Database Port for Prod Database
+               databaseInstance = "" // Optional - Database Instance for Prod Database
+               databaseName = "DatabaseName_${env.STAGE_NAME}" // Prod Database Name - {env.STAGE_NAME} will take the active stage name to append to DB name
+               databaseUsername = "UserName" // Add Username If Applicable
+               databasePassword = "SecurePasswordGoesHere" // Add Password If Applicable. For security, this could be entered within Jenkins credential manager and called.
+               flywayJDBC = "-url=jdbc:sqlserver://${env.databaseHost};databaseName=${env.databaseName};instanceName=${env.databaseInstance}" //Add ;integratedSecurity=true to the end of this string if you do not require a Username/Password - Add ;instanceName=$(env.databaseinstance) to the end of this string if you have a named instance you'd like to use
+               flywayLocations = "-locations=filesystem:migrations" // This is the location of the local cloned GIT repo. {env.WORKSPACE} refers to the Jenkins Agent workspace area. It might be necessary to add some sub-folders to point to the migrations folder
+
+            }
+            steps {
+               echo 'Carrying Out Production Migration Activities'
+
+               echo "Current stage is - ${env.STAGE_NAME}"
+
+               echo "Running Flyway Production Script"
+
+               script {
+
+                  echo "Running Flyway Build Using Username and Password"
+                  def buildStatus
+                  buildStatus = sh(returnStatus: true, label: "Run Flyway Production Process Against: ${env.DatabaseName}", script: ""
+                     "#!/bin/bash
+
+                     echo "Running Flyway Migrate Commands on: '${env.flywayJDBC}' '${env.flywayLocations}'"
+
+                     cd '${env.buildDirectory}/FlywayDB'
+
+                     flyway migrate info '${env.flywayJDBC}'
+                     '${env.flywayLocations}'
+                     '-user=${env.databaseUsername}'
+                     '-password=${env.databasePassword}'
+                     ""
+                     ")
+
+                     echo "Status of Running CI build: $buildStatus"
+                     if (buildStatus != 0) {
+                        error("Running ${env.STAGE_NAME} deployment failed")
+                     }
+                  }
+               }
+            }
+         }
+      }
