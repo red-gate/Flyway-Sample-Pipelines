@@ -1,0 +1,1 @@
+The templatized azure devops pipeline is our recommended approach. Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/templatized-pipelines
