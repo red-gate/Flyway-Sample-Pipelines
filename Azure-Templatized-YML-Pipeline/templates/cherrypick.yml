@@ -98,6 +98,7 @@ stages:
     - ${{if eq(parameters.pauseForCodeReview, true)}}:
       - job: CodeReview
         displayName: Code Review
+        dependsOn: ChangeReport
         pool: server
         steps:
           - task: ManualValidation@0
@@ -111,12 +112,13 @@ stages:
     
     - ${{if ne(parameters.pauseForCodeReview, true)}}:
       - job: CodeReview
+        dependsOn: ChangeReport
         displayName: Skipping Code Review
         pool: server
     
     - job: Deploy
       displayName: Deployment
-      dependsOn: 'CodeReview'
+      dependsOn: CodeReview
       variables:
       - group: ${{parameters.targetCredentials}}
       - group: ${{parameters.pipelineParameters}}
