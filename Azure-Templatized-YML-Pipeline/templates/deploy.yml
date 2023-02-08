@@ -33,11 +33,11 @@ stages:
         - group: redgate_global_vars
         steps:
           # pip throws an error if an update is pending, hence continueOnError set to true
-          - script: 'pip install sqlfluff==1.3.2'
+          - script: 'pip install sqlfluff==1.2.1'
             displayName: 'Install SQL Fluff'
             continueOnError: true
           
-          - script: '$(FLYWAY) check -dryrun -changes -drift -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) check -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -60,7 +60,7 @@ stages:
         - group: redgate_global_vars
         steps:
 
-          - script: '$(FLYWAY) check -dryrun -changes -drift -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) check -dryrun -drift -changes -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -check.reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
