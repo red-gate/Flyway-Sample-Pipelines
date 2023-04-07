@@ -1,0 +1,29 @@
+name: Flyway Deploy Prod
+on:
+  push:
+    branches:
+      - 'main'
+
+jobs: 
+  flyway-migrate:
+    runs-on: redgate-runner
+    defaults:
+          run:
+            shell: bash    
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: 'main'
+
+      - name: Flyway Migrate
+        run: flyway migrate 
+                -url="${{ vars.DB_SERVER }};databaseName=${{ vars.DB_NAME_PROD }};encrypt=${{ vars.ENCRYPT_BOOL }};trustServerCertificate=${{ vars.TRUST_CERT_BOOL }}"
+                -user=${{ vars.DB_USER_NAME_PROD }} 
+                -password=${{ secrets.DB_USER_PW_PROD }}
+                -locations="filesystem:${GITHUB_WORKSPACE}/migrations"
+                -licenseKey=${{ secrets.FLYWAY_LICENSE_KEY }}
+                -baselineOnMigrate=true
+                -errorOverrides=S0001:0:I-
+                -baselineVersion=${{ vars.BASELINE_VERSION }}
+        working-directory: ./migrations

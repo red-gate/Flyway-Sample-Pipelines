@@ -1,0 +1,29 @@
+name: Flyway Deploy Test
+on:
+  push:
+    branches:
+      - 'test'
+
+jobs: 
+  flyway-migrate:
+    runs-on: redgate-runner
+    defaults:
+          run:
+            shell: bash    
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: 'test'
+
+      - name: Flyway Migrate
+        run: flyway migrate 
+                -url="${{ vars.DB_SERVER }};databaseName=${{ vars.DB_NAME_TEST }};encrypt=${{ vars.ENCRYPT_BOOL }};trustServerCertificate=${{ vars.TRUST_CERT_BOOL }}"
+                -user=${{ vars.DB_USER_NAME_TEST }} 
+                -password=${{ secrets.DB_USER_PW_TEST }}
+                -locations="filesystem:${GITHUB_WORKSPACE}/migrations"
+                -licenseKey=${{ secrets.FLYWAY_LICENSE_KEY }}
+                -baselineOnMigrate=true
+                -errorOverrides=S0001:0:I-
+                -baselineVersion=${{ vars.BASELINE_VERSION }}
+        working-directory: ./migrations
