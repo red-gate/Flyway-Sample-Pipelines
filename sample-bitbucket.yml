@@ -10,7 +10,7 @@ pipelines:
           
     - step:
         name: Migrate database with Flyway
-        image: boxfuse/flyway
+        image: redgate/flyway
         script:
           - echo 'Migrating database...'
           - flyway -url=$DATABASE_URL -user=$DATABASE_USER -password=$DATABASE_PASSWORD migrate
