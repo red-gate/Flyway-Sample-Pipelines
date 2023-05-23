@@ -18,14 +18,14 @@
 
 name: ADO-self-hosted-pipeline-templatized
  
-trigger: none
-# trigger:
-#   branches:
-#     include:
-#       - development
-#   paths:
-#     include:
-#       - migrations/*
+# trigger: none
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - migrations/*
 
 # Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
 # They can be included in the same repository if preferred: templates/vars.yml would work for the file below
@@ -36,41 +36,35 @@ resources:
       name: templates
 
 variables:
-- template: vars.yml@templates                          # templates/vars.yml if kept in same repository
+- template: csv-vars.yml@templates                          # templates/vars.yml if kept in same repository
 
 stages:
-- template: build.yml@templates                         # templates/build.yml if kept in same repository
-  parameters:
-    stage: Build
-    displayName: Deploy Build
-    executeBuild: true
-    targetCredentials: redgate_build_credentials
-    pipelineParameters: redgate_pipeline_vars
+# - template: build.yml@templates                         # templates/build.yml if kept in same repository
+#   parameters:
+#     stage: Build
+#     displayName: Deploy Build
+#     executeBuild: false
+#     targetCredentials: northwind_build_credentials
+#     pipelineParameters: northwind_pipeline_vars
 
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+- template: csv-deploy.yml@templates                        # templates/deploy.yml if kept in same repository
   parameters:
-    stage: Test
-    displayName: Deploy Test
-    dependsOn: Build                          
-    targetCredentials: redgate_test_credentials
-    pipelineParameters: redgate_pipeline_vars
+    stage: Batch1
+    displayName: Deploy Batch1
+    # dependsOn: Build  
+    baselineVersion: $(BASELINE_VERSION) 
+    flywayLicenseKey: $(FLYWAY_LICENSE_KEY)
+    workingDirectory: $(WORKING_DIRECTORY)
+    deploymentTargetsList: deployment-targets-batch-1.csv
+    pipelineParameters: northwind_pipeline_vars
 
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+- template: csv-deploy.yml@templates                        # templates/deploy.yml if kept in same repository
   parameters:
-    stage: Stage
-    displayName: Deploy Stage
-    dependsOn: Test                           
-    targetCredentials: redgate_stage_credentials
-    pipelineParameters: redgate_pipeline_vars
-
-- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
-  parameters:
-    stage: Prod
-    displayName: Deploy Prod
-    dependsOn: Test
-    pauseForCodeReview: true                            # optional flag, defaults to false
-    failReleaseIfDriftDetected: true                    # optional flag, defaults to false
-    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
-    staticCodeAnalysis: true                            # optional flag, defaults to false            
-    targetCredentials: redgate_prod_credentials
-    pipelineParameters: redgate_pipeline_vars
+    stage: Batch2
+    displayName: Deploy Batch2
+    # dependsOn: Build
+    baselineVersion: $(BASELINE_VERSION)
+    flywayLicenseKey: $(FLYWAY_LICENSE_KEY)
+    workingDirectory: $(WORKING_DIRECTORY)
+    deploymentTargetsList: deployment-targets-batch-2.csv
+    pipelineParameters: northwind_pipeline_vars

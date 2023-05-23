@@ -23,11 +23,11 @@ stages:
         - group: redgate_global_vars
         steps:
           
-          - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
-            failOnStderr: true
-            displayName: 'Clean Build DB'
-            env:
-              FLYWAY_CLEAN_DISABLED: false
+          # - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+          #   failOnStderr: true
+          #   displayName: 'Clean Build DB'
+          #   env:
+          #     FLYWAY_CLEAN_DISABLED: false
 
           - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
             failOnStderr: true
