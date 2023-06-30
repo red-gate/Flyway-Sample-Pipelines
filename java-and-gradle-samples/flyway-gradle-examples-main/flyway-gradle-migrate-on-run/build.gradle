@@ -1,0 +1,40 @@
+buildscript {
+    repositories {
+        maven { url "https://download.red-gate.com/maven/release/" }
+    }
+    dependencies {
+        classpath 'org.flywaydb.enterprise:flyway-proprietary:9.20.0'
+    }
+}
+
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.flywaydb.enterprise.flyway' version '9.20.0'
+}
+
+repositories { 
+    mavenCentral()
+}
+
+group = 'com.red.gate'
+version = '0.0.1-SNAPSHOT'
+
+application {
+    mainClass = 'com.red.gate.Main'
+}
+
+dependencies {
+    implementation 'org.xerial:sqlite-jdbc:3.41.2.2'
+    //    implementation 'com.oracle.database.jdbc:ojdbc8:19.6.0.0'
+}
+
+flyway {
+    url = "jdbc:sqlite:$projectDir/demo.db"
+    // url = 'jdbc:oracle:thin:@//localhost:62064/ORCLPDB1'
+    // user = 'pdbadmin'
+    // password = 'Peruzzi1'
+    licenseKey = ''
+}
+
+run.dependsOn flywayMigrate

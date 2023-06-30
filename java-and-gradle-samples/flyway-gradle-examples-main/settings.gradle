@@ -1,0 +1,4 @@
+rootProject.name = 'flyway-gradle-examples'
+include 'flyway-gradle-only'
+include 'flyway-gradle-simple-example'
+include 'flyway-gradle-migrate-on-run'

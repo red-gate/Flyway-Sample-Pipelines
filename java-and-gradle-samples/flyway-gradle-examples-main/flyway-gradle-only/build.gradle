@@ -1,0 +1,23 @@
+buildscript {
+    repositories {
+	mavenCentral()
+        maven { url "https://download.red-gate.com/maven/release/" }
+    }
+    dependencies {
+        classpath 'org.flywaydb.enterprise:flyway-core:9.20.0'
+        classpath 'org.flywaydb.enterprise:flyway-proprietary:9.20.0'
+	    classpath 'org.xerial:sqlite-jdbc:3.41.2.2'
+    }
+}
+
+plugins {
+    id 'org.flywaydb.enterprise.flyway' version '9.20.0'
+}
+
+flyway {
+    url = "jdbc:sqlite:$projectDir/demo.db"
+    locations = ['filesystem:./sql']
+    cleanDisabled = false
+    // cherryPick = 3
+    licenseKey = ''
+}
