@@ -1,1 +1,1 @@
-The templatized azure devops pipeline is our recommended approach. Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/proof-of-concept
+The templatized azure devops pipeline (https://github.com/red-gate/Flyway-Sample-Pipelines/tree/main/Azure-Templatized-YML-Pipeline) is our recommended approach. Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/proof-of-concept
