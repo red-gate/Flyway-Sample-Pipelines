@@ -32,14 +32,13 @@ stages:
         - group: ${{parameters.pipelineParameters}}
         - group: redgate_global_vars
         steps:
-          # pip throws an error if an update is pending, hence continueOnError set to true
-          # - script: 'pip install sqlfluff==1.2.1'
-          #   displayName: 'Install SQL Fluff'
-          #   continueOnError: true
+          # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+          - checkout: templates
+          - checkout: self
+            name: source
           
-          - script: '$(FLYWAY) info check -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
-            workingDirectory: '$(WORKING_DIRECTORY)'
-            failOnStderr: true
+          - script: '$(FLYWAY) info check -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+            continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
@@ -62,7 +61,7 @@ stages:
 
           - script: '$(FLYWAY) info check -dryrun -drift -changes -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
-            failOnStderr: true
+            continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
@@ -85,7 +84,7 @@ stages:
 
           - script: '$(FLYWAY) info check -dryrun -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
-            failOnStderr: true
+            continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
@@ -130,6 +129,6 @@ stages:
         - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(target_database_JDBC)"'
           workingDirectory: $(WORKING_DIRECTORY)
           displayName: ${{parameters.displayName}}
-          failOnStderr: true
+          continueOnError: false
           env:
             FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step
