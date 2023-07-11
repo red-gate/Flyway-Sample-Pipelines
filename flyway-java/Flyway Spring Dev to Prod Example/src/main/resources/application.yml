@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: Flyway Spring CITI Example
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:src/main/resources/prod.db
+  flyway:
+    enabled: true
+    locations: filesystem:src/main/resources/db/migration
+    licenseKey: <<your license key>>

@@ -1,0 +1,29 @@
+plugins {
+	id 'java'
+	id 'application'
+	id 'org.springframework.boot' version '3.1.1'
+	id 'io.spring.dependency-management' version '1.1.0'
+}
+
+group = 'com.redgate'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = '17'
+}
+
+repositories {
+	mavenCentral()
+	maven { url "https://download.red-gate.com/maven/release/" }
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	implementation 'org.flywaydb.enterprise:flyway-core:9.16.2'
+	implementation 'org.xerial:sqlite-jdbc:3.41.2.2'
+}
+
+application {
+	mainClass = 'com.redgate.Application'
+}
