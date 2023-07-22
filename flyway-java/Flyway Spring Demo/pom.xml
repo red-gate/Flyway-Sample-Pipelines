@@ -50,7 +50,7 @@
         <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-community-dialects</artifactId>
-            <version>6.2.2.Final</version>
+            <version>6.2.5.Final</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
