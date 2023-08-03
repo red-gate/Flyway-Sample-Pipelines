@@ -72,6 +72,8 @@ public class FlywayWrapper {
         LOG.info("Post-migration state of Redgate Clone container: " + RGCloneWrapper.RGCLONE_CONTAINER_NAME);
         info(cloneFlyway);
 
+        rgCloneWrapper.delete();
+
         return migrateResult.success;
     }
 

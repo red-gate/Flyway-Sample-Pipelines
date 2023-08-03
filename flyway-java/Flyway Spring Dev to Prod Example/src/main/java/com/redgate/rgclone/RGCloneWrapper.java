@@ -16,7 +16,7 @@ public class RGCloneWrapper {
     public static final String RGCLONE_CONTAINER_NAME = System.getenv("RGCLONE_CONTAINER_NAME");
 
     public void create() {
-        String[] command = {RGCLONE_EXECUTABLE, "create", "data-container", "--name", RGCLONE_CONTAINER_NAME, "--lifetime", "5m", "-i", "111"};
+        String[] command = {RGCLONE_EXECUTABLE, "create", "data-container", "--name", RGCLONE_CONTAINER_NAME, "--lifetime", "1h", "-i", "111"};
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.environment().put("RGCLONE_API_ENDPOINT", RGCLONE_API_ENDPOINT);
         try {
@@ -26,6 +26,23 @@ public class RGCloneWrapper {
             int exitCode = process.waitFor();
             if (exitCode != 0) {
                 throw new Exception("Failed to create data container. Exit code: " + exitCode);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void delete() {
+        String[] command = {RGCLONE_EXECUTABLE, "delete", "data-container", RGCLONE_CONTAINER_NAME};
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.environment().put("RGCLONE_API_ENDPOINT", RGCLONE_API_ENDPOINT);
+        try {
+            Process process = processBuilder.start();
+            ProcessUtils.inheritIO(process.getInputStream(), LOG, false);
+            ProcessUtils.inheritIO(process.getErrorStream(), LOG, true);
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new Exception("Failed to drop data container. Exit code: " + exitCode);
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
