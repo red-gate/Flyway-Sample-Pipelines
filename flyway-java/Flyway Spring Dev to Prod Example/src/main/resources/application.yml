@@ -2,9 +2,10 @@ spring:
   application:
     name: Flyway Spring CITI Example
   datasource:
-    driver-class-name: org.sqlite.JDBC
-    url: jdbc:sqlite:src/main/resources/prod.db
+    url: jdbc:h2:mem:db;Mode=Oracle;DB_CLOSE_DELAY=-1
   flyway:
     enabled: true
     locations: filesystem:src/main/resources/db/migration
-    licenseKey: <<your license key>>
+    baselineOnMigrate: true
+    create-schemas: true
+    schemas: SHOP
