@@ -1,0 +1,66 @@
+parameters:
+- name: version
+  type: string
+  default: '9.21.1'
+- name: edition
+  type: string
+  default: community
+  values:
+    - community
+    - teams
+- name: platform
+  type: string
+  default: windows
+  values:
+    - windows
+    - macosx
+    - linux
+
+
+steps:
+- task: PowerShell@2
+  displayName: 'Download and unzip Flyway command line'
+  env:
+    FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
+    FLYWAY_VERSION: ${{ parameters.version }}
+    FLYWAY_PLATFORM: ${{ parameters.platform }}
+  inputs:
+    targetType: 'inline'    
+    script: |
+      # Write your PowerShell commands here.
+      $version = $env:FLYWAY_VERSION
+      $platform = $env:FLYWAY_PLATFORM
+      $extension = $platform -eq 'windows' ? 'zip' : 'tar.gz' 
+      Write-Host "Hello Flyway Enterprise, getting Version $version for $platform"
+      $flywayZip = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$version/flyway-commandline-$version-$platform-x64.$extension" 
+      $targetZip = "flyway-commandline-$version-$platform-x64.$extension"
+      $flyway = "flyway-$version"
+      $flywayPath = Join-Path (Get-Location).ToString() -ChildPath "\Tools\$flyway"
+      mkdir ./Tools
+      # Remove-Item .\Tools -Force -Recurse -ErrorAction Ignore
+      Invoke-WebRequest $flywayZip -OutFile $targetZip
+      if ($platform -eq 'windows')
+      {
+        Expand-Archive -LiteralPath $targetZip -DestinationPath ./Tools
+      }
+      else
+      {
+        tar -xvf $targetZip -C ./Tools
+        chmod +x $flywayPath/flyway
+      }      
+      write-host "##vso[task.prependpath]$flywayPath"
+    pwsh: true
+    workingDirectory: '$(Pipeline.Workspace)'
+- task: PowerShell@2
+  displayName: 'Check Flyway Client'
+  continueOnError: true
+  env:
+    #FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
+    FLYWAY_EDITION: ${{ parameters.edition }}
+  inputs:
+   targetType: 'inline'
+   script: |  
+     write-host "$($env:PATH)"
+     flyway -v
+   pwsh: true
+   failOnStderr: false
