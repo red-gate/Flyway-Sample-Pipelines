@@ -3,36 +3,36 @@ parameters:
   default: Build
 - name: displayName
   default: Deploy Build
-- name: executeBuild
-  default: true
+- name: cleanBuildDB
+  default: false
 - name: targetCredentials
   default: ''
 - name: pipelineParameters
   default: ''
   
 stages:
-  - ${{if eq(parameters.executeBuild, true)}}:
-    - stage: Build
-      pool: $(AGENT_POOL)
-      displayName: ${{parameters.displayName}} 
-      jobs:
-      - job: Build
-        variables:
-        - group: ${{parameters.targetCredentials}}
-        - group: ${{parameters.pipelineParameters}}
-        - group: redgate_global_vars
-        steps:
-          
-          # - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
-          #   continueOnError: false
-          #   displayName: 'Clean Build DB'
-          #   env:
-          #     FLYWAY_CLEAN_DISABLED: false
+  - stage: Build
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+        
+        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+          continueOnError: false
+          displayName: 'Clean Build DB'
+          condition: and(succeeded(), eq('${{ parameters.cleanBuildDB }}', true))
+          env:
+            FLYWAY_CLEAN_DISABLED: false
 
-          - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
-            continueOnError: false
-            displayName: 'Validate Migrate Scripts'
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
+          continueOnError: false
+          displayName: 'Validate Migrate Scripts'
 
-          - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
-            continueOnError: true
-            displayName: 'Validate Undo Scripts'
+        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'

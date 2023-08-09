@@ -42,6 +42,6 @@ stages:
   parameters:
     stage: Build
     displayName: Deploy Build
-    executeBuild: true
+    cleanBuildDB: true                                  # Optional flag. Defaults to false
     targetCredentials: redgate_build_credentials
     pipelineParameters: redgate_pipeline_vars
