@@ -1,12 +1,14 @@
 # NOTE: This pipeline depends on the following variable groups: 
 
-# Name of variable group          Keys inside variable group
-# ----------------------          --------------------------
-# redgate_global_vars             FLYWAY_LICENSE_KEY, AGENT_POOL
-# redgate_pipeline_vars           BASELINE_VERSION, FIRST_UNDO_SCRIPT
-# redgate_build_credentials       userName, password, target_database_JDBC, databaseName
-# redgate_test_credentials        userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password, schemas
-  #schemas is a comma separated list of schemas used. variable may be empty but key must exist
+# Name of variable group                  Keys inside variable group
+# ----------------------                  --------------------------
+# redgate_global_vars                     FLYWAY_LICENSE_KEY
+# redgate_pipeline_vars                   BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL, schemas
+# redgate_target_database_credentials     userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
+
+# redgate_build_credentials               userName, password, target_database_JDBC, databaseName
+
+# schemas in pipeline_vars is a comma separated list of schemas used. variable may be empty but key must exist
 
 # Every target database will need its own variable group, which is referenced in a YML deployment script
 # The default is to include the agent pools inside a pipeline definition, to accommodate multiple agent pools.
@@ -15,6 +17,7 @@
 # PARELLELISM
 # Pay close attention to the "dependsOn" flag - this determines which block follows each other. 
 # It's possible to parallelize dpelyments by using multiple agent pools and the "dependsOn" flag.
+
 
 name: ADO-self-hosted-pipeline-templatized
  
