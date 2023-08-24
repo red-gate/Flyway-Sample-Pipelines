@@ -20,7 +20,7 @@ parameters:
       stage: 'Build'
       displayName: 'Deploy Build'
       executeBuild: true
-      variableGroupName: 'rg_build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName
+      variableGroupName: 'rg_build_credentials_variable_group' #contains userName, password, target_database_JDBC, databaseName, schemas
 
   # This is the extensible definition of your target environments. 
   # Every parameter in deploymentStages corresponds to an environment - here it's Test and Prod.
@@ -54,7 +54,7 @@ variables:
   # The default is to have the migrations folder in the same directory as the yml file
   WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
 
-  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" "-plugins.clean.mode=default" -schemas="$(schemas)" -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
 
   BUILD_NAME: 'Build'
   RELEASE_PREVIEW: 'Release-Preview.sql'

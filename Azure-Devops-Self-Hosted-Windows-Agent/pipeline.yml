@@ -44,7 +44,7 @@ parameters:
       generateDriftAndChangeReport: true                     #requires check database to be provisioned
       failReleaseIfDriftDetected: false                      #only works if generateDriftAndChangeReport is set to true
       staticCodeAnalysis: false                              #requires python3 installed on agent and pip on PATH
-      variableGroupName: 'rg_test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password 
+      variableGroupName: 'rg_test_credentials_variable_group'   #userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password, schemas
     
     - stage: 'Prod'
       dependsOn: 'Test'
@@ -62,7 +62,7 @@ variables:
   # The default is to have the migrations folder in the same directory as the yml file
   WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
 
-  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
   
   BUILD_NAME: 'Build'
   RELEASE_PREVIEW: 'Release-Preview.sql'
