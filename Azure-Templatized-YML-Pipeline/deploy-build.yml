@@ -3,12 +3,12 @@
 # Name of variable group                  Keys inside variable group
 # ----------------------                  --------------------------
 # redgate_global_vars                     FLYWAY_LICENSE_KEY
-# redgate_pipeline_vars                   BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL, schemas
+# redgate_pipeline_vars                   BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL, SCHEMAS
 # redgate_target_database_credentials     userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
 
 # redgate_build_credentials               userName, password, target_database_JDBC, databaseName
 
-# schemas in pipeline_vars is a comma separated list of schemas used. variable may be empty but key must exist
+# schemas in pipeline_vars is a comma separated list of schemas used.
 
 # Every target database will need its own variable group, which is referenced in a YML deployment script
 # The default is to include the agent pools inside a pipeline definition, to accommodate multiple agent pools.
