@@ -19,7 +19,7 @@ variables:
   
   FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
-  FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "-plugins.clean.mode=default" -schemas="$(schemas)" "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+  FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
   
   # Contains FLYWAY_LICENSE_KEY, BASELINE_VERSION, FIRST_UNDO_SCRIPT, FLYWAY_DOCKER_IMAGE, AGENT_POOL
   # Make BASELINE_VERSION match the baseline version in your project
