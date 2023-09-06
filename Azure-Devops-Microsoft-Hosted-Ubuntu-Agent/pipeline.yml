@@ -71,10 +71,10 @@ stages:
       - group: flyway_vars
       steps:
 
-        - script: |
-            $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
-          failOnStderr: false
-          displayName: 'Clean Build DB'
+        # - script: |
+        #     $(FLYWAY) info clean info -url='$(JDBC)' -cleanDisabled='false'
+        #   failOnStderr: false
+        #   displayName: 'Clean Build DB'
 
         - script: |
             $(FLYWAY) info migrate info -url='$(JDBC)' -cleanDisabled='true'

@@ -88,13 +88,13 @@ stages:
       - group: pipeline_flyway_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
-          continueOnError: false
-          workingDirectory: '$(WORKING_DIRECTORY)'
-          displayName: 'Clean Build DB'
-          condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
-          env:
-            FLYWAY_CLEAN_DISABLED: false
+        # - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+        #   continueOnError: false
+        #   workingDirectory: '$(WORKING_DIRECTORY)'
+        #   displayName: 'Clean Build DB'
+        #   condition: eq('${{ parameters.buildStage.executeBuild }}', 'true')
+        #   env:
+        #     FLYWAY_CLEAN_DISABLED: false
 
         - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -baselineVersion=$(BASELINE_VERSION)'
           continueOnError: false
