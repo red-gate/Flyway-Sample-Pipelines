@@ -42,7 +42,7 @@ stages:
             name: source
           
           - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
-            workingDirectory: '$(WORKING_DIRECTORY)'
+            workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
             failOnStderr: true
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
