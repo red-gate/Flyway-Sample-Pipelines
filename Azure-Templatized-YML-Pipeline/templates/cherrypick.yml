@@ -37,6 +37,9 @@ stages:
           # - script: 'pip install sqlfluff==1.2.1'
           #   displayName: 'Install SQL Fluff'
           #   failOnStderr: true
+          - checkout: templates
+          - checkout: self
+            name: source
           
           - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
             workingDirectory: '$(WORKING_DIRECTORY)'
