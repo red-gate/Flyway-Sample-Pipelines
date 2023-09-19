@@ -7,6 +7,7 @@ variables:
   # DOCKER version here
   # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
+  # Look for images at https://hub.docker.com/r/redgate/flyway
   # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
 
   # Self-hosted install of Flyway version
