@@ -7,6 +7,9 @@ variables:
   # DOCKER version here
   # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
+  # I recommend defining FLYWAY_DOCKER_IMAGE in library group and specifying specific version, as seen below
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:9.22-azure
+  # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
   # Look for images at https://hub.docker.com/r/redgate/flyway
   # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
 
