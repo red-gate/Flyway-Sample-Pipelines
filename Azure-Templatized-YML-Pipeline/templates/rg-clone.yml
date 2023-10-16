@@ -71,9 +71,9 @@ stages:
             script: |
               $rgCloneData = rgclone get dc ${{parameters.cloneName}} -o json
               Write-Host ("##vso[task.setvariable variable=cloneData]$rgCloneData")
-        
+
         - task: PowerShell@2
-          displayName: Deploy
+          displayName: ${{parameters.displayName}}
           inputs:
             targetType: 'inline'
             script: | 
@@ -84,11 +84,13 @@ stages:
               $cloneString = $cloneJson.jdbcConnectionString
               Write-Host "cloneString - $cloneString"
 
-              $(FLYWAY) info migrate info -outOfOrder=true info -url="$cloneString" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"
+              $userName = $cloneJson.user
+              Write-Host "userName - $userName"
+
+              $password = $cloneJson.password
+              Write-Host "password - $password"
+
+              $(FLYWAY) info migrate info -outOfOrder=true info -url="""$cloneString""" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"
             workingDirectory: $(WORKING_DIRECTORY)
             displayName: ${{parameters.displayName}}
             continueOnError: false
-
-
-# $buildAString = "jdbc:postgresql://$(cloneJson).Username:$(cloneJson).Password@$(cloneJson).host:$(cloneJson).port/$(cloneJson).Database"
-# Write-Host "buildAString - $buildAString"
