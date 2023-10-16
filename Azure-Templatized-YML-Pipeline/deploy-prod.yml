@@ -40,6 +40,14 @@ variables:
 
 stages:
 
+# - template: rg-clone.yml@templates                        # templates/deploy.yml if kept in same repository
+#   parameters:
+#     stage: Clone
+#     displayName: Deploy Clone
+#     cloneImageNumber: 290
+#     targetCredentials: hr_oracle_test_credentials
+#     pipelineParameters: hr_oracle_pipeline_vars
+
 - template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
   parameters:
     stage: Test
