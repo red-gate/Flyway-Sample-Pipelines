@@ -5,16 +5,16 @@ variables:
   WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
 
   # DOCKER version here
-  # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
-  # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
   # I recommend defining FLYWAY_DOCKER_IMAGE in library group and specifying specific version, as seen below
-  # FLYWAY_DOCKER_IMAGE: redgate/flyway:9.22-azure
   # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
   # Look for images at https://hub.docker.com/r/redgate/flyway
-  # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:9.22-azure
+  # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
+  # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
+  # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/flyway.toml -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
 
   # Self-hosted install of Flyway version
-  # "-check.filterFile=$(WORKING_DIRECTORY)/Filters.scpf"
   FLYWAY: 'flyway -user="$(userName)" -password="$(password)"  "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)"'
   
   BUILD_NAME: 'Repository-Snapshot'
