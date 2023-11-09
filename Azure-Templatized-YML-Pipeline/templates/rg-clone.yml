@@ -68,7 +68,6 @@ stages:
             script: |
               $containerExistenceCheck = rgclone get dc ${{parameters.cloneName}}
               Write-Host ("##vso[task.setvariable variable=containerAlreadyExists]$containerExistenceCheck")
-            continueOnError: true
 
         - script: 'rgclone create data-container --image ${{parameters.cloneImageName}} --lifetime 10m --name ${{parameters.cloneName}}'
           displayName: 'Redgate Clone Creation'
@@ -81,6 +80,7 @@ stages:
             script: |
               $rgCloneData = rgclone get dc ${{parameters.cloneName}} -o json
               Write-Host ("##vso[task.setvariable variable=cloneData]$rgCloneData")
+          condition: succeededOrFailed()
 
         - task: PowerShell@2
           displayName: ${{parameters.displayName}}
@@ -103,3 +103,4 @@ stages:
               $(FLYWAY) info migrate info -outOfOrder=true info -url="""$cloneString""" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"
             workingDirectory: $(WORKING_DIRECTORY)
             continueOnError: false
+          condition: succeededOrFailed()
