@@ -22,7 +22,7 @@ parameters:
 - name: pipelineParameters
   default: ''
 # clone params
-- name: cloneImageNumber
+- name: cloneImageName
   default: ''
 - name: cloneName
   default: 'Clone-$(Build.BuildId)'
@@ -61,7 +61,7 @@ stages:
         - script: 'rgclone auth -t $(RGC_AUTH_TOKEN)'
           displayName: 'Redgate Clone Authorisation'
 
-        - script: 'rgclone create data-container --image ${{parameters.cloneImageNumber}} --lifetime 10m --name ${{parameters.cloneName}}'
+        - script: 'rgclone create data-container --image ${{parameters.cloneImageName}} --lifetime 10m --name ${{parameters.cloneName}}'
           displayName: 'Redgate Clone Creation'
 
         - task: PowerShell@2
@@ -92,5 +92,4 @@ stages:
 
               $(FLYWAY) info migrate info -outOfOrder=true info -url="""$cloneString""" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"
             workingDirectory: $(WORKING_DIRECTORY)
-            displayName: ${{parameters.displayName}}
             continueOnError: false
