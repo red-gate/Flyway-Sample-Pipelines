@@ -68,6 +68,7 @@ stages:
             script: |
               $containerExistenceCheck = rgclone get dc ${{parameters.cloneName}}
               Write-Host ("##vso[task.setvariable variable=containerAlreadyExists]$containerExistenceCheck")
+            continueOnError: true
 
         - script: 'rgclone create data-container --image ${{parameters.cloneImageName}} --lifetime 10m --name ${{parameters.cloneName}}'
           displayName: 'Redgate Clone Creation'
