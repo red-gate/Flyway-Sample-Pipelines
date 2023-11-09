@@ -44,7 +44,7 @@ stages:
 #   parameters:
 #     stage: Clone
 #     displayName: Deploy Clone
-#     cloneImageNumber: 290
+#     cloneImageName: NewWorldDB
 #     targetCredentials: hr_oracle_test_credentials
 #     pipelineParameters: hr_oracle_pipeline_vars
 
