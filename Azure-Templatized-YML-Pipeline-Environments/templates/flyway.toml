@@ -1,0 +1,167 @@
+id = "d9462e2f-5d20-4efa-98da-8ac2eabe53b6"
+name = "NewWorldDB"
+databaseType = "SqlServer"
+
+[environments.Test]
+url = "${env.URL}"
+user = "${env.USER}"
+password = "${PASSWORD}"
+schemas = [ ]
+displayName = "Test"
+
+[environments.Build]
+url = "${env.URL}"
+user = "${env.USER}"
+password = "${env.PASSWORD}"
+schemas = [ ]
+displayName = "Build"
+
+[environments.Prod1]
+url = "${env.URL}"
+user = "${env.USER}"
+password = "${env.PASSWORD}"
+schemas = [ ]
+displayName = "Prod1"
+
+[environments.Prod2]
+url = "${env.URL}"
+user = "${env.USER}"
+password = "${env.PASSWORD}"
+schemas = [ ]
+displayName = "Prod2"
+
+[environments.Check]
+url = "${env.BUILD_URL}"
+user = "${env.BUILD_USER}"
+password = "${env.BUILD_PASSWORD}"
+
+[flyway.check]
+buildEnvironment="Check"
+
+
+[flyway]
+locations = [ "filesystem:migrations" ]
+mixed = true
+outOfOrder = true
+validateMigrationNaming = true
+defaultSchema = "dbo"
+
+  [flyway.plugins]
+    [flyway.plugins.clean]
+    mode = "all"
+
+[flywayDesktop]
+developmentEnvironment = "development"
+shadowEnvironment = "shadow"
+schemaModel = "./schema-model"
+
+  [flywayDesktop.generate]
+  undoScripts = true
+
+[redgateCompare.sqlserver]
+filterFile = "Filter.scpf"
+
+[redgateCompare.sqlserver.options.behavior]
+addCreateOrAlterForRerunnableScripts = false
+addDropAndCreateForRerunnableScripts = false
+addNoPopulationToFulltextIndexes = false
+addObjectExistenceChecks = false
+addOnlineOnWhenCreatingIndexesOrAlteringColumns = false
+addWithEncryption = false
+considerNextFilegroupInPartitionSchemes = true
+decryptEncryptedObjects = true
+disableAutoColumnMapping = false
+dontUseAlterAssemblyToChangeClrObjects = false
+forbidDuplicateTableStorageSettings = false
+forceColumnOrder = false
+ignoreMigrationScripts = false
+includeDependencies = true
+includeRoleExistenceChecks = true
+includeSchemaExistenceChecks = true
+inlineFulltextFields = false
+inlineTableObjects = false
+useCaseSensitiveObjectDefinition = false
+useDatabaseCompatibilityLevel = false
+useSetStatementsInScriptDatabaseInfo = false
+writeAssembliesAsDlls = false
+
+[redgateCompare.sqlserver.options.ignores]
+ignoreAuthorizationOnSchemaObjects = false
+ignoreBindings = false
+ignoreChangeTracking = false
+ignoreCollations = true
+ignoreComments = false
+ignoreDataCompression = true
+ignoreDataSyncSchema = false
+ignoreDatabaseAndServerNameInSynonyms = true
+ignoreDmlTriggers = false
+ignoreDynamicDataMasking = false
+ignoreEventNotificationsOnQueues = false
+ignoreExtendedProperties = false
+ignoreFileGroupsPartitionSchemesAndPartitionFunctions = true
+ignoreFillFactorAndIndexPadding = true
+ignoreFullTextIndexing = false
+ignoreIdentitySeedAndIncrementValues = false
+ignoreIndexes = false
+ignoreInsteadOfTriggers = false
+ignoreInternallyUsedMicrosoftExtendedProperties = false
+ignoreLockPropertiesOfIndexes = false
+ignoreNocheckAndWithNocheck = false
+ignoreNotForReplication = true
+ignoreNullabilityOfColumns = false
+ignorePerformanceIndexes = false
+ignorePermissions = false
+ignoreReplicationTriggers = true
+ignoreSchemas = false
+ignoreSensitivityClassifications = false
+ignoreSetQuotedIdentifierAndSetAnsiNullsStatements = false
+ignoreSquareBracketsInObjectNames = false
+ignoreStatistics = true
+ignoreStatisticsIncremental = false
+ignoreStatisticsNoRecomputePropertyOnIndexes = false
+ignoreSynonymDependencies = false
+ignoreSystemNamedConstraintAndIndexNames = false
+ignoreTsqltFrameworkAndTests = true
+ignoreUserProperties = true
+ignoreUsersPermissionsAndRoleMemberships = true
+ignoreWhiteSpace = true
+ignoreWithElementOrder = true
+ignoreWithEncryption = false
+ignoreWithNoCheck = true
+
+[redgateCompare.sqlserver.data.options.mapping]
+includeTimestampColumns = false
+useCaseSensitiveObjectDefinition = true
+
+[redgateCompare.sqlserver.data.options.comparison]
+compressTemporaryFiles = false
+forceBinaryCollation = true
+treatEmptyStringAsNull = false
+trimTrailingWhiteSpace = false
+useChecksumComparison = false
+useMaxPrecisionForFloatComparison = false
+
+[redgateCompare.sqlserver.data.options.deployment]
+disableDdlTriggers = true
+disableDmlTriggers = false
+disableForeignKeys = false
+dontIncludeCommentsInScript = false
+dropPrimaryKeysIndexesAndUniqueConstraints = false
+reseedIdentityColumns = false
+skipIntegrityChecksForForeignKeys = false
+transportClrDataTypesAsBinary = false
+
+[[redgateCompare.staticDataTables]]
+schema = "dbo"
+table = "Shippers"
+excludedColumns = [ ]
+
+[[redgateCompare.staticDataTables]]
+schema = "dbo"
+table = "Suppliers"
+excludedColumns = [ ]
+
+[[redgateCompare.staticDataTables]]
+schema = "dbo"
+table = "Region"
+excludedColumns = [ ]

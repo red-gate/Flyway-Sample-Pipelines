@@ -22,17 +22,28 @@ stages:
       - group: redgate_global_vars
       steps:
         
-        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+        - script: '$(FLYWAY) clean info -environment="Build"'
           continueOnError: false
           displayName: 'Clean Build DB'
           condition: and(succeeded(), eq('${{ parameters.cleanBuildDB }}', true))
           env:
             FLYWAY_CLEAN_DISABLED: false
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
 
-        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
+        - script: '$(FLYWAY) migrate info -environment="Build"'
           continueOnError: false
           displayName: 'Validate Migrate Scripts'
+          env:
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
 
-        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+        - script: '$(FLYWAY) undo info -environment="Build" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
           displayName: 'Validate Undo Scripts'
+          env:
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
