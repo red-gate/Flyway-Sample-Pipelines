@@ -1,0 +1,45 @@
+parameters:
+- name: stage
+  default: stage
+- name: displayName
+  default: Deploy
+- name: dependsOn
+  default: ''
+- name: pauseForCodeReview
+  default: false
+- name: failReleaseIfDriftDetected
+  default: false
+- name: generateDriftAndChangeReport
+  default: false
+- name: staticCodeAnalysis
+  default: false
+- name: pipelineParameters
+  default: ''
+- name: deploymentTargetsList
+  default: ''
+- name: baselineVersion
+  default: ''
+- name: flywayLicenseKey
+  default: ''
+- name: workingDirectory
+  default: ''
+
+stages:
+  - stage: ${{parameters.stage}} 
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    dependsOn: ${{parameters.dependsOn}} 
+    jobs:
+    - job: Deploy
+      displayName: Deployment
+      variables:
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+
+        - task: PowerShell@2
+          displayName: 'Deploy From CSV Batch List'
+          inputs:
+            targetType: 'filePath'
+            filePath: 'PowershellDeploymentDefinition.ps1'
+            arguments: -deploymentTargetsList ${{ parameters.deploymentTargetsList }} -baselineVersion ${{ parameters.baselineVersion }} -flywayLicenseKey ${{ parameters.flywayLicenseKey }} -workingDirectory ${{ parameters.workingDirectory }}

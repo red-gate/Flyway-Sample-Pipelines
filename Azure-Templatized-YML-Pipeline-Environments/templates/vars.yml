@@ -1,0 +1,24 @@
+variables:
+  # This is the relative path to the migrations folder in your project, such as:
+  # $(System.DefaultWorkingDirectory)\project
+  # The default is to have the migrations folder in the same directory as the yml file
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+
+  # DOCKER version here
+  # I recommend defining FLYWAY_DOCKER_IMAGE in library group and specifying specific version, as seen below
+  # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
+  # Look for images at https://hub.docker.com/r/redgate/flyway
+
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:9.22-azure
+  # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
+  # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
+  # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
+
+  # Self-hosted install of Flyway version
+  FLYWAY: 'flyway "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)"'
+  
+  BUILD_NAME: 'Repository-Snapshot'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  

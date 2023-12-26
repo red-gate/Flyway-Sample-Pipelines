@@ -1,0 +1,189 @@
+parameters:
+- name: stage
+  default: stage
+- name: displayName
+  default: Deploy
+- name: dependsOn
+  default: ''
+- name: pauseForCodeReview
+  default: false
+- name: failReleaseIfDriftDetected
+  default: false
+- name: generateDriftAndChangeReport
+  default: false
+- name: staticCodeAnalysis
+  default: false
+- name: generateReport                              #This is the primary flag to turn off reports. TODO: Sanitize number of variables used here.
+  default: true
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+
+stages:
+  - stage: ${{parameters.stage}} 
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    dependsOn: ${{parameters.dependsOn}} 
+    jobs:
+    - ${{if and(eq(parameters.staticCodeAnalysis, true), eq( parameters.generateReport, true))}}:
+      - job: ChangeReport
+        displayName: Change Report With Code Analysis
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+          # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+          - checkout: templates
+          - checkout: self
+            name: source
+          
+          - script: echo "Section 1"
+            displayName: "Section 1"
+
+          - script: '$(FLYWAY) info check -environment="${{parameters.stage}}"  -check.buildEnvironment="Check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+            continueOnError: false
+            workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+              BUILD_URL: '$(CHECK_JDBC)'
+              BUILD_USER: '$(CHECK_USERNAME)'
+              BUILD_PASSWORD: '$(CHECK_PASSWORD)'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            condition: always()
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+    - ${{if and(eq( parameters.generateDriftAndChangeReport, true), eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+      - job: ChangeReport
+        displayName: Change Report
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - script: echo "Section 2"
+            displayName: "Section 2"
+
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -environment="${{parameters.stage}}"  -check.buildEnvironment="Check" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+            workingDirectory: '$(WORKING_DIRECTORY)'
+            continueOnError: false
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+              BUILD_URL: '$(CHECK_JDBC)'
+              BUILD_USER: '$(CHECK_USERNAME)'
+              BUILD_PASSWORD: '$(CHECK_PASSWORD)'
+
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            condition: always()
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+    
+    - ${{if and(eq( parameters.generateDriftAndChangeReport, false), eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+      - job: ChangeReport
+        displayName: Change Report
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - script: echo "Section 3"
+            displayName: "Section 3"
+
+          - script: '$(FLYWAY) info check -dryrun -environment="${{parameters.stage}}"  -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+            workingDirectory: '$(WORKING_DIRECTORY)'
+            continueOnError: false
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+
+             
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            condition: always()
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+    
+    - ${{if eq(parameters.generateReport, false)}}:
+      - job: ChangeReport
+        displayName: Change Report
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+          - powershell: |
+              Write-Host "##[warning]For reporting documentation see here: https://documentation.red-gate.com/fd/check-224919699.html"
+            workingDirectory: '$(WORKING_DIRECTORY)'
+            continueOnError: true
+            displayName: 'No Reports Generated'
+
+          # - bash: |
+          #     echo "##[warning]For reporting documentation see here: https://documentation.red-gate.com/fd/check-224919699.html"
+          #   workingDirectory: '$(WORKING_DIRECTORY)'
+          #   continueOnError: true
+          #   displayName: 'No Reports Generated'
+
+    - ${{if eq(parameters.pauseForCodeReview, true)}}:
+      - job: CodeReview
+        displayName: Code Review
+        dependsOn: 'ChangeReport'
+        pool: server
+        steps:
+          - task: ManualValidation@0
+            displayName: 'Review Change Report Prior To Release'
+            timeoutInMinutes: 4320 # job times out in 1 hour
+            inputs:
+              notifyUsers: |
+                user@email.com
+                example@example.com
+              instructions: 'Review changes'
+    
+    - ${{if eq(parameters.pauseForCodeReview, false)}}:
+      - job: CodeReview
+        pool: server
+        displayName: Skipping Code Review
+        dependsOn: 'ChangeReport'
+    
+    - job: Deploy
+      displayName: Deployment
+      dependsOn: 'CodeReview'
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+
+        - script: '$(FLYWAY) info migrate -outOfOrder=true info -environment="${{parameters.stage}}" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+          workingDirectory: $(WORKING_DIRECTORY)
+          displayName: ${{parameters.displayName}}
+          continueOnError: false
+          env:
+            FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step
+            URL: '$(TARGET_DATABASE_JDBC)'
+            USER: '$(USERNAME)'
+            PASSWORD: '$(PASSWORD)'
+ 
+

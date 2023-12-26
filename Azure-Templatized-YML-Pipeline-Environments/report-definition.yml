@@ -1,0 +1,58 @@
+# NOTE: This pipeline depends on the following variable groups: 
+
+# Name of variable group          Keys inside variable group
+# ----------------------          --------------------------
+# redgate_global_vars             FLYWAY_LICENSE_KEY, AGENT_POOL
+# redgate_pipeline_vars           BASELINE_VERSION, FIRST_UNDO_SCRIPT
+# redgate_build_credentials       userName, password, target_database_JDBC, databaseName
+# redgate_test_credentials        userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
+
+# Every target database will need its own variable group, which is referenced in a YML deployment script
+
+name: reports
+ 
+trigger:
+  branches:
+    include:
+      - prod
+  paths:
+    include:
+      - migrations/*
+      
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: templates
+
+variables:
+- template: vars.yml@templates
+
+stages:
+
+- template: report.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Test
+    displayName: Deploy Test
+    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
+    staticCodeAnalysis: true                            # optional flag, defaults to false            
+    targetCredentials: redgate_test_credentials
+    pipelineParameters: redgate_pipeline_vars
+
+- template: report.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Prod1
+    dependsOn: Test
+    generateDriftAndChangeReport: true                  # optional flag, defaults to false           
+    staticCodeAnalysis: true                            # optional flag, defaults to false 
+    displayName: Deploy Prod1
+    targetCredentials: redgate_prod_credentials
+    pipelineParameters: redgate_pipeline_vars
+
+- template: report.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Prod2
+    displayName: Deploy Prod2
+    dependsOn: Test           
+    targetCredentials: redgate_prod2_credentials
+    pipelineParameters: redgate_pipeline_vars

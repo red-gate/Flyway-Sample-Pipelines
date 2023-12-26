@@ -1,0 +1,49 @@
+parameters:
+- name: stage
+  default: Build
+- name: displayName
+  default: Deploy Build
+- name: cleanBuildDB
+  default: false
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+  
+stages:
+  - stage: Build
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    jobs:
+    - job: Build
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+        
+        - script: '$(FLYWAY) clean info -environment="Build"'
+          continueOnError: false
+          displayName: 'Clean Build DB'
+          condition: and(succeeded(), eq('${{ parameters.cleanBuildDB }}', true))
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
+
+        - script: '$(FLYWAY) migrate info -environment="Build"'
+          continueOnError: false
+          displayName: 'Validate Migrate Scripts'
+          env:
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
+
+        - script: '$(FLYWAY) undo info -environment="Build" -target="$(FIRST_UNDO_SCRIPT)"?'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'
+          env:
+            URL: '$(target_database_JDBC)'
+            PASSWORD: '$(password)'
+            USER: '$(userName)'
