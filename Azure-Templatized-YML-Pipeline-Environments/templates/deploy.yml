@@ -39,13 +39,22 @@ stages:
           - checkout: self
             name: source
           
-          - script: '$(FLYWAY) info check -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+          - script: echo "Section 1"
+            displayName: "Section 1"
+
+          - script: '$(FLYWAY) info check -environment="${{parameters.stage}}"  -check.buildEnvironment="Check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
             continueOnError: false
             workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
-          
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+              BUILD_URL: '$(CHECK_JDBC)'
+              BUILD_USER: '$(CHECK_USERNAME)'
+              BUILD_PASSWORD: '$(CHECK_PASSWORD)'
+
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             condition: always()
@@ -62,12 +71,22 @@ stages:
         - group: redgate_global_vars
         steps:
 
-          - script: '$(FLYWAY) info check -dryrun -drift -changes -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+          - script: echo "Section 2"
+            displayName: "Section 2"
+
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -environment="${{parameters.stage}}"  -check.buildEnvironment="Check" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+              BUILD_URL: '$(CHECK_JDBC)'
+              BUILD_USER: '$(CHECK_USERNAME)'
+              BUILD_PASSWORD: '$(CHECK_PASSWORD)'
+
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -85,12 +104,20 @@ stages:
         - group: redgate_global_vars
         steps:
 
-          - script: '$(FLYWAY) info check -dryrun -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+          - script: echo "Section 3"
+            displayName: "Section 3"
+
+          - script: '$(FLYWAY) info check -dryrun -environment="${{parameters.stage}}"  -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
+              URL: '$(TARGET_DATABASE_JDBC)'
+              USER: '$(USERNAME)'
+              PASSWORD: '$(PASSWORD)'
+
+             
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -149,9 +176,14 @@ stages:
       - group: redgate_global_vars
       steps:
 
-        - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(target_database_JDBC)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+        - script: '$(FLYWAY) info migrate -outOfOrder=true info -environment="${{parameters.stage}}" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
           workingDirectory: $(WORKING_DIRECTORY)
           displayName: ${{parameters.displayName}}
           continueOnError: false
           env:
             FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step
+            URL: '$(TARGET_DATABASE_JDBC)'
+            USER: '$(USERNAME)'
+            PASSWORD: '$(PASSWORD)'
+ 
+
