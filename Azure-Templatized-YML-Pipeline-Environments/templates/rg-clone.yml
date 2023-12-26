@@ -1,0 +1,107 @@
+# Prerequisites: Known image ID, rgclone installed on agent
+# https://documentation.red-gate.com/redgate-clone
+# rgclone upgrade link <web-api-endpoint>/cloning-api/download/cli/<architecture>
+# Available in library group: rgCloneEndpoint, rgCloneToken
+parameters:
+- name: stage
+  default: stage
+- name: displayName
+  default: Deploy To Clone
+- name: dependsOn
+  default: ''
+- name: pauseForCodeReview
+  default: false
+- name: failReleaseIfDriftDetected
+  default: false
+- name: generateDriftAndChangeReport
+  default: false
+- name: staticCodeAnalysis
+  default: false
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+# clone params
+- name: cloneImageName
+  default: ''
+- name: cloneName
+  default: 'Clone-$(Build.BuildId)'
+
+stages:
+  - stage: ${{parameters.stage}} 
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    dependsOn: ${{parameters.dependsOn}} 
+    jobs:
+    - job: ChangeReport
+      displayName: Change Report With Code Analysis
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      - group: redgate_clone_vars
+      steps:
+        # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+        - checkout: templates
+        - checkout: self
+          name: source
+
+        - task: PowerShell@2
+          displayName: 'Install Or Update Redgate Clone'
+          inputs:
+            targetType: 'filePath'
+            filePath: '$(Build.SourcesDirectory)\templates\InstallOrUpdateRgClone.ps1'
+
+        - script: 'set RGCLONE_API_ENDPOINT=$(RGCLONE_API_ENDPOINT)'
+          displayName: 'Redgate Clone Initalisation'
+
+        - script: 'rgclone version'
+          displayName: 'Redgate Clone Version'
+
+        - script: 'rgclone auth -t $(RGC_AUTH_TOKEN)'
+          displayName: 'Redgate Clone Authorisation'
+
+        - task: PowerShell@2
+          displayName: Check If Container Already Exists
+          inputs:
+            targetType: 'inline'
+            script: |
+              $containerExistenceCheck = rgclone get dc ${{parameters.cloneName}}
+              Write-Host ("##vso[task.setvariable variable=containerAlreadyExists]$containerExistenceCheck")
+              exit 0
+
+        - script: 'rgclone create data-container --image ${{parameters.cloneImageName}} --lifetime 10m --name ${{parameters.cloneName}}'
+          displayName: 'Redgate Clone Creation'
+          condition: ne(variables['containerAlreadyExists'], '0') 
+
+        - task: PowerShell@2
+          displayName: GetJDBCObject
+          inputs:
+            targetType: 'inline'
+            script: |
+              $rgCloneData = rgclone get dc ${{parameters.cloneName}} -o json
+              Write-Host ("##vso[task.setvariable variable=cloneData]$rgCloneData")
+          condition: succeededOrFailed()
+
+        - task: PowerShell@2
+          displayName: ${{parameters.displayName}}
+          inputs:
+            targetType: 'inline'
+            script: | 
+              Write-Host "The value of cloneData is : $($env:cloneData)"
+              $cloneJson = $($env:cloneData) | ConvertFrom-Json
+              Write-Host "cloneJson - $cloneJson"
+
+              $cloneString = $cloneJson.jdbcConnectionString
+              Write-Host "cloneString - $cloneString"
+
+              $userName = $cloneJson.user
+              Write-Host "userName - $userName"
+
+              $password = $cloneJson.password
+              Write-Host "password - $password"
+
+              $(FLYWAY) info migrate info -outOfOrder=true info -url="""$cloneString""" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"
+            workingDirectory: $(WORKING_DIRECTORY)
+            continueOnError: false
+          condition: succeededOrFailed()
