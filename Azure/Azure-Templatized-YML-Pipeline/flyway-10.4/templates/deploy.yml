@@ -35,6 +35,7 @@ stages:
         - group: redgate_global_vars
         steps:
           # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+          # the templates and the name
           - checkout: templates
           - checkout: self
             name: source

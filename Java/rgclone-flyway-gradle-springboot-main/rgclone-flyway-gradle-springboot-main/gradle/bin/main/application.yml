@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: Flyway Spring CITI Example
+  datasource:
+    url: jdbc:h2:mem:db;Mode=Oracle;DB_CLOSE_DELAY=-1
+  flyway:
+    enabled: true
+    locations: filesystem:src/main/resources/db/migration
+    baselineOnMigrate: true
+    create-schemas: true
+    schemas: HR
