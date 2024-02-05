@@ -51,7 +51,7 @@ stages:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
-    - ${{if and(eq( eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+    - ${{if and(eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
       - job: ChangeReport
         displayName: Change Report
         variables:
@@ -74,7 +74,7 @@ stages:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
     
-    - ${{if and(eq( parameters.generateDriftAndChangeReport, false), eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+    - ${{if and( eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
       - job: ChangeReport
         displayName: Change Report
         variables:
