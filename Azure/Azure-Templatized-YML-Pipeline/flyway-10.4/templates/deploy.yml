@@ -9,8 +9,6 @@ parameters:
   default: false
 - name: failReleaseIfDriftDetected
   default: false
-- name: generateDriftAndChangeReport
-  default: false
 - name: staticCodeAnalysis
   default: false
 - name: generateReport                              #This is the primary flag to turn off reports. TODO: Sanitize number of variables used here.
@@ -35,7 +33,6 @@ stages:
         - group: redgate_global_vars
         steps:
           # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
-          # the templates and the name
           - checkout: templates
           - checkout: self
             name: source
@@ -54,7 +51,7 @@ stages:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
-    - ${{if and(eq( parameters.generateDriftAndChangeReport, true), eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+    - ${{if and(eq( eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
       - job: ChangeReport
         displayName: Change Report
         variables:
@@ -150,7 +147,7 @@ stages:
       - group: redgate_global_vars
       steps:
 
-        - script: '$(FLYWAY) info migrate -outOfOrder=true info -url="$(target_database_JDBC)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+        - script: '$(FLYWAY) info repair migrate -outOfOrder=true info -url="$(target_database_JDBC)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
           workingDirectory: $(WORKING_DIRECTORY)
           displayName: ${{parameters.displayName}}
           continueOnError: false
