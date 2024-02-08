@@ -36,7 +36,7 @@ resources:
       name: templates
 
 variables:
-- template: csv-vars.yml@templates                          # templates/vars.yml if kept in same repository
+- template: vars.yml@templates                          # templates/vars.yml if kept in same repository
 
 stages:
 # - template: build.yml@templates                         # templates/build.yml if kept in same repository
@@ -56,6 +56,7 @@ stages:
     flywayLicenseKey: $(FLYWAY_LICENSE_KEY)
     workingDirectory: $(WORKING_DIRECTORY)
     deploymentTargetsList: deployment-targets-batch-1.csv
+    schemas: $(SCHEMAS)
     pipelineParameters: northwind_pipeline_vars
 
 - template: csv-deploy.yml@templates                        # templates/deploy.yml if kept in same repository
@@ -66,5 +67,6 @@ stages:
     baselineVersion: $(BASELINE_VERSION)
     flywayLicenseKey: $(FLYWAY_LICENSE_KEY)
     workingDirectory: $(WORKING_DIRECTORY)
+    schemas: $(SCHEMAS)
     deploymentTargetsList: deployment-targets-batch-2.csv
     pipelineParameters: northwind_pipeline_vars

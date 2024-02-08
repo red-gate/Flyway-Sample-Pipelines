@@ -23,6 +23,8 @@ parameters:
   default: ''
 - name: workingDirectory
   default: ''
+- name: schemas
+  default: ''
 
 stages:
   - stage: ${{parameters.stage}} 
@@ -42,4 +44,4 @@ stages:
           inputs:
             targetType: 'filePath'
             filePath: 'PowershellDeploymentDefinition.ps1'
-            arguments: -deploymentTargetsList ${{ parameters.deploymentTargetsList }} -baselineVersion ${{ parameters.baselineVersion }} -flywayLicenseKey ${{ parameters.flywayLicenseKey }} -workingDirectory ${{ parameters.workingDirectory }}
+            arguments: -deploymentTargetsList ${{ parameters.deploymentTargetsList }} -baselineVersion ${{ parameters.baselineVersion }} -flywayLicenseKey ${{ parameters.flywayLicenseKey }} -workingDirectory ${{ parameters.workingDirectory }} -schemas ${{ parameters.schemas }}
