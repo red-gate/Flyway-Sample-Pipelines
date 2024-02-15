@@ -1,0 +1,18 @@
+phases:
+    #install:
+    #pre_build:
+    build:
+        commands:
+            - docker login -u $dockerlogin -p $dockerpassword
+            #- docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise clean
+            #- docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise validate
+            #- docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf flyway/flyway -enterprise -dryRunOutput="/flyway/SQL/output.sql" migrate
+            #- docker pull flyway/flyway-azure:lastest-alpine
+            - docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf flyway/flyway-azure:latest-alpine flyway -enterprise migrate
+            #- docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf redgate/flyway:9.0.0-beta2-azure flyway -enterprise migrate
+            #- docker run --rm -v $(pwd)/SQL:/flyway/SQL -v $(pwd)/conf:/flyway/conf redgate/flyway:9.0.0-beta2-azure flyway -enterprise -dryRunOutput="/flyway/SQL/output.sql" migrate
+    #post_build:
+#        docker run --rm -v c:\Users\grant\Documents\HamShackRadio\SQL:/flyway/SQL -v c:\Users\grant\Documents\HamShackRadio\conf:/flyway/conf flyway/flyway -enterprise clean
+#artifacts:
+#    files:
+#        $(pwd)/SQL/output.sql

@@ -1,0 +1,148 @@
+{
+    "pipeline": {
+        "name": "HamShackRadio",
+        "roleArn": "arn:aws:iam::158394292344:role/service-role/AWSCodePipelineServiceRole-us-east-1-HamShackRadio_CI",
+        "artifactStore": {
+            "type": "S3",
+            "location": "codepipeline-us-east-1-692251157596"
+        },
+        "stages": [
+            {
+                "name": "Source",
+                "actions": [
+                    {
+                        "name": "Source",
+                        "actionTypeId": {
+                            "category": "Source",
+                            "owner": "AWS",
+                            "provider": "CodeCommit",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "BranchName": "master",
+                            "PollForSourceChanges": "false",
+                            "RepositoryName": "HamShackRadio"
+                        },
+                        "outputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ],
+                        "inputArtifacts": [],
+                        "region": "us-east-1",
+                        "namespace": "SourceVariables"
+                    }
+                ]
+            },
+            {
+                "name": "Build",
+                "actions": [
+                    {
+                        "name": "Build",
+                        "actionTypeId": {
+                            "category": "Build",
+                            "owner": "AWS",
+                            "provider": "CodeBuild",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "ProjectName": "HamShackRadioCIBuild"
+                        },
+                        "outputArtifacts": [
+                            {
+                                "name": "BuildArtifact"
+                            }
+                        ],
+                        "inputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ],
+                        "region": "us-east-1",
+                        "namespace": "BuildVariables"
+                    }
+                ]
+            },
+            {
+                "name": "QA",
+                "actions": [
+                    {
+                        "name": "QADeploymentAndArtifactCreation",
+                        "actionTypeId": {
+                            "category": "Build",
+                            "owner": "AWS",
+                            "provider": "CodeBuild",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "ProjectName": "HamShackRadio_QA"
+                        },
+                        "outputArtifacts": [],
+                        "inputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ],
+                        "region": "us-east-1"
+                    }
+                ]
+            },
+            {
+                "name": "ProductionApproval",
+                "actions": [
+                    {
+                        "name": "ApproveProdDeployment",
+                        "actionTypeId": {
+                            "category": "Approval",
+                            "owner": "AWS",
+                            "provider": "Manual",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {},
+                        "outputArtifacts": [],
+                        "inputArtifacts": [],
+                        "region": "us-east-1"
+                    }
+                ]
+            },
+            {
+                "name": "ProductionDeployment",
+                "actions": [
+                    {
+                        "name": "DeployProdArtifact",
+                        "actionTypeId": {
+                            "category": "Deploy",
+                            "owner": "AWS",
+                            "provider": "CodeDeploy",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "ApplicationName": "HamShackRadio",
+                            "DeploymentGroupName": "HamShackRadioProduction"
+                        },
+                        "outputArtifacts": [],
+                        "inputArtifacts": [
+                            {
+                                "name": "BuildArtifact"
+                            }
+                        ],
+                        "region": "us-east-1"
+                    }
+                ]
+            }
+        ],
+        "version": 4,
+        "executionMode": "SUPERSEDED",
+        "pipelineType": "V1"
+    },
+    "metadata": {
+        "pipelineArn": "arn:aws:codepipeline:us-east-1:158394292344:HamShackRadio",
+        "created": "2020-10-22T08:40:17.446000-05:00",
+        "updated": "2020-11-06T09:47:32.752000-06:00"
+    }
+}
