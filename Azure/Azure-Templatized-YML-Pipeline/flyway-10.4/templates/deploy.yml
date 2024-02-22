@@ -11,7 +11,7 @@ parameters:
   default: false
 - name: staticCodeAnalysis
   default: false
-- name: generateReport                              #This is the primary flag to turn off reports. TODO: Sanitize number of variables used here.
+- name: generateReport                              #This is the primary flag to turn off reports.
   default: true
 - name: targetCredentials
   default: ''
