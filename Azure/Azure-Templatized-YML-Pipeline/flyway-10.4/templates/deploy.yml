@@ -74,29 +74,6 @@ stages:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
     
-    - ${{if and( eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
-      - job: ChangeReport
-        displayName: Change Report
-        variables:
-        - group: ${{parameters.targetCredentials}}
-        - group: ${{parameters.pipelineParameters}}
-        - group: redgate_global_vars
-        steps:
-
-          - script: '$(FLYWAY) info check -dryrun -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
-            workingDirectory: '$(WORKING_DIRECTORY)'
-            continueOnError: false
-            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            env:
-              FLYWAY_CLEAN_DISABLED: false
-          
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            condition: always()
-            inputs:
-              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
-    
     - ${{if eq(parameters.generateReport, false)}}:
       - job: ChangeReport
         displayName: Change Report
