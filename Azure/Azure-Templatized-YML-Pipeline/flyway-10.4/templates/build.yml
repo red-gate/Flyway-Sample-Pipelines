@@ -39,7 +39,7 @@ stages:
           continueOnError: false
           displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) info check -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -code -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+        - script: '$(FLYWAY) info check -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -code -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
           continueOnError: false
           workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
           displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
