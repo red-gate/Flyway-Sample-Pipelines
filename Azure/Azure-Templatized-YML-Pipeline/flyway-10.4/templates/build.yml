@@ -52,7 +52,7 @@ stages:
           condition: and(succeeded(), eq('${{ parameters.executeStaticCodeAnalysis }}', true))
           inputs:
             ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
-            PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+            PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html'
 
         - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
