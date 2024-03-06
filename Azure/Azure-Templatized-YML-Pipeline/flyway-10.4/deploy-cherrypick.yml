@@ -13,7 +13,7 @@ resources:
 
 parameters:
   - name: cherryPickVersions
-    displayName: 'Scripts To Undo: Comma Separated List Of Full Version Numbers'
+    displayName: 'Comma Separated List Of Full Version Numbers'
     default: ''
     type: string
 
