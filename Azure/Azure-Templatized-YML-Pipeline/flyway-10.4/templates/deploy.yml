@@ -17,6 +17,9 @@ parameters:
   default: ''
 - name: pipelineParameters
   default: ''
+- name: notificationsGroup
+  default: ''                         #[Microsoft]\Pipeline Developers 
+                                      #syntax discussions here: https://github.com/MicrosoftDocs/azure-devops-docs/issues/13320, https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/manual-validation-v0?view=azure-pipelines
 
 stages:
   - stage: ${{parameters.stage}} 
@@ -104,9 +107,7 @@ stages:
             displayName: 'Review Change Report Prior To Release'
             timeoutInMinutes: 4320 # job times out in 1 hour
             inputs:
-              notifyUsers: |
-                user@email.com
-                example@example.com
+              notifyUsers: ${{parameters.notificationsGroup}}
               instructions: 'Review changes'
     
     - ${{if eq(parameters.pauseForCodeReview, false)}}:
