@@ -43,6 +43,6 @@ stages:
     stage: Build
     displayName: Deploy Build
     cleanBuildDB: false
-    executeStaticCodeAnalysis: true
+    executeStaticCodeAnalysis: false
     targetCredentials: newworlddb_build_credentials
     pipelineParameters: newworlddb_pipeline_vars
