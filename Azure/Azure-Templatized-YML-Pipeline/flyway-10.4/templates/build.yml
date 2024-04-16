@@ -35,7 +35,7 @@ stages:
           env:
             FLYWAY_CLEAN_DISABLED: false
 
-        - script: '$(FLYWAY) info check -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -code -environment="target" -environments.target.url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+        - script: '$(FLYWAY) info check -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -code -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
           continueOnError: false
           workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
           displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -50,10 +50,10 @@ stages:
             ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html'
         
-        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
           continueOnError: false
           displayName: 'Validate Migrate Scripts'
 
-        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -target="$(FIRST_UNDO_SCRIPT)"?'
           continueOnError: true
           displayName: 'Validate Undo Scripts'
