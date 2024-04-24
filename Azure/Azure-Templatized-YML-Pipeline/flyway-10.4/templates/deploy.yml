@@ -63,7 +63,7 @@ stages:
         - group: redgate_global_vars
         steps:
 
-          - script: '$(FLYWAY) info check -dryrun -drift -changes -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+          - script: '$(FLYWAY) info check -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
