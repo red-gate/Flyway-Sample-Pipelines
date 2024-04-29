@@ -5,3 +5,6 @@ The folder structure has been re-organized to accommodate marking version number
 These pipelines are designed to support Enterprise and its functionality, though can easily be adjusted to support Teams. 
 
 CLI versions can be downloaded here: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+
+Useful Helper scripts from colleague Andrew Pierce can be found here: https://github.com/turimbar1/flyway-example-scripts/tree/main
+    - Some shamelessly stolen
