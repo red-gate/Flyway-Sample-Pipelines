@@ -5,6 +5,9 @@
 ###################################################################
 
 # Define base path
+
+# Update with your project directory below
+
 # $basePath = Get-Location
 $basePath = "C:\WorkingFolders\FWD\NewWorldDB"
 
