@@ -1,6 +1,6 @@
 #Flyway Version to Use - Check here for latest version information - https://documentation.red-gate.com/fd/command-line-184127404.html
  
-$flywayVersion = '9.21.2'
+$flywayVersion = '10.13'
  
 #Flyway URL to download CLI
  
