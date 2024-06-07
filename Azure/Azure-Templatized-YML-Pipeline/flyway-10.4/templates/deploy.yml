@@ -11,6 +11,8 @@ parameters:
   default: false
 - name: staticCodeAnalysis
   default: false
+- name: staticCodeAnalysisOnly
+  default: false
 - name: generateReport                              #This is the primary flag to turn off reports. TODO: Sanitize number of variables used here.
   default: true
 - name: targetCredentials
@@ -29,7 +31,8 @@ stages:
     displayName: ${{parameters.displayName}} 
     dependsOn: ${{parameters.dependsOn}} 
     jobs:
-    - ${{if and(eq(parameters.staticCodeAnalysis, true), eq( parameters.generateReport, true))}}:
+
+    - ${{if and(eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, true))}}:
       - job: ChangeReport
         displayName: Change Report With Code Analysis
         variables:
@@ -42,7 +45,7 @@ stages:
           - checkout: self
             name: source
           
-          - script: '$(FLYWAY) info check -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -code -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+          - script: '$(FLYWAY) info check -code -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.target.user="$(user)" -environments.target.password="$(password)" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
             continueOnError: false
             workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -56,7 +59,34 @@ stages:
               ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
               PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
 
-    - ${{if and(eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true))}}:
+    - ${{if and(eq(parameters.staticCodeAnalysis, true), eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, false))}}:
+      - job: ChangeReport
+        displayName: Change Report With Code Analysis
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+          # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+          - checkout: templates
+          - checkout: self
+            name: source
+          
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -code -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.target.user="$(user)" -environments.target.password="$(password)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+            continueOnError: false
+            workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            condition: always()
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+    - ${{if and(eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, false))}}:
       - job: ChangeReport
         displayName: Change Report
         variables:
@@ -65,7 +95,7 @@ stages:
         - group: redgate_global_vars
         steps:
 
-          - script: '$(FLYWAY) info check -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -dryrun -drift -changes -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -environment="target" -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"  -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'

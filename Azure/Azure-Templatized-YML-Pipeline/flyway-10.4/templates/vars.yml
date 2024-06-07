@@ -15,8 +15,9 @@ variables:
   # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
 
   # Self-hosted install of Flyway version
-  FLYWAY: 'flyway -user="$(userName)" -check.majorRules="L001" -check.majorTolerance="0" -password="$(password)" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)"'
-  
+  # -check.majorRules="RX901,RX902,RX903,RX904"
+  FLYWAY: 'flyway -user="$(userName)" -check.majorRules="RX100,RX101" -check.majorTolerance="0" -password="$(password)" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true"'
+
   BUILD_NAME: 'Repository-Snapshot'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
