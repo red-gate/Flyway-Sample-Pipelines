@@ -9,7 +9,7 @@ variables:
   # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
   # Look for images at https://hub.docker.com/r/redgate/flyway
 
-  # FLYWAY_DOCKER_IMAGE: redgate/flyway:9.22-azure
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:10.15-azure
   # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
   # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
@@ -21,10 +21,23 @@ variables:
   # -environments.target.user="$(user)" -environments.target.password="$(password)"
   # -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)"
 
-  FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true"'
+  # if credentials of username or pass are not required, conditionally do not reference empty values, which flyway does not like
+    
+  # $userName is not defined
+  ${{ if eq(variables['userName'], '') }}:
+    FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true"'
+
+  # $userName is defined - password implicitly assumed defined 
+  ${{ if ne(variables['userName'], '') }}: 
+    FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true"'
+
+
 
   BUILD_NAME: 'Repository-Snapshot'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
   
+
+
+
