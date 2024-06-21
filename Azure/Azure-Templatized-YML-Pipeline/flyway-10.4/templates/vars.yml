@@ -31,8 +31,6 @@ variables:
   ${{ if ne(variables['userName'], '') }}: 
     FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true"'
 
-
-
   BUILD_NAME: 'Repository-Snapshot'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
