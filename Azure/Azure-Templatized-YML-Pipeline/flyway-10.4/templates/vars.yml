@@ -14,28 +14,23 @@ variables:
   # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
   # FLYWAY: 'docker run --rm -v "$(FLYWAY_MIGRATIONS_PATH)":/flyway/migrations -v "$(FLYWAY_CONFIG_FILES)":/flyway/conf -v "$(System.ArtifactsDirectory)":/flyway/reports $(FLYWAY_DOCKER_IMAGE) flyway "-plugins.clean.mode=default" "-schemas=$(schemas)" -user="$(userName)" -password="$(password)" -licenseKey=$(FLYWAY_LICENSE_KEY)'
 
-  # Self-hosted install of Flyway version
-  # -check.majorRules="RX901,RX902,RX903,RX904"
-
   # these can be added as needed depending on auth type - add to deploy template as well
   # -environments.target.user="$(user)" -environments.target.password="$(password)"
   # -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)"
 
   # if credentials of username or pass are not required, conditionally do not reference empty values, which flyway does not like
-    
-  # $userName is not defined
-  ${{ if eq(variables['userName'], '') }}:
+  # https://developercommunity.visualstudio.com/t/azure-pipelines-expressions-unable-to-use-length-w/1303114
+  # https://learn.microsoft.com/en-us/azure/devops/pipelines/process/runtime-parameters?view=azure-devops&tabs=script
+
+  # $userName is not defined, use integratedSecurity in JDBC
+  ${{ if gt(length(join('', variables['userName'])), 0) }}:
     FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
-
-  # $userName is defined - password implicitly assumed defined 
-  ${{ if ne(variables['userName'], '') }}: 
-    FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
-
+  
+  # $userName is defined - password implicitly assumed defined
+  ${{ if le(length(join('', variables['userName'])), 0) }}: 
+    FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)" -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" "-plugins.clean.mode=default" -schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -oracle.sqlplus="true" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+  
   BUILD_NAME: 'Repository-Snapshot'
   RELEASE_PREVIEW: 'Release-Preview.sql'
   DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
   DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
-  
-
-
-
