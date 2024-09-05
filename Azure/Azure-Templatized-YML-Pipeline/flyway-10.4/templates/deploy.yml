@@ -21,6 +21,8 @@ parameters:
   default: ''
 - name: agentPool
   default: 'default'
+- name: installFlyway
+  default: 'true'
 - name: notificationsGroup
   default: ''                                       #[Microsoft]\Pipeline Developers 
                                                     #syntax discussions here: https://github.com/MicrosoftDocs/azure-devops-docs/issues/13320, https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/manual-validation-v0?view=azure-pipelines
@@ -32,9 +34,43 @@ stages:
     dependsOn: ${{parameters.dependsOn}} 
     jobs:
 
+    - ${{if eq( parameters.installFlyway, true)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - checkout: templates
+          - checkout: self
+            name: source
+
+          # Linux
+          - task: Bash@3  
+            condition: eq( variables['Agent.OS'], 'Linux' )
+            displayName: Install Flyway On Unix
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayUnix.sh'
+          
+          # Windows
+          - task: PowerShell@2
+            condition: eq( variables['Agent.OS'], 'Windows_NT' )
+            displayName: Install Flyway On Windows
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayWindows.ps1'
+    
+    - ${{if eq( parameters.installFlyway, false)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway - Disabled
+
     - ${{if and(eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, true))}}:
       - job: ChangeReport
         displayName: Change Report With Code Analysis
+        dependsOn: 'InstallFlyway'
         variables:
         - group: ${{parameters.targetCredentials}}
         - group: ${{parameters.pipelineParameters}}
@@ -62,6 +98,7 @@ stages:
     - ${{if and(eq(parameters.staticCodeAnalysis, true), eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, false))}}:
       - job: ChangeReport
         displayName: Change Report With Code Analysis
+        dependsOn: 'InstallFlyway'
         variables:
         - group: ${{parameters.targetCredentials}}
         - group: ${{parameters.pipelineParameters}}
@@ -89,6 +126,7 @@ stages:
     - ${{if and(eq( parameters.staticCodeAnalysis, false), eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, false))}}:
       - job: ChangeReport
         displayName: Change Report
+        dependsOn: 'InstallFlyway'
         variables:
         - group: ${{parameters.targetCredentials}}
         - group: ${{parameters.pipelineParameters}}
@@ -116,6 +154,7 @@ stages:
     - ${{if eq(parameters.generateReport, false)}}:
       - job: ChangeReport
         displayName: Change Report
+        dependsOn: 'InstallFlyway'
         variables:
         - group: ${{parameters.targetCredentials}}
         - group: ${{parameters.pipelineParameters}}
