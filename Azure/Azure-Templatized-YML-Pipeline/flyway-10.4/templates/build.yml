@@ -12,14 +12,49 @@ parameters:
 - name: executeStaticCodeAnalysis
   default: false
 - name: installFlyway
-  default: 'true'
+  default: false
   
 stages:
   - stage: Build
     pool: $(AGENT_POOL)
     displayName: ${{parameters.displayName}} 
     jobs:
+    - ${{if eq( parameters.installFlyway, true)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - checkout: templates
+          - checkout: self
+            name: source
+
+          # Linux
+          - task: Bash@3  
+            condition: eq( variables['Agent.OS'], 'Linux' )
+            displayName: Install Flyway On Unix
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayUnix.sh'
+          
+          # Windows
+          - task: PowerShell@2
+            condition: eq( variables['Agent.OS'], 'Windows_NT' )
+            displayName: Install Flyway On Windows
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayWindows.ps1'
+    
+    - ${{if eq( parameters.installFlyway, false)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway - Disabled
+        pool: server
+
     - job: Build
+      dependsOn: 'InstallFlyway'
       variables:
       - group: ${{parameters.targetCredentials}}
       - group: ${{parameters.pipelineParameters}}
@@ -30,34 +65,6 @@ stages:
         - checkout: self
           name: source
 
-        - ${{if eq( parameters.installFlyway, true)}}:
-          - job: InstallFlyway
-            displayName: Install Flyway
-            variables:
-            - group: ${{parameters.targetCredentials}}
-            - group: ${{parameters.pipelineParameters}}
-            - group: redgate_global_vars
-            steps:
-
-              # Linux
-              - script: |     
-                echo "Downloading and unzipping Flyway ${FLYWAY_VERSION}..."
-                curl -sS https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz | tar xz >/dev/null    
-                export PATH="$(System.DefaultWorkingDirectory)/flyway-${FLYWAY_VERSION}:$PATH"  
-                flyway --version
-              displayName: 'Flyway Install'
-              continueOnError: false
-              env:
-                FLYWAY_VERSION: "10.17.1"
-              
-              # Windows
-              - task: PowerShell@2
-                condition: eq( variables['Agent.OS'], 'Windows_NT' )
-                displayName: Install Flyway On Windows
-                inputs:
-                  targetType: 'filePath'
-                  filePath: 'InstallFlywayWindows.ps1'
-        
         - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
           continueOnError: false
           displayName: 'Clean Build DB'

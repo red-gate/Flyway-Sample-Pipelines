@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?i)(?<=^|\\s)FROM(\\s+[\\w\\.]+(\\s+\\w+\\s*)?,)+(\\s+[\\w\\.]+\\s+\\w+\\s*)(WHERE|JOIN)(?=$|\\s|;)"]
+passOnRegexMatch = false
+description = "Unqualified Join statement"

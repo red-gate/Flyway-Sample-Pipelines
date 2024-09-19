@@ -22,7 +22,7 @@ parameters:
 - name: agentPool
   default: 'default'
 - name: installFlyway
-  default: 'true'
+  default: false
 - name: notificationsGroup
   default: ''                                       #[Microsoft]\Pipeline Developers 
                                                     #syntax discussions here: https://github.com/MicrosoftDocs/azure-devops-docs/issues/13320, https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/manual-validation-v0?view=azure-pipelines
@@ -66,6 +66,7 @@ stages:
     - ${{if eq( parameters.installFlyway, false)}}:
       - job: InstallFlyway
         displayName: Install Flyway - Disabled
+        pool: server
 
     - ${{if and(eq( parameters.generateReport, true), eq(parameters.staticCodeAnalysisOnly, true))}}:
       - job: ChangeReport
@@ -204,7 +205,7 @@ stages:
         - checkout: self
           name: source
 
-        - script: '$(FLYWAY) info repair migrate -outOfOrder=true info -url="$(target_database_JDBC)"'
+        - script: '$(FLYWAY) info repair migrate -outOfOrder=true info -environment="target" -environments.target.url="$(target_database_JDBC)"'
           workingDirectory: $(WORKING_DIRECTORY)
           displayName: ${{parameters.displayName}}
           continueOnError: false

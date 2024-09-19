@@ -1,7 +1,8 @@
 # Prerequisites: Known image ID, rgclone installed on agent
 # https://documentation.red-gate.com/redgate-clone
 # rgclone upgrade link <web-api-endpoint>/cloning-api/download/cli/<architecture>
-# Available in library group: rgCloneEndpoint, rgCloneToken
+# Available in library group: rgCloneEndpoint, rgCloneToken,
+# Available in library group (SQL Server only, recommended added to pipeline vars group): CLONE_DATABASE_NAME
 parameters:
 - name: stage
   default: stage
@@ -16,6 +17,8 @@ parameters:
 - name: generateDriftAndChangeReport
   default: false
 - name: staticCodeAnalysis
+  default: false
+- name: isSQLServer
   default: false
 - name: targetCredentials
   default: ''
@@ -105,3 +108,9 @@ stages:
             workingDirectory: $(WORKING_DIRECTORY)
             continueOnError: false
           condition: succeededOrFailed()
+
+
+#  if (${{parameters.isSQLServer}} = true) {
+#   Write-Host "isSQLServer"
+#   $cloneString = $cloneString + ';databaseName=$(CLONE_DATABASE_NAME)
+# } 
