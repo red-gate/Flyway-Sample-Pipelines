@@ -18,19 +18,17 @@ variables:
   # -environments.target.user="$(user)" -environments.target.password="$(password)"
   # -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)"
 
-  # -environments.check.schemas="$(checkSchemas)" for SQL Server, leave this value empty. For all other DB types they should be the same as other schemas if the check DB is its own DB
-
   # if credentials of username or pass are not required, conditionally do not reference empty values, which flyway does not like
   # https://developercommunity.visualstudio.com/t/azure-pipelines-expressions-unable-to-use-length-w/1303114
   # https://learn.microsoft.com/en-us/azure/devops/pipelines/process/runtime-parameters?view=azure-devops&tabs=script
 
   # $userName is not defined, use integratedSecurity in JDBC
   ${{ if gt(length(join('', variables['userName'])), 0) }}:
-    FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" -reportEnabled=true -environments.target.schemas="$(schemas)" -environments.check.schemas="$(checkSchemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)"'
+    FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" -reportEnabled=true -environment=target -environments.target.schemas="$(schemas)" -environments.check.schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)"'
   
   # $userName is defined - password implicitly assumed defined
   ${{ if le(length(join('', variables['userName'])), 0) }}: 
-    FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -user="$(userName)" -password="$(password)" -environments.check.user="$(check_userName)" -environments.target.schemas="$(schemas)" -environments.check.schemas="$(checkSchemas)" -reportEnabled=true -environments.check.password="$(check_password)" -installedBy="$(Build.BuildId)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)"'
+    FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -user="$(userName)" -password="$(password)" -environment=target -environments.check.user="$(check_userName)" -environments.target.schemas="$(schemas)" -environments.check.schemas="$(schemas)" -reportEnabled=true -environments.check.password="$(check_password)" -installedBy="$(Build.BuildId)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)"'
   
   BUILD_NAME: 'Repository-Snapshot'
   RELEASE_PREVIEW: 'Release-Preview.sql'
