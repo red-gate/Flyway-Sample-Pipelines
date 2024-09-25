@@ -1,4 +1,4 @@
-The templatized azure devops pipeline (https://github.com/red-gate/Flyway-Sample-Pipelines/tree/main/Azure/Azure-Templatized-YML-Pipeline) is our recommended approach. Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/proof-of-concept
+The templatized azure devops pipeline (https://github.com/red-gate/Flyway-Sample-Pipelines/tree/main/Azure/Azure-Templatized-YML-Pipeline/flyway-10.18) is our recommended approach. Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/proof-of-concept
 
 The folder structure has been re-organized to accommodate marking version numbers of the Flyway CLI parent folders to specific Flyway versions.
 
