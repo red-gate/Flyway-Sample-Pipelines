@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?i)(?<=^|\\s)SELECT\\s+[\\w.]+\\s+'[^']+'(?!\\s+AS\\s)(?=$|\\s|;)"]
+passOnRegexMatch = false
+description = "Avoid using a string literal to alias a column"

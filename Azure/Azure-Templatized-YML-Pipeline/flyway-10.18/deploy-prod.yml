@@ -1,0 +1,79 @@
+# NOTE: This pipeline depends on the following variable groups: 
+
+# Name of variable group                  Keys inside variable group
+# ----------------------                  --------------------------
+# redgate_global_vars                     FLYWAY_LICENSE_KEY
+# redgate_pipeline_vars                   BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL, SCHEMAS
+# redgate_target_database_credentials     userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
+
+# redgate_build_credentials               userName, password, target_database_JDBC, databaseName
+
+# SCHEMAS in pipeline_vars is a comma separated list of schemas used.
+
+# Every target database will need its own variable group, which is referenced in a YML deployment script
+# The default is to include the agent pools inside a pipeline definition, to accommodate multiple agent pools.
+# If appropriate, the agent pool definition could be moved to the global variable group (or a target specific variable group)
+
+# PARELLELISM
+# Pay close attention to the "dependsOn" flag - this determines which block follows each other. 
+# It's possible to parallelize dpelyments by using multiple agent pools and the "dependsOn" flag.
+
+name: ADO-self-hosted-pipeline-templatized
+ 
+trigger:
+  branches:
+    include:
+      - prod
+  paths:
+    include:
+      - migrations/*
+      
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: templates
+
+variables:
+- template: vars.yml@templates
+
+stages:
+
+# - template: rg-clone-sql-server.yml@templates                        # templates/deploy.yml if kept in same repository
+#   parameters:
+#     stage: Clone
+#     displayName: Deploy To Clone
+#     cloneImageName: NewWorldDB
+#     isSQLServer: true
+#     targetCredentials: newworlddb_test_credentials
+#     pipelineParameters: newworlddb_pipeline_vars
+
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Test
+    displayName: Deploy Test
+    generateReport: false                               # defaults to true
+    # useSnapShotsForReports: false                     # optional flag, defaults to false           
+    staticCodeAnalysis: true                            # optional flag, defaults to false            
+    targetCredentials: newworlddb_test_credentials
+    pipelineParameters: newworlddb_pipeline_vars
+
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Prod1
+    dependsOn: Test
+    pauseForCodeReview: true                            # optional flag, defaults to false
+    failReleaseIfDriftDetected: true                    # optional flag, defaults to false
+    staticCodeAnalysis: true                            # optional flag, defaults to false 
+    displayName: Deploy Prod1
+    targetCredentials: newworlddb_prod_credentials
+    pipelineParameters: newworlddb_pipeline_vars
+
+- template: deploy.yml@templates                        # templates/deploy.yml if kept in same repository
+  parameters:
+    stage: Prod2
+    displayName: Deploy Prod2
+    dependsOn: Test   
+    generateReport: false        
+    targetCredentials: newworlddb_prod2_credentials
+    pipelineParameters: newworlddb_pipeline_vars

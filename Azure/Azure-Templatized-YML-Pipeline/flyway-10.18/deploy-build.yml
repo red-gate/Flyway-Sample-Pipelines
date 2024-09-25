@@ -1,0 +1,48 @@
+# NOTE: This pipeline depends on the following variable groups: 
+
+# Name of variable group                  Keys inside variable group
+# ----------------------                  --------------------------
+# redgate_global_vars                     FLYWAY_LICENSE_KEY
+# redgate_pipeline_vars                   BASELINE_VERSION, FIRST_UNDO_SCRIPT, AGENT_POOL
+# redgate_target_database_credentials     userName, password, target_database_JDBC, databaseName, check_JDBC, check_userName, check_password
+
+# redgate_build_credentials               userName, password, target_database_JDBC, databaseName
+
+# Every target database will need its own variable group, which is referenced in a YML deployment script
+# The default is to include the agent pools inside a pipeline definition, to accommodate multiple agent pools.
+# If appropriate, the agent pool definition could be moved to the global variable group (or a target specific variable group)
+
+# PARELLELISM
+# Pay close attention to the "dependsOn" flag - this determines which block follows each other. 
+# It's possible to parallelize dpelyments by using multiple agent pools and the "dependsOn" flag.
+
+name: ADO-self-hosted-pipeline-templatized
+ 
+trigger:
+  branches:
+    include:
+      - development
+  paths:
+    include:
+      - migrations/*
+
+# Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
+# They can be included in the same repository if preferred: templates/vars.yml would work for the file below
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: templates
+
+variables:
+- template: vars.yml@templates                          # templates/vars.yml if kept in same repository
+
+stages:
+- template: build.yml@templates                         # templates/build.yml if kept in same repository
+  parameters:
+    stage: Build
+    displayName: Deploy Build
+    cleanBuildDB: false
+    executeStaticCodeAnalysis: false
+    targetCredentials: newworlddb_build_credentials
+    pipelineParameters: newworlddb_pipeline_vars
