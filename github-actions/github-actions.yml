@@ -16,7 +16,7 @@ on:
 
 jobs: 
   validate:
-    runs-on: ito-devops-01
+    runs-on: your-server
     defaults:
           run:
             shell: cmd    
