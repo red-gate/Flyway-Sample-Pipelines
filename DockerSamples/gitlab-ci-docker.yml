@@ -1,0 +1,62 @@
+# Global Variables Section - These will be utilized throughout the pipeline #
+ 
+variables:
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  BUILD_NAME: 'Build'
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway-azure:latest-alpine                                      #https://hub.docker.com/r/flyway/flyway
+  FLYWAY_DOCKER_IMAGE: redgate/flyway:latest                                       #https://hub.docker.com/r/flyway/flyway
+  FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
+  FLYWAY_MIGRATIONS_PATH: $CI_PROJECT_DIR/migrations
+  FLYWAY_CONFIG_FILES: $CI_PROJECT_DIR/conf
+ 
+  # userName and password remain environment specific because their values are evaluated at runtime
+  FLYWAY_DOCKER_RUN: 'docker run --rm -v $FLYWAY_MIGRATIONS_PATH:/flyway/sql $FLYWAY_DOCKER_IMAGE -user=$userName -password=$password'
+ 
+# --- End of Global Variables Section --- #
+ 
+# List of stages throughout the pipeline #
+ 
+stages:          # List of stages for jobs, and their order of execution
+  - build
+ 
+# --- End of Stages list --- #
+ 
+# Hidden definition (the prefix of . indicates the hidden aspect) for the Flyway Build and Release Runner - This can be called by future jobs, all re-using the same block of code. Reducing the locations that may require changes #
+ 
+.flyway_job:
+  image: docker:latest
+  services:
+    - docker:dind #This enables Docker in Docker mode. Which allows for the Flyway Container to be created within the G
+  before_script:
+    - pwd
+    - ls
+    - echo "${FLYWAY_DOCKER_RUN}"
+    - docker pull ${FLYWAY_DOCKER_IMAGE}
+  artifacts:
+    paths:
+    expire_in: 1 week
+ 
+# --- End of Flyway_Job hidden definition --- #
+ 
+# Build Stage Definition #
+ 
+build-stage:       # This job runs in the build stage, which runs first.
+  extends: .flyway_job # The extends command reuses configuration sections - See https://docs.gitlab.com/ee/ci/yaml/#extends
+  stage: build # Indicates which stage this job is part of
+  rules:
+    - when: always #Change always to never to skip this job (or vice versa)
+  environment:
+    name: build
+  variables: # Definition of job stage variables
+    databaseName: 'Database_Build'
+    JDBC: 'jdbc:sqlite:file:my_db.db'
+    pauseForCodeReview: 'false'
+  script:
+    - docker run --rm -v $FLYWAY_MIGRATIONS_PATH:/flyway/sql bash ls -lrth /flyway/sql
+    - $FLYWAY_DOCKER_RUN info clean info -url=${JDBC} -cleanDisabled='false' -X
+    - $FLYWAY_DOCKER_RUN info migrate info -url=${JDBC} -cleanDisabled='true'
+    - echo "The job completed successfully with Flyway in the Build environment"
+  artifacts:
+    paths: 
+      - ${CI_PROJECT_DIR}/migrations # Consume all of the migration scripts used during the build process as an artifact
+ 
