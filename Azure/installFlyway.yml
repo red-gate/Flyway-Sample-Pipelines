@@ -1,5 +1,5 @@
 parameters:
-- name: version
+- name: flywayversion
   type: string
   default: '9.21.1'
 - name: edition
@@ -8,30 +8,28 @@ parameters:
   values:
     - community
     - teams
-- name: platform
+- name: sqlfluffversion
   type: string
-  default: windows
-  values:
-    - windows
-    - macosx
-    - linux
-
+  default: '3.0.7'
 
 steps:
 - task: PowerShell@2
   displayName: 'Download and unzip Flyway command line'
   env:
     FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
-    FLYWAY_VERSION: ${{ parameters.version }}
-    FLYWAY_PLATFORM: ${{ parameters.platform }}
+    FLYWAY_VERSION: ${{ parameters.flywayversion }}
+    FLYWAY_EDITION: ${{ parameters.edition }}
   inputs:
     targetType: 'inline'    
     script: |
       # Write your PowerShell commands here.
       $version = $env:FLYWAY_VERSION
-      $platform = $env:FLYWAY_PLATFORM
-      $extension = $platform -eq 'windows' ? 'zip' : 'tar.gz' 
-      Write-Host "Hello Flyway Enterprise, getting Version $version for $platform"
+      $edition = $env:FLYWAY_EDITION
+      $extension = $IsWindows ? 'zip' : 'tar.gz' 
+      if ($IsWindows) {$platform = 'windows'}`
+      elseif ($IsMacOS) {$platform = 'macosx'}`
+      elseif ($IsLinux) {$platform = 'linux'}
+      Write-Host "Hello Flyway $edition, getting Version $version for $platform"
       $flywayZip = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$version/flyway-commandline-$version-$platform-x64.$extension" 
       $targetZip = "flyway-commandline-$version-$platform-x64.$extension"
       $flyway = "flyway-$version"
@@ -39,7 +37,7 @@ steps:
       mkdir ./Tools
       # Remove-Item .\Tools -Force -Recurse -ErrorAction Ignore
       Invoke-WebRequest $flywayZip -OutFile $targetZip
-      if ($platform -eq 'windows')
+      if ($IsWindows)
       {
         Expand-Archive -LiteralPath $targetZip -DestinationPath ./Tools
       }
@@ -51,6 +49,13 @@ steps:
       write-host "##vso[task.prependpath]$flywayPath"
     pwsh: true
     workingDirectory: '$(Pipeline.Workspace)'
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install sqlfluff==${{ parameters.sqlfluffversion }}
+  displayName: 'Install SQL Fluff'
+  failOnStderr: true
+
 - task: PowerShell@2
   displayName: 'Check Flyway Client'
   continueOnError: true
