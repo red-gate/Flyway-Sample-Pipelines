@@ -1,35 +1,56 @@
 parameters:
 - name: flywayversion
   type: string
-  default: '9.21.1'
-- name: edition
+  default: '11.0.0'
+- name: licenseType
   type: string
-  default: community
+  default: Community
   values:
-    - community
-    - teams
+    - LicenseKey
+    - LicensePermit
+    - Community
 - name: sqlfluffversion
   type: string
   default: '3.0.7'
 
+# Make sure one of the following variables is defined when using a licensed copy of Flyway
+#
+# If using LicenseKey as your license type make sure the variable FLYWAY_LICENSE_KEY is defined
+# in the redgate-global-vars variable group
+#
+# If using LicensePermit as your license type, make sure you upload your permit file as a Secure File
+# into your Library and named REDGATE_LICENSING_PERMIT
+# For more information about the Redgate Permit File see the following article https://documentation.red-gate.com/fd/license-permits-224919672.html
+#
+
+
 steps:
+- task: DownloadSecureFile@1
+  name: REDGATE_LICENSING_PERMIT
+  condition: ${{ eq(parameters.licenseType, 'LicensePermit')}}
+  displayName: 'Download Flyway License Permit'
+  inputs:
+    secureFile: 'REDGATE_LICENSING_PERMIT'
+
 - task: PowerShell@2
   displayName: 'Download and unzip Flyway command line'
   env:
     FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
+    REDGATE_LICENSING_PERMIT_PATH: $(redgate_licensing_permit.secureFilePath)
     FLYWAY_VERSION: ${{ parameters.flywayversion }}
-    FLYWAY_EDITION: ${{ parameters.edition }}
+    LICENSE_TYPE: ${{ parameters.licenseType }}
   inputs:
     targetType: 'inline'    
     script: |
       # Write your PowerShell commands here.
       $version = $env:FLYWAY_VERSION
-      $edition = $env:FLYWAY_EDITION
+      $licenseType = $env:LICENSE_TYPE
+      $permitFilePath = $env:REDGATE_LICENSING_PERMIT_PATH
       $extension = $IsWindows ? 'zip' : 'tar.gz' 
       if ($IsWindows) {$platform = 'windows'}`
       elseif ($IsMacOS) {$platform = 'macosx'}`
       elseif ($IsLinux) {$platform = 'linux'}
-      Write-Host "Hello Flyway $edition, getting Version $version for $platform"
+      Write-Host "Hello Flyway, getting Version $version for $platform"
       $flywayZip = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$version/flyway-commandline-$version-$platform-x64.$extension" 
       $targetZip = "flyway-commandline-$version-$platform-x64.$extension"
       $flyway = "flyway-$version"
@@ -45,6 +66,15 @@ steps:
       {
         tar -xvf $targetZip -C ./Tools
         chmod +x $flywayPath/flyway
+      }
+      if ($licenseType -eq 'LicensePermit')
+      {
+         if (Test-Path -Path $permitFilePath -PathType leaf)
+         {
+           $permitFile = Split-Path -Path $permitFilePath
+           Move-Item -Path $permitFile -Destination $flywayPath/flyway/$permitFile
+           write-host "##vso[task.setvariable variable=REDGATE_LICENSING_PERMIT_PATH;]$flywayPath/flyway/$permitFile"
+         } 
       }      
       write-host "##vso[task.prependpath]$flywayPath"
     pwsh: true
@@ -57,14 +87,44 @@ steps:
   failOnStderr: true
 
 - task: PowerShell@2
-  displayName: 'Check Flyway Client'
+  displayName: 'Check Flyway Client (Community)'
+  condition: ${{ eq(parameters.licenseType, 'Community')}}
   continueOnError: true
-  env:
-    #FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
-    FLYWAY_EDITION: ${{ parameters.edition }}
   inputs:
    targetType: 'inline'
    script: |  
+     $Env:FLYWAY_LICENSE_KEY = ''
+     $Env:REDGATE_LICENSING_PERMIT_PATH = ''
+     write-host "$($env:PATH)"
+     flyway -v
+   pwsh: true
+   failOnStderr: false
+
+- task: PowerShell@2
+  displayName: 'Check Flyway Client (Licensed)'
+  condition: ${{ eq(parameters.licenseType, 'LicenseKey')}}
+  continueOnError: true
+  env:
+    FLYWAY_LICENSE_KEY: $(FLYWAY_LICENSE_KEY)
+  inputs:
+   targetType: 'inline'
+   script: |  
+     $Env:REDGATE_LICENSING_PERMIT_PATH = ''
+     write-host "$($env:PATH)"
+     flyway -v
+   pwsh: true
+   failOnStderr: false
+
+- task: PowerShell@2
+  displayName: 'Check Flyway Client (Licensed)'
+  condition: ${{ eq(parameters.licenseType, 'LicensePermit')}}
+  continueOnError: true
+  env:
+    REDGATE_LICENSING_PERMIT_PATH: $(REDGATE_LICENSING_PERMIT_PATH)
+  inputs:
+   targetType: 'inline'
+   script: |  
+     $Env:FLYWAY_LICENSE_KEY = ''
      write-host "$($env:PATH)"
      flyway -v
    pwsh: true
