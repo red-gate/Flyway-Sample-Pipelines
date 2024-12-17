@@ -4,7 +4,7 @@ The folder structure has been re-organized to accommodate marking version number
 
 These pipelines are designed to support Enterprise and its functionality, though can easily be adjusted to support Teams. 
 
-CLI versions can be downloaded here: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+CLI versions can be downloaded here: https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/
 
 Useful Helper scripts from colleague Andrew Pierce can be found here: https://github.com/turimbar1/flyway-example-scripts/tree/main
     - Some shamelessly stolen
@@ -16,3 +16,11 @@ Changelog:
 Updated flyway command to use PAT: https://documentation.red-gate.com/fd/flyway-licensing-263061944.html
 
 Updated pipeline to read TOML correctly, simplifying project setup and deprecating the need for a specific cherryPick pipeline - use TOML. TODO: Video content on this workflow.
+
+11+
+
+New auth using tokens and PAT: https://documentation.red-gate.com/fd/flyway-licensing-263061944.html
+
+username and password should now be included in JDBC
+
+Updating templatized pipelines to use docker (commented out by default)

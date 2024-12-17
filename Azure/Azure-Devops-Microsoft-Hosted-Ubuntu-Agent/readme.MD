@@ -1,0 +1,1 @@
+This is deprecated, see templatized vars.yml for docker syntax: https://github.com/red-gate/Flyway-Sample-Pipelines/tree/main/Azure/Azure-Templatized-YML-Pipeline

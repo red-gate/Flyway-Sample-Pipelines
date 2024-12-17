@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?i)(?<=^|\\s)SELECT\\s+.+\\s+.*\\s+WHERE\\s+.*\\(\\s+SELECT\\s+.+\\s+.*\\s+WHERE\\s+.*\\((?=$|\\s|;)"]
+passOnRegexMatch = false
+description = "Intrinsic function usage on columns in predicate"

@@ -1,0 +1,27 @@
+variables:
+  # This is the relative path to the migrations folder in your project, such as:
+  # $(System.DefaultWorkingDirectory)\project
+  # The default is to have the migrations folder in the same directory as the yml file
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+  
+  # -------------------------- DOCKER -------------------------------------
+
+  # I recommend defining FLYWAY_DOCKER_IMAGE in library group and specifying specific version, as seen below
+  # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
+  # Look for images at https://hub.docker.com/r/redgate/flyway
+  
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:latest                                       #https://hub.docker.com/r/flyway/flyway
+  # FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
+  # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
+  # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
+ 
+  # FLYWAY: 'docker run --rm -v $FLYWAY_MIGRATIONS_PATH:/flyway/sql $FLYWAY_DOCKER_IMAGE -user="$(userName)" -password="$(password)" -environment=target -environments.check.user="$(check_userName)" -environments.target.schemas="$(schemas)" -environments.check.schemas="$(schemas)" -reportEnabled=true -environments.check.password="$(check_password)" -installedBy="$(Build.BuildId)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -email="$(FLYWAY_EMAIL)" -token="$(FLYWAY_TOKEN)"'
+
+ # -------------------------- DOCKER -------------------------------------
+
+  FLYWAY: 'flyway -check.majorRules="RX100,RX101" -check.majorTolerance="0" -installedBy="$(Build.BuildId)" -reportEnabled=true -environment=target -environments.target.schemas="$(schemas)" -environments.check.schemas="$(schemas)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -email="$(FLYWAY_EMAIL)" -token="$(FLYWAY_TOKEN)" -workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="$(WORKING_DIRECTORY)\$(Build.Repository.Name)\flyway.toml"'
+  
+  BUILD_NAME: 'Repository-Snapshot'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
