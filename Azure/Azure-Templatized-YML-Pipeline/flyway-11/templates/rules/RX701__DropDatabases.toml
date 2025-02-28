@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?i)DROP\\s+DATABASE"]
+passOnRegexMatch = false
+description = "Prevent the use of DROP DATABASE statements to avoid accidental data loss."

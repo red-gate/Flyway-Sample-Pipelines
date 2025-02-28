@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?i)SELECT\\s+.*\\s+FROM\\s+(?!.*\\bWHERE\\b).*;"]
+passOnRegexMatch = false
+description = "Ensure queries have a WHERE clause to avoid full table scans."
