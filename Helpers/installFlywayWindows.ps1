@@ -30,7 +30,7 @@ New-Item $ExtractPath -ItemType Directory
 Write-Host "Flyway folder created successfully."
 
 #Flyway URL to download CLI
-$Url = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$flywayVersion/flyway-commandline-$flywayVersion-windows-x64.zip"
+$Url = "https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/$flywayVersion/flyway-commandline-$flywayVersion-windows-x64.zip"
 
 #Insert path for downloaded files
 $DownloadZipFile = "C:\FlywayCLI\" + $(Split-Path -Path $Url -Leaf)

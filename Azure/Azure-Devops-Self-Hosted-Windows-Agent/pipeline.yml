@@ -2,7 +2,7 @@ name: ADO-self-hosted-pipeline
 
 # This is the default pipeline for a self-hosted Windows agent on Azure Devops.
 
-# Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline
 # Install python3 on agent and add pip to PATH if staticCodeAnalysis is set to true
 # Make sure this file is in the same directory as the migrations folder of the Flyway Enterprise project. 
 # Provision a dev, shadow, build databases, as well as any target environments that need to be created: https://documentation.red-gate.com/fd/proof-of-concept-checklist-152109292.html

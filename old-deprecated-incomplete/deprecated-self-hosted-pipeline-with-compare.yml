@@ -13,7 +13,7 @@ trigger:
 # INSTRUCTIONS
 # 1. This workflow is for a self-hosted Windows agent on Azure Devops: https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/v2-windows?view=azure-devops
 # 2. Install this on agent https://download.red-gate.com/checkforupdates/SCAPowerShell/
-# 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline
+# 3. Install flyway cli on agent, add flyway to PATH: https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline
 # 4. Provision a dev, shadow, build databases, as well as any other environments that need to be created (ie test and production if needed)
 
 # 5. The easiest way to hook up a Flyway Desktop (FWD) project to a repository is to create a project and repository in Azure Devops. Then:

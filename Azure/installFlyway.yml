@@ -51,7 +51,7 @@ steps:
       elseif ($IsMacOS) {$platform = 'macosx'}`
       elseif ($IsLinux) {$platform = 'linux'}
       Write-Host "Hello Flyway, getting Version $version for $platform"
-      $flywayZip = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$version/flyway-commandline-$version-$platform-x64.$extension" 
+      $flywayZip = "https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/$version/flyway-commandline-$version-$platform-x64.$extension" 
       $targetZip = "flyway-commandline-$version-$platform-x64.$extension"
       $flyway = "flyway-$version"
       $flywayPath = Join-Path (Get-Location).ToString() -ChildPath "\Tools\$flyway"

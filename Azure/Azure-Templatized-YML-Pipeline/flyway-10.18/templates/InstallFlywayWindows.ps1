@@ -6,7 +6,7 @@ $flywayVersion = '10.17.3'
  
 #Flyway URL to download CLI
  
-$Url = "https://download.red-gate.com/maven/release/org/flywaydb/enterprise/flyway-commandline/$flywayVersion/flyway-commandline-$flywayVersion-windows-x64.zip"
+$Url = "https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/$flywayVersion/flyway-commandline-$flywayVersion-windows-x64.zip"
  
 #Insert path for downloaded files
  
