@@ -11,6 +11,8 @@ Useful Helper scripts from colleague Andrew Pierce can be found here: https://gi
 
 Changelog:
 
+Updating from Flyway 10 to 11: https://documentation.red-gate.com/fd/flyway-v11-updating-from-v10-271582732.html
+
 10.20.1+ (10/30/2024):
 
 Updated flyway command to use PAT: https://documentation.red-gate.com/fd/flyway-licensing-263061944.html
