@@ -10,7 +10,7 @@ variables:
   # Tag list available here: https://hub.docker.com/r/redgate/flyway/tags
   # Look for images at https://hub.docker.com/r/redgate/flyway
   
-  # FLYWAY_DOCKER_IMAGE: redgate/flyway:latest                                       #https://hub.docker.com/r/flyway/flyway
+  # FLYWAY_DOCKER_IMAGE: redgate/flyway:latest                                                    #https://hub.docker.com/r/redgate/flyway
   # FLYWAY_DOCKER_CONTAINER_NAME: flyway-container                                                #The name to provide to any Docker Container created
   # FLYWAY_MIGRATIONS_PATH: $(Build.Repository.LocalPath)/migrations
   # FLYWAY_CONFIG_FILES: $(Build.Repository.LocalPath)
