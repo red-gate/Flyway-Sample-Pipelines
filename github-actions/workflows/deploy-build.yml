@@ -1,0 +1,57 @@
+name: Flyway GitHub Actions Build Workflow # Workflow name
+on:
+  push:
+    branches:
+      - Development
+    paths:
+    - 'migrations/**'
+
+# Environment Variables
+env:
+    # Repository Variables - Create these in Project Settings > Variables > Actions
+    EMAIL: ${{ vars.USER_EMAIL }} # Use with ${{ env.EMAIL }}
+    DB_SERVER: ${{ vars.DB_SERVER }}
+    DB_Build: ${{ vars.DB_NAME_Build }}
+    ENCRYPT: ${{ vars.ENCRYPT_BOOL }}
+    TRUST_CERT: ${{ vars.TRUST_CERT_BOOL }}
+    # BASELINE_VERSION: ${{ vars.BASELINE_VERSION }}
+    
+    # Repository Secrets - Create these in Project Settings > Secrets > Actions
+    TOKEN: ${{ secrets.FLYWAY_TOKEN }} 
+    DB_USER_Build: ${{ secrets.DB_USER_NAME_QA }}
+    DB_USER_PW_Build: ${{ secrets.DB_USER_PW_QA }}
+    FIRST_UNDO_SCRIPT: ${{ secrets.FIRST_UNDO_SCRIPT }} # Validates all undo scripts up to and including the specified script
+
+
+
+# jobs are the steps executed in the workflow
+jobs:
+    flyway-build: # Job name
+      runs-on: self-hosted # Runner to execute the job
+      # runs-on: ubuntu-latest
+      defaults:
+        run:
+          shell: cmd # Default shell. Use Windows Command Prompt
+  
+      steps: # Steps are the individual tasks that are executed in the job
+        - name: Checkout Repository # Step to check out the repository
+          uses: actions/checkout@v4
+          with:
+            ref: "Development" # Branch to check out
+            fetch-depth: 0 # Fetch the entire history to avoid shallow clone issues
+            clean: true # Ensure the repository is cleaned before the workflow runs
+
+
+        # Runs the Flyway Clean command against the Build database
+        - name: Clean Build DB
+          run: |
+            flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info clean info -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_Build }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+  
+        - name: Migrate Build # Step to run Flyway migrations
+          # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
+          run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_Build }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          working-directory: ./migrations
+        
+        - name: Rollback Build # Step to run Flyway migrations
+          run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} undo -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_Build }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -target="${{ env.FIRST_UNDO_SCRIPT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          working-directory: ./migrations
