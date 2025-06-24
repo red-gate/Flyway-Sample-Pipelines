@@ -29,7 +29,9 @@ if (Test-Path -Path $filePath) {
     $noneElement = $xml.NamedFilter.Filter.Filters.None
     $noneElement.Include = "False"
     $noneElement.Expression = "((@SCHEMA LIKE 'cdc%'))"
-
+    
+    $currentPath = Get-Location
+    $filePath = Join-Path -Path $currentPath -ChildPath $filePath
     # Save the updated XML back to the file
     $xml.Save($filePath)
     Write-Host "Filter.scpf updated successfully."
