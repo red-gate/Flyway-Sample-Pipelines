@@ -1,4 +1,4 @@
-$databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
+$databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql More actions
 $Url = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 $User = ""
 $Password = ""
@@ -30,6 +30,9 @@ if (Test-Path -Path $filePath) {
     $noneElement.Include = "False"
     $noneElement.Expression = "((@SCHEMA LIKE 'cdc%'))"
 
+    
+    $currentPath = Get-Location
+    $filePath = Join-Path -Path $currentPath -ChildPath $filePath
     # Save the updated XML back to the file
     $xml.Save($filePath)
     Write-Host "Filter.scpf updated successfully."
