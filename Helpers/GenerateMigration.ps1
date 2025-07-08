@@ -1,14 +1,15 @@
-# Define base path
-# $basePath = "C:\WorkingFolders\FWD\<projectRoot>"
-$basePath = Get-Location
+$projectPath = "C:\WorkingFolders\FWD\NewWorldDB" # Get-Location for current dir
 
-# Define variables for paths
-$flywayTomlPath = Join-Path $basePath "flyway.toml"
-$deploymentDeltasPath = Join-Path $basePath "deploymentDeltas.zip"
-$outputFolderPath = Join-Path $basePath "migrations"
+#source of Changes eg. Shared Dev environment
+$sourceUrl = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 
-# Diff between SchemaModel and Migrations using Shadow defined in the flyway.toml
-flyway-dev diff -p $flywayTomlPath --i-agree-to-the-eula --from=SchemaModel --to=Migrations -a $deploymentDeltasPath
+#scratch DB to allow flyway to use to generate a new script - can provide a backup file that flyway will rehydrate on the specified URL or existing empty db to build entirly from code eg. 1__Baseline.sql to 1+n__current_version.sql
+$buildUrl = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Shadow;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 
-# Take and generate migrations
-flyway-dev take -p $flywayTomlPath -a $deploymentDeltasPath --i-agree-to-the-eula | flyway-dev generate -p $flywayTomlPath -a $deploymentDeltasPath --i-agree-to-the-eula --outputFolder=$outputFolderPath 
+#the Description of the migration script generated - should probably include feature/ticket information
+$scriptName = "YourNewMigrationDescription"
+
+#Syncs the Schema Model folder with the provided Source URL
+flyway diff model "-workingDirectory=$projectPath" "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$sourceUrl"
+#Generated a new migration script by comparing the Schema Model folder to Build Url after it's been brought to current version.
+flyway diff generate "-workingDirectory=$projectPath" "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-generate.description=$scriptName" "-diff.buildEnvironment=shadow" "-environments.shadow.url=$buildUrl" 
