@@ -26,8 +26,40 @@ trigger:
     include:
       - migrations/*
 
+
 # Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
 # They can be included in the same repository if preferred: templates/vars.yml would work for the file below
+
+# Example: if the `templates` repo is hosted on GitHub and you want Azure
+    # DevOps to fetch it from GitHub, replace (or add) an entry like the one
+    # below. You must first create a GitHub service connection in the Azure
+    # DevOps project (Project Settings -> Service connections) and give it a
+    # name (example: github-templates-conn). For a public repository you can
+    # omit the `endpoint` field, but for private repos you must supply it.
+    #
+    # - repository: templates
+    #   type: github
+    #   name: <org>/<repo>      # optional friendly name, e.g. myorg/templates
+    #   endpoint: github-templates-conn   # service connection name in ADO
+    #   ref: refs/heads/main    # optional: pin to a branch, tag or commit
+
+    # Azure DevOps setup steps (what to do in the UI)
+    # Create a GitHub service connection
+    # In Azure DevOps Project -> Project settings -> Service connections -> New service connection -> GitHub.
+    # Choose OAuth (recommended) or Personal Access Token (PAT).
+    # If using PAT, include repo read access.
+    # If OAuth, sign in to GitHub and grant access to the templates repo (or org).
+    # Give it a name, e.g., github-templates-conn.
+    # Reference the connection in YAML
+    # In resources.repositories add endpoint: github-templates-conn to the templates entry.
+    # (Optional) Pin a ref
+    # Add ref: refs/heads/main or ref: refs/tags/<tag> or ref: <commit-sha> to pin the template source version.
+    # Permissions
+    # Ensure the service connection has access to the target GitHub repository.
+    # If you used a PAT, the PAT must have at least 'repo' read scope for private repos.
+    # In Azure DevOps pipeline permissions, ensure YAML pipelines are allowed to use resources from service connections; sometimes project administrators must approve new connections for pipelines to use them.
+
+
 resources:
   repositories:
     - repository: templates
