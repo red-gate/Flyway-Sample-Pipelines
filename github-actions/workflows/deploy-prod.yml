@@ -3,46 +3,39 @@ on:
   push:
     branches:
       - Production
-    # paths:
-    # - 'migrations/**'
+    paths:
+      - "migrations/**"
 
 # Environment Variables
 env:
   # Repository Variables - Create these in Project Settings > Variables > Actions
   EMAIL: ${{ vars.USER_EMAIL }} # Use with ${{ env.EMAIL }}
-  DB_SERVER: ${{ vars.DB_SERVER }}
-  DB_CHECK: ${{ vars.DB_NAME_CHECK }}
-  DB_PROD_1: ${{ vars.DB_NAME_PROD_1 }}
-  DB_PROD_2: ${{ vars.DB_NAME_PROD_2 }}
-  ENCRYPT: ${{ vars.ENCRYPT_BOOL }}
-  TRUST_CERT: ${{ vars.TRUST_CERT_BOOL }}
-  # BASELINE_VERSION: ${{ vars.BASELINE_VERSION }}
-  
+  JDBC_PROD1: ${{ vars.JDBC_PROD1 }}
+  JDBC_PROD2: ${{ vars.JDBC_PROD2 }}
+  JDBC_CHECK: ${{ vars.JDBC_CHECK }}
+  DB_PROD_2: ${{ vars.DB_NAME_PROD_2 }} # Used in report filename
+
   # Repository Secrets - Create these in Project Settings > Secrets > Actions
-  TOKEN: ${{ secrets.FLYWAY_TOKEN }} 
+  TOKEN: ${{ secrets.FLYWAY_TOKEN }}
   DB_USER_PROD: ${{ secrets.DB_USER_NAME_QA }}
   DB_USER_PW_PROD: ${{ secrets.DB_USER_PW_QA }}
-  # FIRST_UNDO_SCRIPT: ${{ secrets.FIRST_UNDO_SCRIPT }} # Validates all undo scripts up to and including the specified script
-  PROD_1_JDBC: "${{ vars.DB_SERVER }};databaseName=${{ vars.DB_NAME_PROD_1 }};encrypt=${{ vars.ENCRYPT_BOOL }};trustServerCertificate=${{ vars.TRUST_CERT_BOOL }}" 
-  PROD_2_JDBC: "${{ vars.DB_SERVER }};databaseName=${{ vars.DB_NAME_PROD_2 }};encrypt=${{ vars.ENCRYPT_BOOL }};trustServerCertificate=${{ vars.TRUST_CERT_BOOL }}" 
-  CHECK_JDBC: "${{ vars.DB_SERVER }};databaseName=${{ vars.DB_CHECK }};encrypt=${{ vars.ENCRYPT_BOOL }};trustServerCertificate=${{ vars.TRUST_CERT_BOOL }}" 
-  
   # End of Environment Secrets #
+
   generateDriftAndChangeReport: true
   failReleaseIfDriftDetected: false
   staticCodeAnalysis: false #Currently not setup in this pipeline
   publishArtifacts: true
 
 # jobs are the steps executed in the workflow
+# Rules location -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules"
 jobs:
-  
-  flyway-report-prod:
+  flyway-report:
     name: Generate Report
     runs-on: self-hosted # Runner to execute the job
     defaults:
       run:
         shell: cmd # Default shell. Use Windows Command Prompt
- 
+
     steps: # Steps are the individual tasks that are executed in the job
       - uses: actions/checkout@v4 # Check out the repository
         with: # Additional options for the action
@@ -50,45 +43,63 @@ jobs:
 
       - name: Create Drift and Change Report
         run: |
-          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -dryrun -changes -drift  -check.buildUser=${{ env.DB_USER_PROD }} -check.buildPassword=${{ env.DB_USER_PW_PROD }} -check.buildEnvironment="${{ env.CHECK_JDBC }}" -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_PROD_2 }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_2 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -cleanDisabled="false" -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url=${{ env.JDBC_PROD2 }} -check.buildUser=${{ env.DB_USER_PROD }} -check.buildPassword=${{ env.DB_USER_PW_PROD }} -check.buildUrl="${{ env.JDBC_CHECK }}" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_2 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}\migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         continue-on-error: true
 
       # Create a directory to stage the artifact files
       - name: Stage files for publishing
         run: |
-          xcopy /E /I  "${{ github.workspace }}\reports" "Artifact_Files\Reports\"
+          xcopy /E /I "C:\Projects\DemoDB\reports" "reports/"
 
       - name: Publish Check Report as Artifact
         uses: actions/upload-artifact@v4
-        with: 
+        with:
           name: flyway-reports
-          path: Artifact_Files/Reports/
+          path: reports/
 
+  # GitHub Actions doesn't natively support manual approval steps like some other CI/CD tools (e.g., Azure DevOps or GitLab).
+  # You can achieve similar functionality using environments with required reviewers or by integrating external approval mechanisms.
+  # Alternatively maybe a Review Branch prior to pulling to Production or another downstream environment.
 
-  flyway-deploy-prod: 
+  # Separate Prod 1 and Prod 2 into separate simulatneous jobs, only make one of them dependent on the manual approval step for demo purposes
+  flyway-deploy-prod-1:
+    name: Flyway Deploy Production 1
     runs-on: self-hosted # Runner to execute the job
     defaults:
       run:
         shell: cmd # Default shell. Use Windows Command Prompt
+    needs: flyway-report # This job depends on the completion of the flyway-report job
 
     steps: # Steps are the individual tasks that are executed in the job
       - uses: actions/checkout@v4 # Check out the repository
         with: # Additional options for the action
           ref: "Production" # Branch to check out
 
-      - name: Deploy to Prod 1 # Step to run Flyway migrations
-      # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_PROD_1 }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
-        # Multi-tenant deployment. Add second deployment to PROD2 here
+      - name: Deploy Prod 1 # Step to run Flyway migrations
+        # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.JDBC_PROD1 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         working-directory: ./migrations
 
-      - name: Deploy to Prod 2 # Step to run Flyway migrations
-      # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_PROD_2 }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+  flyway-deploy-prod-2:
+    name: Flyway Deploy Production 2
+    runs-on: self-hosted # Runner to execute the job
+    defaults:
+      run:
+        shell: cmd # Default shell. Use Windows Command Prompt
+    needs: flyway-report # This job depends on the completion of the flyway-report job
+
+    steps: # Steps are the individual tasks that are executed in the job
+      - uses: actions/checkout@v4 # Check out the repository
+        with: # Additional options for the action
+          ref: "Production" # Branch to check out
+
+      # Multi-tenant deployment. PROD 2
+      - name: Deploy Prod 2 # Step to run Flyway migrations
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.JDBC_PROD2 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         # Multi-tenant deployment. Add second deployment to PROD2 here
         working-directory: ./migrations
 
         # Sample for integrated security instead of user name and password
-        # -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_PROD_1 }};encrypt=${{ env.ENCRYPT }};integratedSecurity=true;trustServerCertificate=${{ env.TRUST_CERT }}"
+        # -url="jdbc:sqlserver://localhost;databaseName=DemoDBProd1;integratedSecurity=true;trustServerCertificate=true"
         # -baselineVersion=${{ env.BASELINE_VERSION }}
         # -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }}
