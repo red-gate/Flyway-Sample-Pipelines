@@ -1,26 +1,22 @@
-name: Flyway GitHub Actions QA Workflow 
+name: Flyway GitHub Actions QA Workflow
 on:
   push:
     branches:
       - QA
     paths:
-    - 'migrations/**'
+      - "migrations/**"
 
 env:
-  EMAIL: ${{ vars.USER_EMAIL }} 
-  DB_SERVER: ${{ vars.DB_SERVER }}
-  DB_QA: ${{ vars.DB_NAME_QA }}
-  ENCRYPT: ${{ vars.ENCRYPT_BOOL }}
-  TRUST_CERT: ${{ vars.TRUST_CERT_BOOL }}
-  TOKEN: ${{ secrets.FLYWAY_TOKEN }} 
+  # Variables - Create these in Project Settings > Variables > Actions
+  EMAIL: ${{ vars.USER_EMAIL }}
+  JDBC_QA: ${{ vars.JDBC_QA }}
+  # Secrets - Create these in Project Settings > Secrets > Actions
+  TOKEN: ${{ secrets.FLYWAY_TOKEN }}
   DB_USER_QA: ${{ secrets.DB_USER_NAME_QA }}
   DB_USER_PW_QA: ${{ secrets.DB_USER_PW_QA }}
-  # BASELINE_VERSION: ${{ vars.BASELINE_VERSION }}
-  # FIRST_UNDO_SCRIPT: ${{ secrets.FIRST_UNDO_SCRIPT }} 
-
 
 jobs:
-  flyway-deploy-qa: 
+  flyway-deploy-qa:
     runs-on: self-hosted # Runner to execute the job
     # runs-on: ubuntu-latest
     defaults:
@@ -34,6 +30,5 @@ jobs:
 
       - name: Deploy to QA # Step to run Flyway migrations
         # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_QA }} -password=${{ env.DB_USER_PW_QA }} -url="${{ env.DB_SERVER }};databaseName=${{ env.DB_QA }};encrypt=${{ env.ENCRYPT }};trustServerCertificate=${{ env.TRUST_CERT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_QA }} -password=${{ env.DB_USER_PW_QA }} -url=${{ env.JDBC_QA }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         working-directory: ./migrations
-        
