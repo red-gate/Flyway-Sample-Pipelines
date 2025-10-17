@@ -1,0 +1,4 @@
+dialects = ["TEXT"]
+rules = ["(?si)(?<=^|\\s)SELECT\\s+[^;]*\\*\\s+FROM(?=$|\\s|;)"]
+passOnRegexMatch = false
+description = "Avoid using SELECT * in queries. Specify the columns you need."

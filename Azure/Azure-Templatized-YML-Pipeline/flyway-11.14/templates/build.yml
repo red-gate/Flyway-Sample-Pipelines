@@ -1,0 +1,96 @@
+parameters:
+- name: stage
+  default: Build
+- name: displayName
+  default: Deploy Build
+- name: cleanBuildDB
+  default: false
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+- name: executeStaticCodeAnalysis
+  default: false
+- name: installFlyway
+  default: false
+  
+stages:
+  - stage: Build
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    jobs:
+    - ${{if eq( parameters.installFlyway, true)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - checkout: templates
+          - checkout: self
+            name: source
+
+          # Linux
+          - task: Bash@3  
+            condition: eq( variables['Agent.OS'], 'Linux' )
+            displayName: Install Flyway On Unix
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayUnix.sh'
+          
+          # Windows
+          - task: PowerShell@2
+            condition: eq( variables['Agent.OS'], 'Windows_NT' )
+            displayName: Install Flyway On Windows
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)\templates\InstallFlywayWindows.ps1'
+    
+    - ${{if eq( parameters.installFlyway, false)}}:
+      - job: InstallFlyway
+        displayName: Install Flyway - Disabled
+        pool: server
+
+    - job: Build
+      dependsOn: 'InstallFlyway'
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+        # https://github.com/microsoft/azure-pipelines-yaml/blob/master/design/checkout-path.md#control-the-checkout-location-of-code
+        - checkout: templates
+        - checkout: self
+          name: source
+
+        - script: '$(FLYWAY) clean info -url="$(target_database_JDBC)"'
+          continueOnError: false
+          displayName: 'Clean Build DB'
+          condition: and(succeeded(), eq('${{ parameters.cleanBuildDB }}', true))
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+
+        - script: '$(FLYWAY) info check -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -code -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html"'
+          continueOnError: false
+          workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
+          displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+          condition: and(succeeded(), eq('${{ parameters.executeStaticCodeAnalysis }}', true))
+          env:
+            FLYWAY_CLEAN_DISABLED: false
+        
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+          condition: and(succeeded(), eq('${{ parameters.executeStaticCodeAnalysis }}', true))
+          inputs:
+            ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html'
+        
+        - script: '$(FLYWAY) migrate info -url="$(target_database_JDBC)"'
+          continueOnError: false
+          displayName: 'Validate Migrate Scripts'
+
+        - script: '$(FLYWAY) undo info -url="$(target_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"?'
+          continueOnError: true
+          displayName: 'Validate Undo Scripts'

@@ -1,0 +1,43 @@
+parameters:
+- name: stage
+  default: stage
+- name: displayName
+  default: Deploy
+- name: dependsOn
+  default: ''
+- name: pauseForCodeReview
+  default: false
+- name: failReleaseIfDriftDetected
+  default: false
+- name: generateDriftAndChangeReport
+  default: false
+- name: staticCodeAnalysis
+  default: false
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+- name: cherryPickVersions
+  default: ''
+
+stages:
+  - stage: ${{parameters.stage}} 
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    dependsOn: ${{parameters.dependsOn}}
+    jobs:
+    
+    - job: Undo
+      displayName: Undo
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+
+        - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info undo info -url=$(target_database_JDBC)'
+          workingDirectory: $(System.DefaultWorkingDirectory)
+          displayName: ${{parameters.displayName}}
+          failOnStderr: true
+          env:
+            FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step

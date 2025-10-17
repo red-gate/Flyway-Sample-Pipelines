@@ -1,0 +1,45 @@
+name: cherrypick-pipeline
+ 
+# This pipeline will go through the build process and generate all artifacts as normal, it just
+# requires a manual trigger and inputting a comma-separated list of version scripts.
+
+trigger: none
+      
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: templates
+
+parameters:
+  - name: cherryPickVersions
+    displayName: 'Comma Separated List Of Full Version Numbers'
+    default: ''
+    type: string
+
+variables:
+  # This is the relative path to the migrations folder in your project, such as:
+  # $(System.DefaultWorkingDirectory)\project
+  # The default is to have the migrations folder in the same directory as the yml file
+  WORKING_DIRECTORY: $(System.DefaultWorkingDirectory)
+  FLYWAY: 'flyway -user="$(userName)" -password="$(password)" -baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -licenseKey=$(FLYWAY_LICENSE_KEY) -configFiles="$(WORKING_DIRECTORY)\flyway.conf"'
+  BUILD_NAME: 'Repository-Snapshot'
+  RELEASE_PREVIEW: 'Release-Preview.sql'
+  DRIFT_AND_CHANGE_REPORT: 'Drift-And-Change-Report.html'
+  DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME: 'Drift And Change Report'
+  cherryPickVersions: ${{parameters.cherryPickVersions}}
+
+stages:
+
+- template: cherrypick.yml@templates
+  parameters:
+    stage: Test
+    displayName: Deploy Test
+    pauseForCodeReview: false
+    failReleaseIfDriftDetected: false
+    generateDriftAndChangeReport: true                   
+    staticCodeAnalysis: false                             
+    targetCredentials: redgate_test_credentials
+    pipelineParameters: redgate_pipeline_vars
+    cherryPickVersions: ${{ variables.cherryPickVersions }}
+
