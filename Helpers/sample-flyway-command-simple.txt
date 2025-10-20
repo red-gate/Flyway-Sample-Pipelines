@@ -1,0 +1,6 @@
+flyway -environment=target -environments.target.schemas="$(schemas)" -environments.check.schemas="$(schemas)" 
+-baselineOnMigrate=true -errorOverrides=S0001:0:I- -baselineVersion=$(BASELINE_VERSION) -email="$(FLYWAY_EMAIL)" -token="$(FLYWAY_TOKEN)" 
+-workingDirectory="$(WORKING_DIRECTORY)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations" -configFiles="$(WORKING_DIRECTORY)\$(Build.Repository.Name)\flyway.toml"
+info migrate -outOfOrder=true info -environments.target.url="$(target_database_JDBC)"
+
+flyway -environment=target migrate -environments.target.url="$(target_database_JDBC)"
