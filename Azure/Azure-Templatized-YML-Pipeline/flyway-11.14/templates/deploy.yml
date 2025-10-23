@@ -88,6 +88,7 @@ stages:
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
+              FLYWAY_ENV_NATIVE_SQLFLUFF: true
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -116,6 +117,7 @@ stages:
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
             env:
               FLYWAY_CLEAN_DISABLED: false
+              FLYWAY_ENV_NATIVE_SQLFLUFF: true
           
           - task: PublishBuildArtifacts@1
             displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
