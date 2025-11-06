@@ -1,0 +1,4 @@
+[environments.check]
+type = "sql"
+url = "jdbc:sqlserver://foo;databaseName=foo_check;encrypt=false;integratedSecurity=true"
+provisioner="clean"
