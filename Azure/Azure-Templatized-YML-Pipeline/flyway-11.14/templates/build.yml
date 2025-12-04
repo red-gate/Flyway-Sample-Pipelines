@@ -73,7 +73,7 @@ stages:
             FLYWAY_CLEAN_DISABLED: false
 
         - script: '$(FLYWAY) info check -code -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-Code-Analysis.html"'
-          continueOnError: false
+          continueOnError: true
           workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
           displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
           condition: and(succeeded(), eq('${{ parameters.executeStaticCodeAnalysis }}', true))

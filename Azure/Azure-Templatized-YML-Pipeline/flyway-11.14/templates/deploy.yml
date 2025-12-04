@@ -111,7 +111,7 @@ stages:
           - checkout: self
             name: source
           
-          - script: '$(FLYWAY) info check -dryrun -drift -changes -code -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check"  -environments.check.provisioner="clean" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -code -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             continueOnError: false
             workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -140,7 +140,7 @@ stages:
           - checkout: self
             name: source
 
-          - script: '$(FLYWAY) info check -dryrun -drift -changes -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check"  -environments.check.provisioner="clean" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) info check -dryrun -drift -changes -environments.target.url="$(target_database_JDBC)" -environments.check.url="$(check_JDBC)" -check.buildEnvironment="check" -check.rulesLocation="$(Build.SourcesDirectory)\templates\rules" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'

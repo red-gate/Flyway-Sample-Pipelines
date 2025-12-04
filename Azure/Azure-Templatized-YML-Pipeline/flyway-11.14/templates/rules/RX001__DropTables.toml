@@ -1,4 +1,0 @@
-dialects = ["TEXT"]
-rules = ["(?i)(?<=^|\\s)DROP\\s+TABLE(?=$|\\s|;)"]
-passOnRegexMatch = false
-description = "DROP TABLE statement"

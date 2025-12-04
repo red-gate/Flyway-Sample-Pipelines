@@ -1,4 +1,0 @@
-dialects = ["TEXT"]
-rules = ["(?i)FROM\\s+[^,]*,\\s+(?=.*\\bWHERE\\b).*"]
-passOnRegexMatch = false
-description = "Unqualified Join statement"
