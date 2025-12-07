@@ -10,7 +10,11 @@ $Schemas = @("") # can be empty for SqlServer
 
 
 flyway auth -IAgreeToTheEula -startEnterpriseTrial
-flyway testConnection "-url=$Url" "-user=$User" "-password=$Password" "-schemas=$Schemas"
+$ErrorActionPreference = 'Break'
+flyway testConnection "-url=$Url" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
+if ($LASTEXITCODE -ne 0) {
+    exit 1
+}
 
 if (Test-Path -Path "$projectPath\$projectName") {
     Remove-Item -Path $projectName -Recurse -Force
