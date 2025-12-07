@@ -2,15 +2,16 @@ $databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql
 $Url = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 $User = ""
 $Password = ""
+
 $projectName = "Autobaseline"
 $projectPath = "."
+$backupPath = "C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak" # eg C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak
 
 # Set the schemas value
 $Schemas = @("") # can be empty for SqlServer
 
 
 flyway auth -IAgreeToTheEula -startEnterpriseTrial
-$ErrorActionPreference = 'Break'
 flyway testConnection "-url=$Url" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
 if ($LASTEXITCODE -ne 0) {
     exit 1
@@ -23,6 +24,13 @@ cd $projectPath
 mkdir $projectName
 cd ./$projectName
 flyway init "-init.projectName=$projectName" "-init.databaseType=$databaseType"
+
+if ($backupPath -ne "") {
+    <# Action to perform if the condition is true #>
+    (Add-Content -Path "flyway.toml" `
+    -Value "`n`n[environments.shadow]`nurl = `"jdbc:sqlserver://localhost;databaseName=NorthByNorthwestWind_dev_shadow;encrypt=optional;integratedSecurity=true;trustServerCertificate=true`"`nprovisioner = `"backup`"`n`n[environments.shadow.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.shadow.resolvers.backup.sqlserver]`n  generateWithMove = true"
+    )
+}
 
 <# ## Modify flyway.toml to adjust comparison options
 (Get-Content -Path "flyway.toml") `
