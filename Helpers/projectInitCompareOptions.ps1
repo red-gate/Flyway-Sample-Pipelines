@@ -1,16 +1,26 @@
-$databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql More actions
+$databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
 $Url = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 $User = ""
 $Password = ""
 $projectName = "Autobaseline"
+$projectPath = "."
 
 # Set the schemas value
 $Schemas = @("") # can be empty for SqlServer
 
+
+flyway auth -IAgreeToTheEula -startEnterpriseTrial
+flyway testConnection "-url=$Url" "-user=$User" "-password=$Password" "-schemas=$Schemas"
+
+if (Test-Path -Path "$projectPath\$projectName") {
+    Remove-Item -Path $projectName -Recurse -Force
+}
+cd $projectPath
 mkdir $projectName
 cd ./$projectName
 flyway init "-init.projectName=$projectName" "-init.databaseType=$databaseType"
 
+<# ## Modify flyway.toml to adjust comparison options
 (Get-Content -Path "flyway.toml") `
 -replace 'ignorePermissions\s*=\s*false', 'ignorePermissions = true' `
 -replace 'ignoreUsersPermissionsAndRoleMemberships\s*=\s*false', 'ignoreUsersPermissionsAndRoleMemberships = true' `
@@ -39,6 +49,8 @@ if (Test-Path -Path $filePath) {
 } else {
     Write-Host "Filter.scpf does not exist."
 }
+#>
 
 flyway diff model "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$Url" "-environments.dev.user=$User" "-environments.dev.password=$Password" "-environments.dev.schemas=$Schemas"
-flyway diff generate "-diff.source=schemaModel" "-diff.target=empty" "-generate.types=baseline" "-generate.version=1.0.0" 
+flyway diff generate "-diff.source=schemaModel" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline" "-generate.version=1.0" 
+cd .. 
