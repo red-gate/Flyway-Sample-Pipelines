@@ -1,3 +1,4 @@
+# Set parameters
 $databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
 # connection string to prodlike database
 $Url = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
@@ -12,13 +13,14 @@ $backupPath = "C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSS
 # Set the schemas value
 $Schemas = @("") # can be empty for SqlServer
 
-
+# Start Flyway Enterprise Trial and test connection
 flyway auth -IAgreeToTheEula -startEnterpriseTrial
 flyway testConnection "-url=$Url" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
 if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Initialize project - create folders and flyway.toml - delete existing project folder if exists
 if (Test-Path -Path "$projectPath\$projectName") {
     Remove-Item -Path $projectName -Recurse -Force
 }
@@ -28,6 +30,7 @@ cd ./$projectName
 flyway init "-init.projectName=$projectName" "-init.databaseType=$databaseType"
 
 if ($backupPath -ne "") {
+    # Add shadow environment to flyway.toml
     $ShadowDatabaseName = $databaseName + '_${env.UserName}_shadow'
     $Url = $Url -replace "databaseName=[^;]*", "databaseName=$ShadowDatabaseName"
     (Add-Content -Path "flyway.toml" `
@@ -35,7 +38,7 @@ if ($backupPath -ne "") {
     )
 }
 
-<# ## Modify flyway.toml to adjust comparison options
+<# # Modify flyway.toml to adjust comparison options
 (Get-Content -Path "flyway.toml") `
 -replace 'ignorePermissions\s*=\s*false', 'ignorePermissions = true' `
 -replace 'ignoreUsersPermissionsAndRoleMemberships\s*=\s*false', 'ignoreUsersPermissionsAndRoleMemberships = true' `
@@ -66,6 +69,7 @@ if (Test-Path -Path $filePath) {
 }
 #>
 
+# Populate SchemaModel from dev database or from backup
 if ($backupPath -eq "") {
     flyway diff model "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$Url" "-environments.dev.user=$User" "-environments.dev.password=$Password" "-environments.dev.schemas=$Schemas"
     flyway diff generate "-diff.source=schemaModel" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline" "-generate.version=1.0"
