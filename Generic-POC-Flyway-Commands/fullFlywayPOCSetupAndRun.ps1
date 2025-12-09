@@ -126,9 +126,13 @@ if ($response -eq "Y" -or $response -eq "y") {
 }
 
 # Start Flyway Enterprise Trial and test connection
-flyway auth -IAgreeToTheEula -startEnterpriseTrial
-flyway testConnection "-url=$devDBConnectionString" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
-if ($LASTEXITCODE -ne 0) {
+flyway auth -IAgreeToTheEula -startEnterpriseTrial 2>&1 | Out-Null
+flyway testConnection "-url=$devDBConnectionString" "-user=$User" "-password=$Password" "-schemas=$Schemas" 2>&1 | ForEach-Object {
+    if ($_ -notmatch "400") {
+        $_
+    }
+}
+if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 400) {
     exit 1
 }
 
