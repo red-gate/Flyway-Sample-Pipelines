@@ -1,12 +1,16 @@
 # Set parameters
 $databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
 # connection string to prodlike database
-$baselineSourceIfNoBackup = "jdbc:sqlserver://localhost;databaseName=NewWorldDB_Dev;encrypt=false;integratedSecurity=true;trustServerCertificate=true"
+# This POC will create a dev, test, shadow DB - this name will be in the root of all subsequent names
+$baseDBName = "flywayPOC"
+$devDBName = $baseDBName + "_dev"
+$baselineSourceIfNoBackup = "jdbc:sqlserver://localhost;databaseName=" + $baseDBName + ";encrypt=false;integratedSecurity=true;trustServerCertificate=true"
+$devDBConnectionString = "jdbc:sqlserver://localhost;databaseName=" + $devDBName + ";encrypt=false;integratedSecurity=true;trustServerCertificate=true"
 $User = ""
 $Password = ""
-$databaseName = ($baselineSourceIfNoBackup -split "databaseName=")[1] -split ";|$" | Select-Object -First 1
-$projectName = "$databaseName"
-$projectPath = ""
+# Can be changed to a different name than DB name
+$projectName = "$baseDBName"
+$projectPath = "."
 # Backup as Baseline path - must be accessible by DB server - leave empty if not needed 
 $backupPath = "C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak" # eg C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak
 
@@ -19,13 +23,6 @@ $devUrl = ""
 $testDatabaseName = ""
 $testUrl = ""
 
-# Start Flyway Enterprise Trial and test connection
-flyway auth -IAgreeToTheEula -startEnterpriseTrial
-flyway testConnection "-url=$baselineSourceIfNoBackup" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
-if ($LASTEXITCODE -ne 0) {
-    exit 1
-}
-
 # Initialize project - create folders and flyway.toml - delete existing project folder if exists
 if (Test-Path -Path "$projectPath\$projectName") {
     Remove-Item -Path $projectName -Recurse -Force
@@ -37,7 +34,7 @@ flyway init "-init.projectName=$projectName" "-init.databaseType=$databaseType"
 
 if ($backupPath -ne "") {
     # Add shadow environment to flyway.toml
-    $ShadowDatabaseName = $databaseName + '_${env.UserName}_shadow'
+    $ShadowDatabaseName = $baseDBName + '_${env.UserName}_shadow'
     $shadowUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$ShadowDatabaseName"
     (Add-Content -Path "flyway.toml" `
     -Value "`n`n[environments.shadow]`nurl = `"$shadowUrl`"`nprovisioner = `"backup`"`n`n[environments.shadow.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.shadow.resolvers.backup.sqlserver]`n  generateWithMove = true"
@@ -96,7 +93,7 @@ $response = Read-Host $pocSetupMessage
 if ($response -eq "Y" -or $response -eq "y") {
     Write-Host "Setting up full POC environment..."
     if ($backupPath -eq "") {
-            $devDatabaseName = $databaseName + '_dev'
+            $devDatabaseName = $devDBName
             $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
             (Add-Content -Path "flyway.toml" `
             -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"create-database`""
@@ -105,12 +102,12 @@ if ($response -eq "Y" -or $response -eq "y") {
             flyway migrate -environment=development
 
     } else {
-        $devDatabaseName = $databaseName + '_dev'
+        $devDatabaseName = $devDBName
         $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
         (Add-Content -Path "flyway.toml" `
         -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"backup`"`n`n[environments.development.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.development.resolvers.backup.sqlserver]`n  generateWithMove = true"
         )
-        $testDatabaseName = $databaseName + '_test'
+        $testDatabaseName = $baseDBName + '_test'
         $testUrl = $Url -replace "databaseName=[^;]*", "databaseName=$testDatabaseName"
         (Add-Content -Path "flyway.toml" `
         -Value "`n`n[environments.test]`nurl = `"$testUrl`"`nprovisioner = `"backup`"`n`n[environments.test.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.test.resolvers.backup.sqlserver]`n  generateWithMove = true"
@@ -126,6 +123,13 @@ if ($response -eq "Y" -or $response -eq "y") {
 } else {
     Write-Host "Just showing flyway commands with documentation links to run manually"
     $skipped = $true
+}
+
+# Start Flyway Enterprise Trial and test connection
+flyway auth -IAgreeToTheEula -startEnterpriseTrial
+flyway testConnection "-url=$devDBConnectionString" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
+if ($LASTEXITCODE -ne 0) {
+    exit 1
 }
 
 $sqlTablescript = "
