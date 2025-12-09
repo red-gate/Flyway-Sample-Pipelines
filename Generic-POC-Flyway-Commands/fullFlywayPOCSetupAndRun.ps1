@@ -155,17 +155,17 @@ Read-Host "Press Enter when ready to capture your changes in the schema model an
 $scriptName = "Jira123_YourDescription"
 
 #Syncs the Schema Model folder with the provided Source URL
-flyway diff model "-workingDirectory=$workingDir" "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$devDBConnectionString" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
+flyway diff model "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$devDBConnectionString" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
 #Generated a new migration script by comparing the Schema Model folder to Build Url after it's been brought to current version.
-flyway diff generate "-workingDirectory=$workingDir" "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-generate.description=$scriptName" "-diff.buildEnvironment=shadow" "-environments.shadow.url=$shadowUrl" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
+flyway diff generate "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-generate.description=$scriptName" "-diff.buildEnvironment=shadow" "-environments.shadow.url=$shadowUrl" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "DEPLOYMENT: Deploy to Test Database ($testUrl)" -ForegroundColor Yellow -BackgroundColor DarkBlue
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "You are about to deploy changes to the test DB." -ForegroundColor White
-Read-Host "Press Enter to run flyway migrate -workingDirectory=$workingDir -environment=test -saveSnapshot=true"
+Read-Host "Press Enter to run flyway migrate -environment=test -saveSnapshot=true"
 
-flyway migrate -workingDirectory="$workingDir" -environment=test -saveSnapshot=true 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
+flyway migrate -environment=test -saveSnapshot=true 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "REVIEW: Check Deployment Results" -ForegroundColor Yellow -BackgroundColor DarkBlue
@@ -180,9 +180,9 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "INFO: View Deployment History" -ForegroundColor Yellow -BackgroundColor DarkBlue
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "You can run 'flyway info' from the command line to see the deployment history." -ForegroundColor White
-Read-Host "Press Enter to run flyway info -workingDirectory=$workingDir -environment=test"
+Read-Host "Press Enter to run flyway info -environment=test"
 
-flyway info -workingDirectory="$workingDir" -environment=test 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
+flyway info -environment=test 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "DRIFT DETECTION: Learn More" -ForegroundColor Yellow -BackgroundColor DarkBlue
@@ -192,10 +192,10 @@ Write-Host "Learn more at: " -ForegroundColor White -NoNewline
 Write-Host "Drift Detection Tutorial" -ForegroundColor Cyan
 Write-Host "https://documentation.red-gate.com/fd/tutorial-drift-report-for-deployments-using-embedded-snapshot-317493682.html" -ForegroundColor Blue
 Read-Host "For drift to show up, you need to manually make a change to a target database outside of using Flyway. Make a schema change manually to $testUrl."
-Read-Host "Press Enter to execute flyway check -drift -code -dryrun -environment=$test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current -workingDirectory=$workingDir"
+Read-Host "Press Enter to execute flyway check -drift -code -dryrun -environment=$test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current"
 
 
-flyway check -drift -code -dryrun -environment=$test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current -workingDirectory="$workingDir"
+flyway check -drift -code -dryrun -environment=$test "-check.code.failOnError=false" "-check.failOnDrift=false" "-check.deployedSnapshot=snapshothistory:current"
 
 
 # # Variables to be changed by user
