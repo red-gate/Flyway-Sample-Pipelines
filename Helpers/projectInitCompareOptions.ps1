@@ -78,7 +78,7 @@ if ($backupPath -eq "") {
     flyway diff model "-diff.source=migrations" "-diff.target=schemaModel" "-diff.buildEnvironment=shadow"
 }
 
-$pocSetupMessage = "`nYDo you want to set up a full POC environment with dev and test databases?"
+$pocSetupMessage = "`nDo you want to set up a full POC environment with dev and test databases?"
 if ($backupPath -ne "") {
     $pocSetupMessage += " $backupPath WILL BE RESTORED multiple times to provided instance for dev and test databases. (Y/N)?"
 } else {
