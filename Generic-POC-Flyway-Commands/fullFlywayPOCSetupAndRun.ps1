@@ -10,6 +10,7 @@ $User = ""
 $Password = ""
 # Can be changed to a different name than DB name
 $projectName = "$baseDBName"
+# This can be explicit
 $projectPath = "."
 # Backup as Baseline path - must be accessible by DB server - leave empty if not needed 
 $backupPath = "C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak" # eg C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQL\\Backup\\Northwind.bak
@@ -22,6 +23,7 @@ $devDatabaseName = ""
 $devUrl = ""
 $testDatabaseName = ""
 $testUrl = ""
+$shadowUrl = ""
 
 # Initialize project - create folders and flyway.toml - delete existing project folder if exists
 if (Test-Path -Path "$projectPath\$projectName") {
@@ -74,11 +76,11 @@ if (Test-Path -Path $filePath) {
 
 # Populate SchemaModel from dev database or from backup
 if ($backupPath -eq "") {
-    flyway diff model "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$baselineSourceIfNoBackup" "-environments.dev.user=$User" "-environments.dev.password=$Password" "-environments.dev.schemas=$Schemas"
-    flyway diff generate "-diff.source=schemaModel" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline" "-generate.version=1.0"
+    flyway diff model "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$baselineSourceIfNoBackup" "-environments.dev.user=$User" "-environments.dev.password=$Password" "-environments.dev.schemas=$Schemas" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
+    flyway diff generate "-diff.source=schemaModel" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline" "-generate.version=1.0" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
 } else {
     Write-Output "Restoring provided backup file to server URL and Populating SchemaModel from it"
-    flyway diff model "-diff.source=migrations" "-diff.target=schemaModel" "-diff.buildEnvironment=shadow"
+    flyway diff model "-diff.source=migrations" "-diff.target=schemaModel" "-diff.buildEnvironment=shadow" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
 }
 
 $pocSetupMessage = "`nYDo you want to set up a full POC environment with dev and test databases?"
@@ -93,29 +95,27 @@ $response = Read-Host $pocSetupMessage
 if ($response -eq "Y" -or $response -eq "y") {
     Write-Host "Setting up full POC environment..."
     if ($backupPath -eq "") {
-            $devDatabaseName = $devDBName
-            $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
+            $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDBName"
             (Add-Content -Path "flyway.toml" `
             -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"create-database`""
             )
-            Write-Host "Creating dev database $devDatabaseName and running Baseline script to populate it..."
-            flyway migrate -environment=development
+            Write-Host "Creating dev database $devDBName and running Baseline script to populate it..."
+            flyway migrate -environment=development 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
 
     } else {
-        $devDatabaseName = $devDBName
-        $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
+        $devUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$devDBName"
         (Add-Content -Path "flyway.toml" `
         -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"backup`"`n`n[environments.development.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.development.resolvers.backup.sqlserver]`n  generateWithMove = true"
         )
         $testDatabaseName = $baseDBName + '_test'
-        $testUrl = $Url -replace "databaseName=[^;]*", "databaseName=$testDatabaseName"
+        $testUrl = $baselineSourceIfNoBackup -replace "databaseName=[^;]*", "databaseName=$testDatabaseName"
         (Add-Content -Path "flyway.toml" `
         -Value "`n`n[environments.test]`nurl = `"$testUrl`"`nprovisioner = `"backup`"`n`n[environments.test.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.test.resolvers.backup.sqlserver]`n  generateWithMove = true"
         )
-        Write-Host "Restoring backup file to create dev database $devDatabaseName"  
-        flyway migrate -environment=development
+        Write-Host "Restoring backup file to create dev database $devDBName"  
+        flyway migrate -environment=development 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
         Write-Host "Restoring backup file to create test database $testDatabaseName"  
-        flyway migrate -environment=test
+        flyway migrate -environment=test 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
     }
     Write-Host "POC environment setup completed."
     $skipped = $false
@@ -128,6 +128,7 @@ if ($response -eq "Y" -or $response -eq "y") {
 # Start Flyway Enterprise Trial and test connection
 flyway auth -IAgreeToTheEula -startEnterpriseTrial 2>&1 | Out-Null
 flyway testConnection "-url=$devDBConnectionString" "-user=$User" "-password=$Password" "-schemas=$Schemas" 2>&1 | ForEach-Object {
+    # flyway auth will provide a 400 if already authenticated, squash that message
     if ($_ -notmatch "400") {
         $_
     }
@@ -136,69 +137,82 @@ if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 400) {
     exit 1
 }
 
-$sqlTablescript = "
- CREATE TABLE AA_Test_Parent (
-    ParentID INT PRIMARY KEY,
-    ParentName NVARCHAR(100) NOT NULL
-);
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "STEP: Make Database Changes" -ForegroundColor Yellow -BackgroundColor DarkBlue
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Make some changes to the dev DB ($devUrl) for Flyway to capture and generate a deployment script." -ForegroundColor White
+Read-Host "Press Enter when done"
 
-CREATE TABLE AA_Test_Child (
-    ChildID INT PRIMARY KEY,
-    ChildName NVARCHAR(100) NOT NULL,
-    ParentID INT,
-    FOREIGN KEY (ParentID) REFERENCES AA_Test_Parent(ParentID) ON DELETE CASCADE
-);"
-# Interactive prompt for full POC environment setup
-$runForMe = Read-Host "Use this script to create a sample migration - $sqlTablescript `n should I run this for you (Y)?`n Or do you want to run them yourself (N)?"
-if ($runForMe -eq "Y" -or $runForMe -eq "y" -and -not $skipped) {
-    Write-Host "Creating sample tables in dev database..."
-    flyway migrate "-initSql=$sqlTablescript" "-url=$devUrl" "-user=$User" "-password=$Password"
-    Write-Host "Sample tables created in dev database."
-    $runScriptsForMe = $true
-} else {
-    $response = Read-Host "Skipping sample table creation. Have you run them yourself against $devDatabaseName? (Y/N)?"
-}
-if ( $runForMe -eq "Y" -or  $runForMe -eq "y" -or $response -eq "y" -or $response -eq "Y" -and -not $skipped) {
-    Write-Host "Creating migration scripts based on changes from dev to test database..."
-    flyway diff model "-diff.source=development" "-diff.target=schemaModel" 
-    flyway diff generate "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-diff.buildEnvironment=shadow"
-    Write-Host "Migration scripts created."
-} else {
-    Write-Host "Skipping migration script creation."
-    
-}
+#the Description of the migration script generated - should probably include feature/ticket information
+$scriptName = "Jira123_YourDescription"
 
-Read-Host "Make some changes to the dev DB for Flyway to capture and generate a deployment script. Press enter once done."
+#Syncs the Schema Model folder with the provided Source URL
+flyway diff model "-workingDirectory=$projectPath" "-diff.source=dev" "-diff.target=schemaModel" "-environments.dev.url=$devDBConnectionString" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
+#Generated a new migration script by comparing the Schema Model folder to Build Url after it's been brought to current version.
+flyway diff generate "-workingDirectory=$projectPath" "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-generate.description=$scriptName" "-diff.buildEnvironment=shadow" "-environments.shadow.url=$shadowUrl" 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "DEPLOYMENT: Deploy to Test Database ($testUrl)" -ForegroundColor Yellow -BackgroundColor DarkBlue
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "You are about to deploy changes to the test DB." -ForegroundColor White
+Read-Host "Press Enter to proceed"
+
+flyway migrate -workingDirectory="$projectPath" -environment=test 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' } 
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "REVIEW: Check Deployment Results" -ForegroundColor Yellow -BackgroundColor DarkBlue
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "You have just deployed changes to: " -ForegroundColor White -NoNewline
+Write-Host "$testUrl" -ForegroundColor Green
+Write-Host "Go look at that database and look for the changes." -ForegroundColor White
+Write-Host "Note: The flyway_schema_history table will have a record of deployments and metadata." -ForegroundColor Gray
+Read-Host "Press Enter to proceed"
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "INFO: View Deployment History" -ForegroundColor Yellow -BackgroundColor DarkBlue
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "You can run 'flyway info' from the command line to see the deployment history." -ForegroundColor White
+Read-Host "Press Enter to run flyway info"
+
+flyway info -workingDirectory="$projectPath" -environment=test 2>&1 | Where-Object { $_ -notmatch 'Database: jdbc:' -and $_ -notmatch 'ERROR: Skipping filesystem location:' }
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "DRIFT DETECTION: Learn More" -ForegroundColor Yellow -BackgroundColor DarkBlue
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Flyway can detect drift in your databases." -ForegroundColor White
+Write-Host "Learn more at: " -ForegroundColor White -NoNewline
+Write-Host "Drift Detection Tutorial" -ForegroundColor Cyan
+Write-Host "https://documentation.red-gate.com/fd/tutorial-drift-report-for-deployments-using-embedded-snapshot-317493682.html" -ForegroundColor Blue
+Read-Host "Press Enter to continue"
+
 
 # # Variables to be changed by user
 # $configFiles = "C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml"
 # $workingDirectory = "C:\WorkingFolders\FWD\NewWorldDB"
-# $schemaModelLocation = "./schema-model"
-# $environment = "test"
-# $target = "043.20250716213211"
-# $cherryPick = "045.20251106201536"
+
+
 
 # # generic deployment
 # Read-Host "Press Enter to run migrate command"
-# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation" -schemaModelSchemas= -environment=$environment
+# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -environment=$environment
 
 # # ================================================================================
 
 # # create snapshot after changes
 # Read-Host "Press Enter to run snapshot command"
-# flyway snapshot -environment=$environment -filename=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation"
+# flyway snapshot -environment=$environment -filename=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory"
 
 # # ================================================================================
 
 # # undo back to a specific target number
 # Read-Host "Press Enter to run undo command"
-# flyway undo -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation" -schemaModelSchemas= -environment=$environment -target=$target
+# flyway undo -configFiles="$configFiles" -workingDirectory="$workingDirectory" -environment=$environment -target=$target
 
 # # ================================================================================
 
 # # cherryPick forward
 # Read-Host "Press Enter to run cherry-pick migrate command"
-# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation" -schemaModelSchemas= -environment=$environment -cherryPick=$cherryPick
+# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -environment=$environment -cherryPick=$cherryPick
 
 # # ================================================================================
 
@@ -208,18 +222,18 @@ Read-Host "Make some changes to the dev DB for Flyway to capture and generate a 
 # # check can be configured to fail on drift or code analysis triggering
 # # it's possible to capture changes as well, but it is a duplication of what's stored in schema model and requires an extra database to deploy to in a CI fashion
 # Read-Host "Press Enter to run drift check command"
-# flyway check -drift -code -dryrun -environment=$environment -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation"
+# flyway check -drift -code -dryrun -environment=$environment -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory"
 
 # # ================================================================================
 
 # # generic deployment
 # Read-Host "Press Enter to run migrate command"
-# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation" -schemaModelSchemas= -environment=$environment
+# flyway migrate -configFiles="$configFiles" -workingDirectory="$workingDirectory" -environment=$environment
 
 # # ================================================================================
 
 # # create snapshot after changes
 # Read-Host "Press Enter to run snapshot command"
-# flyway snapshot -environment=$environment -filename=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation"
+# flyway snapshot -environment=$environment -filename=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory"
 
 cd ..
