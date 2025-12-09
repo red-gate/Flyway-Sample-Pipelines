@@ -32,9 +32,9 @@ flyway init "-init.projectName=$projectName" "-init.databaseType=$databaseType"
 if ($backupPath -ne "") {
     # Add shadow environment to flyway.toml
     $ShadowDatabaseName = $databaseName + '_${env.UserName}_shadow'
-    $Url = $Url -replace "databaseName=[^;]*", "databaseName=$ShadowDatabaseName"
+    $shadowUrl = $Url -replace "databaseName=[^;]*", "databaseName=$ShadowDatabaseName"
     (Add-Content -Path "flyway.toml" `
-    -Value "`n`n[environments.shadow]`nurl = `"$Url`"`nprovisioner = `"backup`"`n`n[environments.shadow.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.shadow.resolvers.backup.sqlserver]`n  generateWithMove = true"
+    -Value "`n`n[environments.shadow]`nurl = `"$shadowUrl`"`nprovisioner = `"backup`"`n`n[environments.shadow.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.shadow.resolvers.backup.sqlserver]`n  generateWithMove = true"
     )
 }
 
@@ -76,5 +76,81 @@ if ($backupPath -eq "") {
 } else {
     Write-Output "Restoring provided backup file to server URL and Populating SchemaModel from it"
     flyway diff model "-diff.source=migrations" "-diff.target=schemaModel" "-diff.buildEnvironment=shadow"
+}
+
+$pocSetupMessage = "`nYDo you want to set up a full POC environment with dev and test databases?"
+if ($backupPath -ne "") {
+    $pocSetupMessage += " $backupPath WILL BE RESTORED multiple times to provided instance for dev and test databases. (Y/N)?"
+} else {
+    $pocSetupMessage += "Provided database is assumed as test and new dev database WILL BE CREATED (Y/N)?"
+}
+
+# Interactive prompt for full POC environment setup
+$response = Read-Host $pocSetupMessage
+if ($response -eq "Y" -or $response -eq "y") {
+    Write-Host "Setting up full POC environment..."
+    if ($backupPath -eq "") {
+            $devDatabaseName = $databaseName + '_dev'
+            $devUrl = $Url -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
+            (Add-Content -Path "flyway.toml" `
+            -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"create-database`""
+            )
+            Write-Host "Creating dev database $devDatabaseName and running Baseline script to populate it..."
+            flyway migrate -environment=development
+
+    } else {
+        $devDatabaseName = $databaseName + '_dev'
+        $devUrl = $Url -replace "databaseName=[^;]*", "databaseName=$devDatabaseName"
+        (Add-Content -Path "flyway.toml" `
+        -Value "`n`n[environments.development]`nurl = `"$devUrl`"`nprovisioner = `"backup`"`n`n[environments.development.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.development.resolvers.backup.sqlserver]`n  generateWithMove = true"
+        )
+        $testDatabaseName = $databaseName + '_test'
+        $testUrl = $Url -replace "databaseName=[^;]*", "databaseName=$testDatabaseName"
+        (Add-Content -Path "flyway.toml" `
+        -Value "`n`n[environments.test]`nurl = `"$testUrl`"`nprovisioner = `"backup`"`n`n[environments.test.resolvers.backup]`nbackupFilePath = `"$backupPath`"`nbackupVersion = `"000`"`n`n  [environments.test.resolvers.backup.sqlserver]`n  generateWithMove = true"
+        )
+        Write-Host "Restoring backup file to create dev database $devDatabaseName"  
+        flyway migrate -environment=development
+        Write-Host "Restoring backup file to create test database $testDatabaseName"  
+        flyway migrate -environment=test
+    }
+    Write-Host "POC environment setup completed."
+    $skipped = $false
+  
+} else {
+    Write-Host "Just showing flyway commands with documentation links to run manually"
+    $skipped = $true
+}
+
+$sqlTablescript = "
+ CREATE TABLE AA_Test_Parent (
+    ParentID INT PRIMARY KEY,
+    ParentName NVARCHAR(100) NOT NULL
+);
+
+CREATE TABLE AA_Test_Child (
+    ChildID INT PRIMARY KEY,
+    ChildName NVARCHAR(100) NOT NULL,
+    ParentID INT,
+    FOREIGN KEY (ParentID) REFERENCES AA_Test_Parent(ParentID) ON DELETE CASCADE
+);"
+# Interactive prompt for full POC environment setup
+$runForMe = Read-Host "Use this script to create a sample migration - $sqlTablescript `n should I run this for you (Y)?`n Or do you want to run them yourself (N)?"
+if ($runForMe -eq "Y" -or $runForMe -eq "y" -and -not $skipped) {
+    Write-Host "Creating sample tables in dev database..."
+    flyway migrate "-initSql=$sqlTablescript" "-url=$devUrl" "-user=$User" "-password=$Password"
+    Write-Host "Sample tables created in dev database."
+    $runScriptsForMe = $true
+} else {
+    $response = Read-Host "Skipping sample table creation. Have you run them yourself against $devDatabaseName? (Y/N)?"
+}
+if ( $runForMe -eq "Y" -or  $runForMe -eq "y" -or $response -eq "y" -or $response -eq "Y" -and -not $skipped) {
+    Write-Host "Creating migration scripts based on changes from dev to test database..."
+    flyway diff model "-diff.source=development" "-diff.target=schemaModel" 
+    flyway diff generate "-diff.source=schemaModel" "-diff.target=migrations" "-generate.types=versioned,undo" "-diff.buildEnvironment=shadow"
+    Write-Host "Migration scripts created."
+} else {
+    Write-Host "Skipping migration script creation."
+    
 }
 cd .. 
