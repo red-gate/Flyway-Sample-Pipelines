@@ -13,6 +13,12 @@ $backupPath = "C:\\Program Files\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSS
 # Set the schemas value
 $Schemas = @("") # can be empty for SqlServer
 
+# Initialize variables at script level - these will be provided later do not fill
+$devDatabaseName = ""
+$devUrl = ""
+$testDatabaseName = ""
+$testUrl = ""
+
 # Start Flyway Enterprise Trial and test connection
 flyway auth -IAgreeToTheEula -startEnterpriseTrial
 flyway testConnection "-url=$baselineSourceIfNoBackup" "-user=$User" "-password=$Password" "-schemas=$Schemas" 
@@ -207,3 +213,5 @@ Read-Host "Make some changes to the dev DB for Flyway to capture and generate a 
 # # create snapshot after changes
 # Read-Host "Press Enter to run snapshot command"
 # flyway snapshot -environment=$environment -filename=snapshothistory:current -configFiles="$configFiles" -workingDirectory="$workingDirectory" -schemaModelLocation="$schemaModelLocation"
+
+cd ..
