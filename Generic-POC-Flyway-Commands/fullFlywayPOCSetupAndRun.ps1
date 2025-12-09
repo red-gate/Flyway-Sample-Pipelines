@@ -1,5 +1,5 @@
 # Set parameters
-$overWriteProject = $true # Set to true to delete and recreate the project folder. Can be useful when configuring from scratch.
+$overWriteProject = $false # Set to true to delete and recreate the project folder. Can be useful when configuring from scratch.
 $databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
 # connection string to prodlike database
 # This POC will create a dev, test, shadow DB - this name will be in the root of all subsequent names
