@@ -21,12 +21,12 @@ flyway snapshot -environment=test -filename=snapshothistory:current
 # ================================================================================
 
 # undo back to a specific target number
-flyway undo  -schemaModelSchemas= -environment=test -target=043.20250716213211
+flyway undo  -environment=test -target=043.20250716213211
 
 # ================================================================================
 
 # cherryPick forward
-flyway migrate  -schemaModelSchemas= -environment=test -cherryPick=045.20251106201536
+flyway migrate  -environment=test -cherryPick=045.20251106201536
 
 # ================================================================================
 
@@ -39,7 +39,7 @@ flyway check -drift -code -dryrun -environment=test -check.code.failOnError=fals
 # ================================================================================
 
 # generic deployment
-flyway migrate  -schemaModelSchemas= -environment=test
+flyway migrate  -environment=test
 
 # ================================================================================
 
