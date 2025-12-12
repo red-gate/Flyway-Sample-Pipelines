@@ -1,4 +1,4 @@
-# Set parameters
+#fullFlywayPOCSetupAndRun.ps1
 $overWriteProject = $false # Set to true to delete and recreate the project folder. Can be useful when configuring from scratch.
 $databaseType = "SqlServer" # alt values: SqlServer Oracle PostgreSql MySql 
 # connection string to prodlike database
@@ -20,7 +20,7 @@ $workingDir = "$projectPath\$projectName"
 # Set the schemas value
 $Schemas = @("") # can be empty for SqlServer
 
-# Initialize variables at script level - these will be provided later do not fill
+# DO NOT FILL - Initialize variables at script level - these will be provided later do not fill
 $devDatabaseName = ""
 $devUrl = ""
 $testDatabaseName = ""
@@ -91,7 +91,7 @@ if ($overWriteProject -or -not (Test-Path -Path "$workingDir")) {
     Set-Location "$projectPath\$projectName"
 }
 
-$pocSetupMessage = "`nYDo you want to set up a full POC environment with dev and test databases?"
+$pocSetupMessage = "`nDo you want to set up a full POC environment with dev and test databases?"
 if ($backupPath -ne "") {
     $pocSetupMessage += " $backupPath WILL BE RESTORED multiple times to provided instance for dev and test databases. (Y/N)?"
 } else {

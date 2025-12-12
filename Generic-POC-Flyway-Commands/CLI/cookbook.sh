@@ -4,23 +4,29 @@
 # Each command below can be copied and pasted independently
 # Update the inline values as needed for your environment
 
-# generic deployment
-flyway migrate -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model" -schemaModelSchemas= -environment=test
+# ================================================================================
+
+# run code analysis only
+flyway check -code -environment=test -check.code.failOnError=false
 
 # ================================================================================
 
+# generic deployment
+flyway migrate -environment=test
+
+
 # create snapshot after changes
-flyway snapshot -environment=test -filename=snapshothistory:current -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model"
+flyway snapshot -environment=test -filename=snapshothistory:current
 
 # ================================================================================
 
 # undo back to a specific target number
-flyway undo -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model" -schemaModelSchemas= -environment=test -target=043.20250716213211
+flyway undo  -schemaModelSchemas= -environment=test -target=043.20250716213211
 
 # ================================================================================
 
 # cherryPick forward
-flyway migrate -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model" -schemaModelSchemas= -environment=test -cherryPick=045.20251106201536
+flyway migrate  -schemaModelSchemas= -environment=test -cherryPick=045.20251106201536
 
 # ================================================================================
 
@@ -28,15 +34,14 @@ flyway migrate -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\Wor
 
 # run drift and code analysis (TO SEE DRIFT ALTER TARGET DB OUTSIDE OF FLYWAY)
 # check can be configured to fail on drift or code analysis triggering
-# it's possible to capture changes as well, but it is a duplication of what's stored in schema model and requires an extra database to deploy to in a CI fashion
-flyway check -drift -code -dryrun -environment=test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model"
+flyway check -drift -code -dryrun -environment=test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current 
 
 # ================================================================================
 
 # generic deployment
-flyway migrate -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model" -schemaModelSchemas= -environment=test
+flyway migrate  -schemaModelSchemas= -environment=test
 
 # ================================================================================
 
 # create snapshot after changes
-flyway snapshot -environment=test -filename=snapshothistory:current -configFiles="C:\WorkingFolders\FWD\NewWorldDB\flyway.toml,C:\WorkingFolders\FWD\NewWorldDB\flyway.user.toml" -workingDirectory="C:\WorkingFolders\FWD\NewWorldDB" -schemaModelLocation="./schema-model"
+flyway snapshot -environment=test -filename=snapshothistory:current 
