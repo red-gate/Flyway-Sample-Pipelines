@@ -25,6 +25,11 @@ flyway undo  -environment=test -target=043.20250716213211
 
 # ================================================================================
 
+# generic deployment
+flyway migrate  -environment=test
+
+# ================================================================================
+
 # cherryPick forward
 flyway migrate  -environment=test -cherryPick=045.20251106201536
 
@@ -36,10 +41,11 @@ flyway migrate  -environment=test -cherryPick=045.20251106201536
 # check can be configured to fail on drift or code analysis triggering
 flyway check -drift -code -dryrun -environment=test -check.code.failOnError=false -check.failOnDrift=false -check.deployedSnapshot=snapshothistory:current 
 
+
 # ================================================================================
 
-# generic deployment
-flyway migrate  -environment=test
+# cherryPick forward
+flyway migrate  -environment=test -cherryPick=045.20251106201536
 
 # ================================================================================
 
