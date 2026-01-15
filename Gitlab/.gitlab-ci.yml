@@ -1,0 +1,106 @@
+# GitLab CI/CD Pipeline for Flyway Database Migrations
+
+stages:
+  # - validate
+  - migrate-test
+  - migrate-prod
+
+variables:
+  FLYWAY_VERSION: "10.20.1"
+  # Production database connection details stored in GitLab CI/CD Variables:
+  # PROD_DB_URL, PROD_DB_USER, PROD_DB_PASSWORD
+  # Test database runs in a temporary SQL Server container (see migrate:dev job)
+
+# # Validate migrations before deploying
+# validate:
+#   stage: validate
+#   image: flyway/flyway:${FLYWAY_VERSION}
+#   script:
+#     - flyway -url="${DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" validate
+#     - flyway -url="${DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" info
+#   only:
+#     - merge_requests
+#     - main
+
+# Deploy to Development
+migrate:dev:
+  stage: migrate-test
+  image:
+    name: flyway/flyway:${FLYWAY_VERSION}
+    entrypoint: [""]
+  services:
+    - name: postgres:15-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: testdb
+        POSTGRES_USER: flywayuser
+        POSTGRES_PASSWORD: flywaypass
+  variables:
+    TEST_DB_URL: "jdbc:postgresql://postgres:5432/testdb"
+    DB_USER: "flywayuser"
+    DB_PASSWORD: "flywaypass"
+  script:
+    - echo "Waiting for PostgreSQL to start..."
+    - |
+      for i in {1..15}; do
+        if flyway -url="${TEST_DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" info > /dev/null 2>&1; then
+          echo "PostgreSQL is ready!"
+          break
+        fi
+        echo "Attempt $i: PostgreSQL not ready yet, waiting..."
+        sleep 2
+      done
+    - echo "Running Flyway info..."
+    - flyway -url="${TEST_DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" -baselineOnMigrate=true info
+    - flyway -url="${TEST_DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" -baselineOnMigrate=true migrate
+    - flyway -url="${TEST_DB_URL}" -user="${DB_USER}" -password="${DB_PASSWORD}" info
+  environment:
+    name: development
+  only:
+    - main
+
+# Deploy to Production (manual trigger with protection)
+migrate:prod:
+  stage: migrate-prod
+  image:
+    name: flyway/flyway:${FLYWAY_VERSION}
+    entrypoint: [""]
+  script:
+    - flyway -url="${PROD_DB_URL}" -user="${PROD_DB_USER}" -password="${PROD_DB_PASSWORD}" info
+    - flyway -url="${PROD_DB_URL}" -user="${PROD_DB_USER}" -password="${PROD_DB_PASSWORD}" migrate
+    - flyway -url="${PROD_DB_URL}" -user="${PROD_DB_USER}" -password="${PROD_DB_PASSWORD}" info
+  environment:
+    name: production
+  when: manual
+  only:
+    - main
+  # Uncomment to require manual approval
+  # needs:
+  #   - migrate:staging
+
+
+# Alternative: Using Flyway config file
+# migrate:with-config:
+#   stage: migrate-dev
+#   image: flyway/flyway:${FLYWAY_VERSION}
+#   script:
+#     - flyway -configFiles=/flyway/conf/flyway.conf migrate
+#   artifacts:
+#     paths:
+#       - flyway-report.html
+#   only:
+#     - main
+
+
+# Alternative: Using Java with Flyway CLI installed
+# migrate:java:
+#   stage: migrate-dev
+#   image: openjdk:17-slim
+#   before_script:
+#     - apt-get update && apt-get install -y wget
+#     - wget -qO- https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz | tar xvz
+#     - ln -s `pwd`/flyway-${FLYWAY_VERSION}/flyway /usr/local/bin/flyway
+#   script:
+#     - flyway -url="${DEV_DB_URL}" -user="${DEV_DB_USER}" -password="${DEV_DB_PASSWORD}" migrate
+#   only:
+#     - main
