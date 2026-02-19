@@ -13,12 +13,13 @@ env:
   JDBC_PROD1: ${{ vars.JDBC_PROD1 }}
   JDBC_PROD2: ${{ vars.JDBC_PROD2 }}
   JDBC_CHECK: ${{ vars.JDBC_CHECK }}
-  DB_PROD_2: ${{ vars.DB_NAME_PROD_2 }} # Used in report filename
+  DB_PROD_1: ${{ vars.DB_NAME_PROD_1 }} # Used in report filename
 
   # Repository Secrets - Create these in Project Settings > Secrets > Actions
   TOKEN: ${{ secrets.FLYWAY_TOKEN }}
-  DB_USER_PROD: ${{ secrets.DB_USER_NAME_QA }}
-  DB_USER_PW_PROD: ${{ secrets.DB_USER_PW_QA }}
+  DB_USER_PROD: ${{ secrets.DB_USER_NAME_PROD1 }}
+  DB_USER_PW_PROD: ${{ secrets.DB_USER_PW_PROD1 }}
+  # If PROD2 needs a different User & Password input here and replace paramaters in flyway-deploy-prod-2 run step.
   # End of Environment Secrets #
 
   generateDriftAndChangeReport: true
@@ -43,7 +44,7 @@ jobs:
 
       - name: Create Drift and Change Report
         run: |
-          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -cleanDisabled="false" -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url=${{ env.JDBC_PROD2 }} -check.buildUser=${{ env.DB_USER_PROD }} -check.buildPassword=${{ env.DB_USER_PW_PROD }} -check.buildUrl="${{ env.JDBC_CHECK }}" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_2 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}\migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -cleanDisabled="false" -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url=${{ env.JDBC_PROD2 }} -check.buildUser=${{ env.DB_USER_PROD }} -check.buildPassword=${{ env.DB_USER_PW_PROD }} -check.buildUrl="${{ env.JDBC_CHECK }}" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_1 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}\migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         continue-on-error: true
 
       # Create a directory to stage the artifact files
@@ -57,7 +58,7 @@ jobs:
           name: flyway-reports
           path: reports/
 
-  # GitHub Actions doesn't natively support manual approval steps like some other CI/CD tools (e.g., Azure DevOps or GitLab).
+  # GitHub Actions can support manual approval steps like some other CI/CD tools (e.g., Azure DevOps or GitLab).
   # You can achieve similar functionality using environments with required reviewers or by integrating external approval mechanisms.
   # Alternatively maybe a Review Branch prior to pulling to Production or another downstream environment.
 
