@@ -15,8 +15,8 @@ env:
 
   # Repository Secrets - Create these in Project Settings > Secrets > Actions
   TOKEN: ${{ secrets.FLYWAY_TOKEN }}
-  DB_USER_Build: ${{ secrets.DB_USER_NAME_QA }}
-  DB_USER_PW_Build: ${{ secrets.DB_USER_PW_QA }}
+  DB_USER_BUILD: ${{ secrets.DB_USER_NAME_BUILD }}
+  DB_USER_PW_BUILD: ${{ secrets.DB_USER_PW_BUILD }}
   FIRST_UNDO_SCRIPT: ${{ secrets.FIRST_UNDO_SCRIPT }} # Validates all undo scripts up to and including the specified script
 
 # jobs are the steps executed in the workflow
@@ -26,7 +26,7 @@ jobs:
     # runs-on: ubuntu-latest
     defaults:
       run:
-        shell: cmd # Default shell. Use Windows Command Prompt
+        shell: cmd # Default shell. Use Windows Command Prompt. bash for linux.
     steps: # Steps are the individual tasks that are executed in the job
       - name: Checkout Repository # Step to check out the repository
         uses: actions/checkout@v4
@@ -38,13 +38,13 @@ jobs:
       # Runs the Flyway Clean command against the Build database
       - name: Clean Build DB
         run: |
-          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info clean info -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info clean info -cleanDisabled="false" -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       - name: Migrate Build # Step to run Flyway migrations
         # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -cleanDisabled="false" -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         working-directory: ./migrations
 
       - name: Rollback Build # Step to run Flyway migrations
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} undo -cleanDisabled="false" -user=${{ env.DB_USER_Build }} -password=${{ env.DB_USER_PW_Build }} -url=${{ env.JDBC_BUILD }} -target=${{ env.FIRST_UNDO_SCRIPT }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} undo -cleanDisabled="false" -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -target=${{ env.FIRST_UNDO_SCRIPT }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         working-directory: ./migrations
