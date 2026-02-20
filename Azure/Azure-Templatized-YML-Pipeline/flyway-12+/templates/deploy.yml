@@ -111,7 +111,7 @@ stages:
           - checkout: self
             name: source
           
-          - script: '$(FLYWAY) info check -dryrun -drift -code -environments.target.url="$(target_database_JDBC)" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) info check -dryrun -drift -code -environments.target.url="$(target_database_JDBC)" -check.deployedSnapshot=snapshothistory:current -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             continueOnError: false
             workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -140,7 +140,7 @@ stages:
           - checkout: self
             name: source
 
-          - script: '$(FLYWAY) info check -dryrun -drift -environments.target.url="$(target_database_JDBC)" -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
+          - script: '$(FLYWAY) info check -dryrun -drift -environments.target.url="$(target_database_JDBC)" -check.deployedSnapshot=snapshothistory:current -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)"'
             workingDirectory: '$(WORKING_DIRECTORY)'
             continueOnError: false
             displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
@@ -212,7 +212,8 @@ stages:
           displayName: ${{parameters.displayName}}
           continueOnError: false
       
-        - script: '$(FLYWAY) snapshot -environments.target.url="$(target_database_JDBC)" -filename="C:\snapshot.json"'
+        # create snapshot after changes
+        - script: '$(FLYWAY) snapshot -environments.target.url="$(target_database_JDBC)" -filename=snapshothistory:current'
           workingDirectory: $(WORKING_DIRECTORY)
           displayName: ${{parameters.displayName}}
           continueOnError: true
