@@ -1,0 +1,3 @@
+JDBCString
+jdbc:sqlserver://localhost;databaseName=Northwind_Prod3;encrypt=false;integratedSecurity=true;trustServerCertificate=true
+jdbc:sqlserver://localhost;databaseName=Northwind_Prod4;encrypt=false;integratedSecurity=true;trustServerCertificate=true

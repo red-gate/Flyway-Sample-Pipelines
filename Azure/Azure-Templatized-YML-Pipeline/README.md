@@ -1,3 +1,7 @@
+12+ notes
+
+I have removed the change report and moved drift dtection to using snapshots. This reduces database overhead. THe change report can be brought back in by using a check database as before.
+
 CLI versions can be downloaded here: https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline
 
 Instructions on usage here: https://www.red-gate.com/hub/university/courses/flyway/flyway-desktop-enterprise-implementation/preparing-for-the-poc/proof-of-concept

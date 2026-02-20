@@ -1,0 +1,63 @@
+# this is an experiment and untested as of yet
+
+# Key Changes:
+# type: bitbucket — specifies the repository type.
+# name: your-bitbucket-project/templated — replace with your actual Bitbucket project and repo name.
+# endpoint: your-bitbucket-service-connection — this should be the name of the service connection you've configured in Azure DevOps to authenticate with Bitbucket.
+# Next Steps:
+# Make sure you’ve:
+
+# Created a service connection in Azure DevOps for Bitbucket.
+# Granted appropriate permissions to access the repository.
+# Verified that the templates (deploy.yml, vars.yml, etc.) exist in the Bitbucket repo and are accessible.
+
+name: ADO-self-hosted-pipeline-templatized
+
+trigger:
+  branches:
+    include:
+      - prod
+  paths:
+    include:
+      - migrations/*
+
+resources:
+  repositories:
+    - repository: templates
+      type: bitbucket
+      name: your-bitbucket-project/templated
+      endpoint: your-bitbucket-service-connection
+
+variables:
+- template: vars.yml@templates
+
+stages:
+
+- template: deploy.yml@templates
+  parameters:
+    stage: Test
+    displayName: Deploy Test
+    generateReport: false
+    staticCodeAnalysis: true
+    targetCredentials: newworlddb_test_credentials
+    pipelineParameters: newworlddb_pipeline_vars
+
+- template: deploy.yml@templates
+  parameters:
+    stage: Prod1
+    dependsOn: Test
+    pauseForCodeReview: true
+    failReleaseIfDriftDetected: true
+    staticCodeAnalysis: true
+    displayName: Deploy Prod1
+    targetCredentials: newworlddb_prod_credentials
+    pipelineParameters: newworlddb_pipeline_vars
+
+- template: deploy.yml@templates
+  parameters:
+    stage: Prod2
+    displayName: Deploy Prod2
+    dependsOn: Test
+    generateReport: false
+    targetCredentials: newworlddb_prod2_credentials
+    pipelineParameters: newworlddb_pipeline_vars

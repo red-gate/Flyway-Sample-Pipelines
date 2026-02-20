@@ -1,0 +1,136 @@
+parameters:
+- name: stage
+  default: stage
+- name: displayName
+  default: Deploy
+- name: dependsOn
+  default: ''
+- name: pauseForCodeReview
+  default: false
+- name: failReleaseIfDriftDetected
+  default: false
+- name: generateDriftAndChangeReport
+  default: false
+- name: staticCodeAnalysis
+  default: false
+- name: targetCredentials
+  default: ''
+- name: pipelineParameters
+  default: ''
+- name: cherryPickVersions
+  default: ''
+
+stages:
+  - stage: ${{parameters.stage}} 
+    pool: $(AGENT_POOL)
+    displayName: ${{parameters.displayName}} 
+    dependsOn: ${{parameters.dependsOn}}
+    jobs:
+    - ${{if eq(parameters.staticCodeAnalysis, true)}}:
+      - job: ChangeReport
+        displayName: Change Report With Code Analysis
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+          # - script: 'pip install sqlfluff==1.2.1'
+          #   displayName: 'Install SQL Fluff'
+          #   failOnStderr: true
+          - checkout: templates
+          - checkout: self
+            name: source
+          
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -changes -drift -code -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\$(Build.Repository.Name)\migrations"'
+            workingDirectory: '$(WORKING_DIRECTORY)\$(Build.Repository.Name)'
+            failOnStderr: true
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+    - ${{if and(eq( parameters.generateDriftAndChangeReport, true), eq( parameters.staticCodeAnalysis, false))}}:
+      - job: ChangeReport
+        displayName: Change Report
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -cherryPick=$(cherryPickVersions) -changes -drift -dryrun -check.buildUrl="$(check_JDBC)" -check.buildUser="$(check_userName)" -check.buildPassword="$(check_password)" -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+            workingDirectory: '$(WORKING_DIRECTORY)'
+            failOnStderr: true
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+    
+    - ${{if and(eq( parameters.generateDriftAndChangeReport, false), eq( parameters.staticCodeAnalysis, false))}}:
+      - job: ChangeReport
+        displayName: Change Report
+        variables:
+        - group: ${{parameters.targetCredentials}}
+        - group: ${{parameters.pipelineParameters}}
+        - group: redgate_global_vars
+        steps:
+
+          - script: '$(FLYWAY) check -check.failOnDrift="${{parameters.failReleaseIfDriftDetected}}" -dryrun -url="$(target_database_JDBC)" -reportFilename="$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)" -locations="filesystem:$(WORKING_DIRECTORY)\migrations"'
+            workingDirectory: '$(WORKING_DIRECTORY)'
+            failOnStderr: true
+            displayName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+          
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish $(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+            inputs:
+              ArtifactName: '$(DRIFT_AND_CHANGE_REPORT_DISPLAY_NAME)'
+              PathtoPublish: '$(System.ArtifactsDirectory)\$(databaseName)-$(Build.BuildId)-$(DRIFT_AND_CHANGE_REPORT)'
+
+    - ${{if eq(parameters.pauseForCodeReview, true)}}:
+      - job: CodeReview
+        displayName: Code Review
+        dependsOn: ChangeReport
+        pool: server
+        steps:
+          - task: ManualValidation@0
+            displayName: 'Review Change Report Prior To Release'
+            timeoutInMinutes: 4320 # job times out in 3 days
+            inputs:
+              notifyUsers: |
+                user@email.com
+                example@example.com
+              instructions: 'Review changes'
+    
+    - ${{if ne(parameters.pauseForCodeReview, true)}}:
+      - job: CodeReview
+        dependsOn: ChangeReport
+        displayName: Skipping Code Review
+        pool: server
+    
+    - job: Deploy
+      displayName: Deployment
+      dependsOn: CodeReview
+      variables:
+      - group: ${{parameters.targetCredentials}}
+      - group: ${{parameters.pipelineParameters}}
+      - group: redgate_global_vars
+      steps:
+
+        - script: '$(FLYWAY) -cherryPick=$(cherryPickVersions) info migrate info -url=$(target_database_JDBC)'
+          workingDirectory: $(System.DefaultWorkingDirectory)
+          displayName: ${{parameters.displayName}}
+          failOnStderr: true
+          env:
+            FLYWAY_CLEAN_DISABLED: true # clean drops a target DB schema, keep disabled except for build step
