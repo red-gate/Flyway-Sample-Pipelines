@@ -17,8 +17,12 @@ env:
 
   # Repository Secrets - Create these in Project Settings > Secrets > Actions
   TOKEN: ${{ secrets.FLYWAY_TOKEN }}
-  DB_USER_PROD: ${{ secrets.DB_USER_NAME_PROD1 }}
-  DB_USER_PW_PROD: ${{ secrets.DB_USER_PW_PROD1 }}
+  DB_USER_CHECK: ${{ secrets.DB_USER_NAME_CHECK }}
+  DB_USER_PW_CHECK: ${{ secrets.DB_USER_PW_CHECK }}
+  DB_USER_PROD1: ${{ secrets.DB_USER_NAME_PROD1 }}
+  DB_USER_PW_PROD1: ${{ secrets.DB_USER_PW_PROD1 }}
+  DB_USER_PROD2: ${{ secrets.DB_USER_NAME_PROD2 }}
+  DB_USER_PW_PROD2: ${{ secrets.DB_USER_PW_PROD2 }}
   # If PROD2 needs a different User & Password input here and replace paramaters in flyway-deploy-prod-2 run step.
   # End of Environment Secrets #
 
@@ -44,7 +48,7 @@ jobs:
 
       - name: Create Drift and Change Report
         run: |
-          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -cleanDisabled="false" -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url=${{ env.JDBC_PROD2 }} -check.buildUser=${{ env.DB_USER_PROD }} -check.buildPassword=${{ env.DB_USER_PW_PROD }} -check.buildUrl="${{ env.JDBC_CHECK }}" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_1 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}\migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+          flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -cleanDisabled="false" -user=${{ env.DB_USER_PROD2 }} -password=${{ env.DB_USER_PW_PROD2 }} -url=${{ env.JDBC_PROD2 }} -environments.check.user=${{ env.DB_USER_CHECK }} -environments.check.password=${{ env.DB_USER_PW_CHECK }} -environments.check.url=${{ env.JDBC_CHECK }} -check.buildEnvironment="check" -reportFilename="${{ github.workspace }}\reports\${{ env.DB_PROD_1 }}-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}\migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         continue-on-error: true
 
       # Create a directory to stage the artifact files
@@ -78,7 +82,7 @@ jobs:
 
       - name: Deploy Prod 1 # Step to run Flyway migrations
         # To use username and password instead of windows integrated security Ensure that SQL Server is configured to allow SQL Server authentication. You can check this in SQL Server Management Studio (SSMS) under the server properties -> Security -> Server authentication. Ensure "SQL Server and Windows Authentication mode" is selected.
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.JDBC_PROD1 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_PROD1 }} -password=${{ env.DB_USER_PW_PROD1 }} -url=${{ env.JDBC_PROD1 }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         working-directory: ./migrations
 
   flyway-deploy-prod-2:
@@ -96,7 +100,7 @@ jobs:
 
       # Multi-tenant deployment. PROD 2
       - name: Deploy Prod 2 # Step to run Flyway migrations
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_PROD }} -password=${{ env.DB_USER_PW_PROD }} -url="${{ env.JDBC_PROD2 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_PROD2 }} -password=${{ env.DB_USER_PW_PROD2 }} -url=${{ env.JDBC_PROD2 }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         # Multi-tenant deployment. Add second deployment to PROD2 here
         working-directory: ./migrations
 
