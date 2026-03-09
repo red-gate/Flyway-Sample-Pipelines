@@ -1,0 +1,61 @@
+# Shared Flyway Template
+# This file contains reusable Flyway job definitions
+# Include this in your pipeline with: include: '/.gitlab/ci/flyway.yml'
+
+.flyway_base:
+  image: redgate/flyway:12-alpine
+  variables:
+    FLYWAY_URL: "${DB_URL}"
+    FLYWAY_USER: "${DB_USER}"
+    FLYWAY_PASSWORD: "${DB_PASSWORD}"
+    FLYWAY_LOCATIONS: "filesystem:./sql"
+    FLYWAY_BASELINE_ON_MIGRATE: "true"
+  before_script:
+    - echo "Flyway version:"
+    - flyway -v
+    - echo "Database URL: ${FLYWAY_URL}"
+
+# Job template: Validate SQL migrations
+.flyway_validate:
+  extends: .flyway_base
+  script:
+    - flyway validate
+  allow_failure: false
+
+# Job template: Get migration info
+.flyway_info:
+  extends: .flyway_base
+  script:
+    - flyway info
+
+# Job template: Run migrations
+.flyway_migrate:
+  extends: .flyway_base
+  script:
+    - flyway info
+    - flyway migrate
+    - flyway info
+
+# Job template: Repair migration history
+.flyway_repair:
+  extends: .flyway_base
+  script:
+    - flyway repair
+  when: manual
+
+# Job template: Clean database (DANGEROUS - use with caution)
+.flyway_clean:
+  extends: .flyway_base
+  script:
+    - flyway clean
+  when: manual
+  only:
+    - dev
+    - development
+
+# Job template: Baseline existing database
+.flyway_baseline:
+  extends: .flyway_base
+  script:
+    - flyway baseline
+  when: manual

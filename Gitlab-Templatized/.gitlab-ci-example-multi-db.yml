@@ -1,0 +1,53 @@
+# Example Pipeline 3: Multi-Database Deployment
+# This pipeline deploys to multiple databases using the same shared template
+
+include:
+  - local: '.gitlab/ci/flyway.yml'
+
+stages:
+  - validate
+  - deploy-db1
+  - deploy-db2
+  - deploy-db3
+
+# Validate all migrations
+validate:all:
+  extends: .flyway_validate
+  stage: validate
+
+# Database 1: Users DB
+migrate:users-db:
+  extends: .flyway_migrate
+  stage: deploy-db1
+  variables:
+    FLYWAY_URL: "${DB_URL_USERS}"
+    FLYWAY_LOCATIONS: "filesystem:./sql/users"
+  only:
+    - main
+  environment:
+    name: users-database
+
+# Database 2: Orders DB
+migrate:orders-db:
+  extends: .flyway_migrate
+  stage: deploy-db2
+  variables:
+    FLYWAY_URL: "${DB_URL_ORDERS}"
+    FLYWAY_LOCATIONS: "filesystem:./sql/orders"
+  only:
+    - main
+  environment:
+    name: orders-database
+
+# Database 3: Analytics DB
+migrate:analytics-db:
+  extends: .flyway_migrate
+  stage: deploy-db3
+  variables:
+    FLYWAY_URL: "${DB_URL_ANALYTICS}"
+    FLYWAY_LOCATIONS: "filesystem:./sql/analytics"
+  only:
+    - main
+  environment:
+    name: analytics-database
+  when: manual  # Analytics can be deployed separately

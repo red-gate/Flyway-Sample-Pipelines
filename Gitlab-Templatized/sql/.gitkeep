@@ -1,0 +1,6 @@
+# SQL migration files go here
+# 
+# Naming convention:
+# V1__description.sql
+# V2__another_migration.sql
+# V3__add_indexes.sql

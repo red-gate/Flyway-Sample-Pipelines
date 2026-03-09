@@ -1,0 +1,77 @@
+# Example Pipeline 2: Production Environment
+# This pipeline deploys migrations to PRODUCTION with approval gates
+
+include:
+  - local: '.gitlab/ci/flyway.yml'
+
+stages:
+  - validate
+  - staging
+  - production
+
+variables:
+  DB_URL_STAGING: "jdbc:postgresql://staging-db.example.com:5432/myapp_staging"
+  DB_URL_PROD: "jdbc:postgresql://prod-db.example.com:5432/myapp_prod"
+  DB_USER: "flyway_user"
+  # DB_PASSWORD should be set as a CI/CD variable in GitLab UI
+
+# Validate on main branch
+validate:prod:
+  extends: .flyway_validate
+  stage: validate
+  only:
+    - main
+    - tags
+
+# Deploy to STAGING first
+migrate:staging:
+  extends: .flyway_migrate
+  stage: staging
+  variables:
+    FLYWAY_URL: "${DB_URL_STAGING}"
+  only:
+    - main
+  environment:
+    name: staging
+    url: https://staging.myapp.com
+
+# Deploy to PRODUCTION (manual approval required)
+migrate:production:
+  extends: .flyway_migrate
+  stage: production
+  variables:
+    FLYWAY_URL: "${DB_URL_PROD}"
+  only:
+    - tags
+  when: manual
+  environment:
+    name: production
+    url: https://myapp.com
+  before_script:
+    - echo "⚠️  PRODUCTION DEPLOYMENT ⚠️"
+    - echo "Flyway version:"
+    - flyway -v
+    - echo "Database URL: ${FLYWAY_URL}"
+
+# Show production info before migration
+info:production:
+  extends: .flyway_info
+  stage: production
+  variables:
+    FLYWAY_URL: "${DB_URL_PROD}"
+  only:
+    - tags
+  environment:
+    name: production
+
+# Manual repair for production
+repair:production:
+  extends: .flyway_repair
+  stage: production
+  variables:
+    FLYWAY_URL: "${DB_URL_PROD}"
+  only:
+    - main
+    - tags
+  environment:
+    name: production

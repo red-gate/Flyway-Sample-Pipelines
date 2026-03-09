@@ -1,0 +1,49 @@
+# Example Pipeline 1: Development Environment
+# This pipeline validates and deploys migrations to the DEV database
+
+include:
+  - local: '.gitlab/ci/flyway.yml'
+
+stages:
+  - validate
+  - deploy
+
+variables:
+  DB_URL: "jdbc:postgresql://dev-db.example.com:5432/myapp_dev"
+  DB_USER: "flyway_user"
+  # DB_PASSWORD should be set as a CI/CD variable in GitLab UI
+
+# Validate migrations on every commit
+validate:dev:
+  extends: .flyway_validate
+  stage: validate
+  only:
+    - dev
+    - merge_requests
+
+# Show migration info
+info:dev:
+  extends: .flyway_info
+  stage: validate
+  only:
+    - dev
+    - merge_requests
+
+# Deploy migrations to DEV
+migrate:dev:
+  extends: .flyway_migrate
+  stage: deploy
+  only:
+    - dev
+  environment:
+    name: development
+    url: https://dev.myapp.com
+
+# Manual repair option
+repair:dev:
+  extends: .flyway_repair
+  stage: deploy
+  only:
+    - dev
+  environment:
+    name: development
