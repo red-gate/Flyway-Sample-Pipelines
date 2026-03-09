@@ -1,5 +1,11 @@
 # Example Pipeline 1: Development Environment
 # This pipeline validates and deploys migrations to the DEV database
+#
+# SETUP REQUIRED:
+# Configure these CI/CD variables in GitLab (Settings → CI/CD → Variables):
+#   - TARGET_DATABASE_JDBC = jdbc:postgresql://dev-db.example.com:5432/myapp_dev
+#   - TARGET_DATABASE_USER = flyway_user
+#   - TARGET_DATABASE_PASSWORD = your-password (mark as Protected and Masked)
 
 include:
   - local: '.gitlab/ci/flyway.yml'
@@ -8,10 +14,7 @@ stages:
   - validate
   - deploy
 
-variables:
-  DB_URL: "jdbc:postgresql://dev-db.example.com:5432/myapp_dev"
-  DB_USER: "flyway_user"
-  # DB_PASSWORD should be set as a CI/CD variable in GitLab UI
+# No additional variables needed - uses TARGET_DATABASE_* from GitLab CI/CD settings
 
 # Validate migrations on every commit
 validate:dev:

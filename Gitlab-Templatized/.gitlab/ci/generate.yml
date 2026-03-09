@@ -1,0 +1,61 @@
+﻿# Shared template for dynamic pipeline generation from the jdbc_table_store registry.
+# Include this alongside flyway.yml to get the .generate_targets base job.
+#
+# Usage:
+#   include:
+#     - local: '.gitlab/ci/flyway.yml'
+#     - local: '.gitlab/ci/generate.yml'
+#
+# Then extend .generate_targets and set:
+#   FILTER_LOCATION:  'London' | 'New York' | 'Tokyo' | 'all'
+#   OUTPUT_FILE:      name of the generated YAML artifact
+
+# ---------------------------------------------------------------------------
+# Base job: generates the child pipeline YAML from the registry database.
+# Extend this job and override FILTER_LOCATION + OUTPUT_FILE as needed.
+# ---------------------------------------------------------------------------
+.generate_targets:
+  stage: generate
+  image: python:3.11-slim
+  before_script:
+    - pip install --quiet -r scripts/requirements.txt
+  script:
+    - echo "Generating pipeline for location: ${FILTER_LOCATION}"
+    - python scripts/generate_pipeline.py
+    - echo "--- Preview of generated pipeline ---"
+    - cat "${OUTPUT_FILE}"
+  variables:
+    # -------------------------------------------------------------------------
+    # Registry database connection
+    # Set REGISTRY_SERVER, REGISTRY_USER, REGISTRY_PASSWORD in
+    # GitLab Settings → CI/CD → Variables (mark password as Protected + Masked)
+    # -------------------------------------------------------------------------
+    REGISTRY_DATABASE:  "flyway_registry"
+    REGISTRY_PORT:      "1433"
+
+    # -------------------------------------------------------------------------
+    # Regional runner tags
+    # Override in GitLab Variables or at the top of your pipeline file
+    # to match the tag names configured on your actual GitLab runners.
+    # -------------------------------------------------------------------------
+    RUNNER_TAG_LONDON:    "runner-london"
+    RUNNER_TAG_NEW_YORK:  "runner-new-york"
+    RUNNER_TAG_TOKYO:     "runner-tokyo"
+
+    # -------------------------------------------------------------------------
+    # Target database defaults
+    # Credentials are resolved at runtime from GitLab CI/CD variables
+    # -------------------------------------------------------------------------
+    SQL_SERVER_PORT:      "1433"
+    FLYWAY_LOCATIONS:     "filesystem:./sql"
+    INCLUDE_REPLICAS:     "1"
+
+    # Subclasses must set these:
+    # FILTER_LOCATION:  all | London | New York | Tokyo
+    # OUTPUT_FILE:      generated-<name>.yml
+  artifacts:
+    paths:
+      - "*.yml"          # capture generated-*.yml files
+    expire_in: 2 hours
+  rules:
+    - when: always

@@ -1,19 +1,46 @@
-# Shared Flyway Template
-# This file contains reusable Flyway job definitions
-# Include this in your pipeline with: include: '/.gitlab/ci/flyway.yml'
+﻿# =============================================================================
+# Shared Flyway Template (DRY - Don't Repeat Yourself)
+# =============================================================================
+# Single source of truth for ALL Flyway job definitions.
+#
+# Include in any pipeline:
+#   include:
+#     - local: '.gitlab/ci/flyway.yml'
+#
+# For dynamic multi-database deployments driven by the jdbc_table_store
+# registry, also include:
+#   include:
+#     - local: '.gitlab/ci/generate.yml'
+#
+# The Python script (scripts/generate_pipeline.py) calls usp_GetFlywayTargets
+# and produces a child pipeline whose jobs all extend .flyway_migrate below.
+# Credentials are NEVER embedded in generated YAML – they come from GitLab
+# CI/CD variables TARGET_DATABASE_USER and TARGET_DATABASE_PASSWORD.
+# =============================================================================
 
 .flyway_base:
   image: redgate/flyway:12-alpine
   variables:
-    FLYWAY_URL: "${DB_URL}"
-    FLYWAY_USER: "${DB_USER}"
-    FLYWAY_PASSWORD: "${DB_PASSWORD}"
+    # Map GitLab CI/CD variables to Flyway environment variables
+    # These can be overridden in specific jobs as needed
+    FLYWAY_URL: "${TARGET_DATABASE_JDBC}"
+    FLYWAY_USER: "${TARGET_DATABASE_USER}"
+    FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD}"
     FLYWAY_LOCATIONS: "filesystem:./sql"
     FLYWAY_BASELINE_ON_MIGRATE: "true"
+    FLYWAY_MIXED: "false"
+    FLYWAY_OUT_OF_ORDER: "false"
   before_script:
+    - echo "=========================================="
+    - echo "Flyway Database Migration"
+    - echo "=========================================="
     - echo "Flyway version:"
     - flyway -v
-    - echo "Database URL: ${FLYWAY_URL}"
+    - echo ""
+    - echo "Target database: ${FLYWAY_URL}"
+    - echo "Target user: ${FLYWAY_USER}"
+    - echo "SQL locations: ${FLYWAY_LOCATIONS}"
+    - echo "=========================================="
 
 # Job template: Validate SQL migrations
 .flyway_validate:

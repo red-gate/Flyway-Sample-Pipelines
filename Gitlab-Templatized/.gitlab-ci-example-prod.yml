@@ -1,5 +1,18 @@
-# Example Pipeline 2: Production Environment
-# This pipeline deploys migrations to PRODUCTION with approval gates
+# Example Pipeline 2: Production Environment with Staging
+# This pipeline deploys migrations to STAGING first, then PRODUCTION with approval gates
+#
+# SETUP REQUIRED:
+# Configure these CI/CD variables in GitLab with Environment Scope:
+#
+# Staging scope (Environment Scope = "staging"):
+#   - TARGET_DATABASE_JDBC = jdbc:postgresql://staging-db.example.com:5432/myapp
+#   - TARGET_DATABASE_USER = flyway_user
+#   - TARGET_DATABASE_PASSWORD = staging-password
+#
+# Production scope (Environment Scope = "production"):
+#   - TARGET_DATABASE_JDBC = jdbc:postgresql://prod-db.example.com:5432/myapp
+#   - TARGET_DATABASE_USER = flyway_user
+#   - TARGET_DATABASE_PASSWORD = prod-password (mark as Protected and Masked)
 
 include:
   - local: '.gitlab/ci/flyway.yml'
@@ -9,11 +22,8 @@ stages:
   - staging
   - production
 
-variables:
-  DB_URL_STAGING: "jdbc:postgresql://staging-db.example.com:5432/myapp_staging"
-  DB_URL_PROD: "jdbc:postgresql://prod-db.example.com:5432/myapp_prod"
-  DB_USER: "flyway_user"
-  # DB_PASSWORD should be set as a CI/CD variable in GitLab UI
+# Variables are scoped by environment in GitLab CI/CD settings
+# No need to define them here - they're automatically loaded based on environment
 
 # Validate on main branch
 validate:prod:
@@ -27,20 +37,25 @@ validate:prod:
 migrate:staging:
   extends: .flyway_migrate
   stage: staging
-  variables:
-    FLYWAY_URL: "${DB_URL_STAGING}"
   only:
     - main
   environment:
     name: staging
     url: https://staging.myapp.com
 
+# Show production info before migration
+info:production:
+  extends: .flyway_info
+  stage: production
+  only:
+    - tags
+  environment:
+    name: production
+
 # Deploy to PRODUCTION (manual approval required)
 migrate:production:
   extends: .flyway_migrate
   stage: production
-  variables:
-    FLYWAY_URL: "${DB_URL_PROD}"
   only:
     - tags
   when: manual
@@ -48,28 +63,17 @@ migrate:production:
     name: production
     url: https://myapp.com
   before_script:
-    - echo "⚠️  PRODUCTION DEPLOYMENT ⚠️"
+    - echo "⚠️  ⚠️  ⚠️  PRODUCTION DEPLOYMENT ⚠️  ⚠️  ⚠️"
     - echo "Flyway version:"
     - flyway -v
     - echo "Database URL: ${FLYWAY_URL}"
+    - echo "This requires manual approval. Click 'Play' button to proceed."
+    - echo "==========================================="
 
-# Show production info before migration
-info:production:
-  extends: .flyway_info
-  stage: production
-  variables:
-    FLYWAY_URL: "${DB_URL_PROD}"
-  only:
-    - tags
-  environment:
-    name: production
-
-# Manual repair for production
+# Manual repair for production (use with caution)
 repair:production:
   extends: .flyway_repair
   stage: production
-  variables:
-    FLYWAY_URL: "${DB_URL_PROD}"
   only:
     - main
     - tags

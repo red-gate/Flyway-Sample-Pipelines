@@ -1,101 +1,78 @@
-# GitLab Flyway CI/CD Pipeline
+# GitLab Flyway Pipeline Templates
 
-This repository contains reusable GitLab CI/CD pipelines for Flyway database migrations.
+DRY CI/CD templates for Flyway database migrations. Supports 1 to 100+ databases.
 
-## Structure
+## Setup
 
-```
-.gitlab/
-  └── ci/
-      └── flyway.yml          # Shared Flyway job templates (DRY)
-.gitlab-ci.yml                # Your main pipeline
-sql/                          # Your SQL migration files
-```
+### 1. Create a GitLab project
 
-## Quick Start
-
-### 1. Choose a Pipeline Template
-
-Copy one of the example files to `.gitlab-ci.yml`:
+GitLab  **New project  Create blank project**, then push this folder's contents:
 
 ```bash
-# Development pipeline
-cp .gitlab-ci-example-dev.yml .gitlab-ci.yml
-
-# Production pipeline  
-cp .gitlab-ci-example-prod.yml .gitlab-ci.yml
-
-# Multi-database pipeline
-cp .gitlab-ci-example-multi-db.yml .gitlab-ci.yml
-```
-
-### 2. Configure CI/CD Variables
-
-In GitLab: **Settings → CI/CD → Variables**
-
-Add:
-- `DB_PASSWORD` (Protected: Yes, Masked: Yes)
-- `DB_URL` (example: `jdbc:postgresql://hostname:5432/dbname`)
-- `DB_USER`
-
-### 3. Add SQL Migrations
-
-Create migrations in the `sql/` directory:
-
-```sql
--- sql/V1__initial_schema.sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) NOT NULL
-);
-```
-
-### 4. Push to GitLab
-
-```bash
+git clone <this-repo-url>
+cd Flyway-Sample-Pipelines/Gitlab-Templatized
+git init
+git remote add origin <your-gitlab-project-url>
 git add .
-git commit -m "Add Flyway pipeline"
+git commit -m "Initial Flyway pipeline setup"
+git push -u origin main
+```
+
+> Use **Create blank project**  "Import project" cannot target a subfolder, and "Create from template" has no Flyway templates.
+
+### 2. Add CI/CD variables
+
+GitLab  **Settings  CI/CD  Variables**:
+
+| Variable | Example | Masked |
+|----------|---------|--------|
+| `TARGET_DATABASE_JDBC` | `jdbc:sqlserver://host:1433;databaseName=mydb` | No |
+| `TARGET_DATABASE_USER` | `flyway_user` | No |
+| `TARGET_DATABASE_PASSWORD` | `secret` |  |
+
+For multiple databases append a suffix: `TARGET_DATABASE_JDBC_1`, `TARGET_DATABASE_JDBC_2`, etc.
+
+### 3. Pick a pipeline template
+
+Copy an example to `.gitlab-ci.yml`:
+
+| File | Use when |
+|------|----------|
+| `.gitlab-ci-example-dev.yml` | Single database, dev workflow |
+| `.gitlab-ci-example-prod.yml` | Staging + production with manual approval |
+| `.gitlab-ci-example-multi-db.yml` | 210 databases, explicit jobs |
+| `.gitlab-ci-example-matrix.yml` | 10100+ databases, parallel matrix |
+| `.gitlab-ci-example-all-regions.yml` | Multi-region, dynamically generated from registry |
+
+### 4. Add SQL migrations
+
+Put versioned scripts in `sql/`:
+
+```
+sql/V1__create_schema.sql
+sql/V2__add_users_table.sql
+```
+
+### 5. Push and run
+
+```bash
+git add .gitlab-ci.yml sql/
+git commit -m "Add migrations"
 git push
 ```
 
-## Available Flyway Jobs
+Pipeline runs automatically. Check **CI/CD  Pipelines**.
 
-All jobs are defined in `.gitlab/ci/flyway.yml`:
+## Key files
 
-- **`.flyway_validate`** - Validate migrations
-- **`.flyway_info`** - Show migration status  
-- **`.flyway_migrate`** - Run migrations
-- **`.flyway_repair`** - Repair migration history (manual)
-- **`.flyway_clean`** - Clean database (manual)
-- **`.flyway_baseline`** - Baseline existing database (manual)
-
-## Customization Example
-
-```yaml
-include:
-  - local: '.gitlab/ci/flyway.yml'
-
-stages:
-  - deploy
-
-migrate:custom:
-  extends: .flyway_migrate
-  variables:
-    FLYWAY_URL: "jdbc:postgresql://my-db:5432/mydb"
-    FLYWAY_LOCATIONS: "filesystem:./sql/custom"
-  only:
-    - main
+```
+.gitlab/ci/flyway.yml       # Single source of truth  all Flyway job templates
+scripts/                    # Registry DB setup + Python pipeline generator
+sql/                        # Your migration files go here
 ```
 
-## Database Connection Strings
+## Further reading
 
-- **PostgreSQL**: `jdbc:postgresql://hostname:5432/database`
-- **MySQL**: `jdbc:mysql://hostname:3306/database`
-- **SQL Server**: `jdbc:sqlserver://hostname:1433;databaseName=database`
-- **Oracle**: `jdbc:oracle:thin:@hostname:1521:database`
-
-## Docker Image
-
-Using: `redgate/flyway:12-alpine`
-
-See: https://hub.docker.com/r/redgate/flyway
+- [SETUP_GUIDE.md](SETUP_GUIDE.md)  detailed walkthrough
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md)  one-page cheat sheet
+- [Flyway docs](https://documentation.red-gate.com/flyway)

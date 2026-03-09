@@ -1,0 +1,74 @@
+# Example Pipeline 4: Matrix-Based Multi-Database Deployment
+# This pipeline uses GitLab's parallel:matrix feature to deploy to N databases
+# Best for: 10-100 databases where explicit jobs become impractical
+#
+# SETUP REQUIRED:
+# Configure numbered CI/CD variables in GitLab (Settings → CI/CD → Variables):
+#   - TARGET_DATABASE_JDBC_1 through TARGET_DATABASE_JDBC_N
+#   - TARGET_DATABASE_USER_1 through TARGET_DATABASE_USER_N
+#   - TARGET_DATABASE_PASSWORD_1 through TARGET_DATABASE_PASSWORD_N
+#
+# Example for 50 databases:
+#   TARGET_DATABASE_JDBC_1 = jdbc:postgresql://tenant1-db:5432/app
+#   TARGET_DATABASE_USER_1 = flyway
+#   TARGET_DATABASE_PASSWORD_1 = secret1
+#   ...
+#   TARGET_DATABASE_JDBC_50 = jdbc:postgresql://tenant50-db:5432/app
+#   TARGET_DATABASE_USER_50 = flyway
+#   TARGET_DATABASE_PASSWORD_50 = secret50
+
+include:
+  - local: '.gitlab/ci/flyway.yml'
+
+stages:
+  - validate
+  - deploy
+
+# Validate once using first database
+validate:matrix:
+  extends: .flyway_validate
+  stage: validate
+  variables:
+    FLYWAY_URL: "${TARGET_DATABASE_JDBC_1}"
+    FLYWAY_USER: "${TARGET_DATABASE_USER_1}"
+    FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_1}"
+
+# Deploy to N databases in parallel
+# Update the DB_NUMBER list to match your database count
+migrate:all-databases:
+  extends: .flyway_migrate
+  stage: deploy
+  parallel:
+    matrix:
+      - DB_NUMBER: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+        # Add more numbers as needed: "11", "12", ..., "100"
+  variables:
+    # GitLab will create separate jobs for each DB_NUMBER
+    FLYWAY_URL: "${TARGET_DATABASE_JDBC_${DB_NUMBER}}"
+    FLYWAY_USER: "${TARGET_DATABASE_USER_${DB_NUMBER}}"
+    FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_${DB_NUMBER}}"
+  only:
+    - main
+  environment:
+    name: database-${DB_NUMBER}
+  # Optional: Control parallelism to avoid overwhelming database servers
+  # Maximum 50 jobs run concurrently by default
+
+# Alternative: Named databases instead of numbered
+# Uncomment and modify if you prefer named databases like "users", "orders", etc.
+#
+# migrate:named-databases:
+#   extends: .flyway_migrate
+#   stage: deploy
+#   parallel:
+#     matrix:
+#       - DB_NAME: ["users", "orders", "products", "analytics", "reports"]
+#   variables:
+#     FLYWAY_URL: "${TARGET_DATABASE_JDBC_${DB_NAME}}"
+#     FLYWAY_USER: "${TARGET_DATABASE_USER_${DB_NAME}}"
+#     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_${DB_NAME}}"
+#   environment:
+#     name: database-${DB_NAME}
+
+# Note: For 100+ databases, consider using dynamic child pipelines
+# See SETUP_GUIDE.md "Scenario 3: Deploy to 100+ Databases"
