@@ -1,61 +1,103 @@
-﻿# Shared template for dynamic pipeline generation from the jdbc_table_store registry.
-# Include this alongside flyway.yml to get the .generate_targets base job.
+﻿# Shared templates for dynamic pipeline generation from the jdbc_table_store registry.
 #
-# Usage:
+# Two job templates are provided to keep concerns separate:
+#
+#   .fetch_targets      -- queries the registry DB, writes targets.json artifact
+#   .generate_pipeline  -- reads targets.json, writes dynamic-pipeline.yml artifact
+#
+# Usage in your pipeline file:
+#
 #   include:
-#     - local: '.gitlab/ci/flyway.yml'
-#     - local: '.gitlab/ci/generate.yml'
+#     - local: ".gitlab/ci/flyway.yml"
+#     - local: ".gitlab/ci/generate.yml"
 #
-# Then extend .generate_targets and set:
-#   FILTER_LOCATION:  'London' | 'New York' | 'Tokyo' | 'all'
-#   OUTPUT_FILE:      name of the generated YAML artifact
+#   stages: [fetch, generate, deploy]
+#
+#   fetch:my-region:
+#     extends: .fetch_targets
+#     variables:
+#       FILTER_LOCATION: "London"   # or "New York" / "Tokyo" / "all"
+#
+#   generate:my-region:
+#     extends: .generate_pipeline
+#     needs:
+#       - job: fetch:my-region
+#         artifacts: true
+#
+#   deploy:my-region:
+#     stage: deploy
+#     trigger:
+#       include:
+#         - artifact: dynamic-pipeline.yml
+#           job: generate:my-region
+#       strategy: depend
 
 # ---------------------------------------------------------------------------
-# Base job: generates the child pipeline YAML from the registry database.
-# Extend this job and override FILTER_LOCATION + OUTPUT_FILE as needed.
+# Stage 1  fetch
+# Queries the registry stored procedure and writes targets.json.
 # ---------------------------------------------------------------------------
-.generate_targets:
+.fetch_targets:
+  stage: fetch
+  image: python:3.11-slim
+  before_script:
+    - pip install --quiet -r scripts/requirements.txt
+  script:
+    - echo "Fetching targets for location: ${FILTER_LOCATION}"
+    - python scripts/fetch_targets.py
+    - echo "--- targets.json ---"
+    - cat targets.json
+  variables:
+    # -------------------------------------------------------------------------
+    # Registry database connection
+    # Set REGISTRY_SERVER, REGISTRY_USER, REGISTRY_PASSWORD in
+    # GitLab Settings -> CI/CD -> Variables (password: Protected + Masked)
+    # -------------------------------------------------------------------------
+    REGISTRY_DATABASE: "flyway_registry"
+    REGISTRY_PORT:     "1433"
+    SQL_SERVER_PORT:   "1433"
+    INCLUDE_REPLICAS:  "1"
+    OUTPUT_FILE:       "targets.json"
+
+    # Subclasses must set this:
+    # FILTER_LOCATION: all | London | New York | Tokyo
+  artifacts:
+    paths:
+      - targets.json
+    expire_in: never    # keep so it can be reused across pipeline runs
+  rules:
+    - when: always
+
+
+# ---------------------------------------------------------------------------
+# Stage 2  generate
+# Reads targets.json and produces dynamic-pipeline.yml.
+# No database connection required.
+# ---------------------------------------------------------------------------
+.generate_pipeline:
   stage: generate
   image: python:3.11-slim
   before_script:
     - pip install --quiet -r scripts/requirements.txt
   script:
-    - echo "Generating pipeline for location: ${FILTER_LOCATION}"
+    - echo "Generating dynamic-pipeline.yml from targets.json"
     - python scripts/generate_pipeline.py
-    - echo "--- Preview of generated pipeline ---"
-    - cat "${OUTPUT_FILE}"
+    - echo "--- dynamic-pipeline.yml ---"
+    - cat dynamic-pipeline.yml
   variables:
-    # -------------------------------------------------------------------------
-    # Registry database connection
-    # Set REGISTRY_SERVER, REGISTRY_USER, REGISTRY_PASSWORD in
-    # GitLab Settings → CI/CD → Variables (mark password as Protected + Masked)
-    # -------------------------------------------------------------------------
-    REGISTRY_DATABASE:  "flyway_registry"
-    REGISTRY_PORT:      "1433"
+    FLYWAY_LOCATIONS: "filesystem:./sql"
+    TARGETS_FILE:     "targets.json"
+    OUTPUT_FILE:      "dynamic-pipeline.yml"
 
     # -------------------------------------------------------------------------
     # Regional runner tags
-    # Override in GitLab Variables or at the top of your pipeline file
-    # to match the tag names configured on your actual GitLab runners.
+    # Override to match the tag names on your actual GitLab runners.
     # -------------------------------------------------------------------------
-    RUNNER_TAG_LONDON:    "runner-london"
-    RUNNER_TAG_NEW_YORK:  "runner-new-york"
-    RUNNER_TAG_TOKYO:     "runner-tokyo"
-
-    # -------------------------------------------------------------------------
-    # Target database defaults
-    # Credentials are resolved at runtime from GitLab CI/CD variables
-    # -------------------------------------------------------------------------
-    SQL_SERVER_PORT:      "1433"
-    FLYWAY_LOCATIONS:     "filesystem:./sql"
-    INCLUDE_REPLICAS:     "1"
-
-    # Subclasses must set these:
-    # FILTER_LOCATION:  all | London | New York | Tokyo
-    # OUTPUT_FILE:      generated-<name>.yml
+    RUNNER_TAG_LONDON:   "runner-london"
+    RUNNER_TAG_NEW_YORK: "runner-new-york"
+    RUNNER_TAG_TOKYO:    "runner-tokyo"
   artifacts:
     paths:
-      - "*.yml"          # capture generated-*.yml files
+      - dynamic-pipeline.yml
     expire_in: 2 hours
   rules:
     - when: always

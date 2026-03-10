@@ -22,10 +22,11 @@
 # =============================================================================
 
 include:
-  - local: '.gitlab/ci/generate.yml'   # .generate_targets base job
+  - local: '.gitlab/ci/generate.yml'   # .fetch_targets and .generate_pipeline templates
   - local: '.gitlab/ci/flyway.yml'     # Flyway templates (used by child pipeline)
 
 stages:
+  - fetch
   - generate
   - deploy
 
@@ -48,31 +49,38 @@ variables:
   INCLUDE_REPLICAS:    "1"
 
 # ---------------------------------------------------------------------------
-# Stage 1 – generate: build the child pipeline YAML from the registry
+# Stage 1 – fetch: query the registry, write targets.json artifact
 # ---------------------------------------------------------------------------
-generate:all-regions:
-  extends: .generate_targets
-  stage: generate
+fetch:all-regions:
+  extends: .fetch_targets
   variables:
     FILTER_LOCATION: "all"
-    OUTPUT_FILE:     "generated-all-regions.yml"
-  artifacts:
-    paths:
-      - generated-all-regions.yml
-    expire_in: 2 hours
   only:
     - main
     - tags
 
 # ---------------------------------------------------------------------------
-# Stage 2 – deploy: trigger the generated child pipeline
-# strategy: depend  → parent waits for all child jobs to finish
+# Stage 2 – generate: read targets.json, write dynamic-pipeline.yml artifact
+# No database connection required at this stage.
+# ---------------------------------------------------------------------------
+generate:all-regions:
+  extends: .generate_pipeline
+  needs:
+    - job: fetch:all-regions
+      artifacts: true
+  only:
+    - main
+    - tags
+
+# ---------------------------------------------------------------------------
+# Stage 3 – deploy: trigger the generated child pipeline
+# strategy: depend → parent waits for all child jobs to finish
 # ---------------------------------------------------------------------------
 deploy:all-regions:
   stage: deploy
   trigger:
     include:
-      - artifact: generated-all-regions.yml
+      - artifact: dynamic-pipeline.yml
         job:      generate:all-regions
     strategy: depend
   only:

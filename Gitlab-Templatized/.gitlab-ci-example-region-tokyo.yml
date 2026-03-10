@@ -24,6 +24,7 @@ include:
   - local: '.gitlab/ci/flyway.yml'
 
 stages:
+  - fetch
   - generate
   - deploy
 
@@ -42,26 +43,29 @@ variables:
   INCLUDE_REPLICAS:    "1"
 
 # ---------------------------------------------------------------------------
-# Stage 1 – generate
+# Stage 1 – fetch: query the registry for Tokyo targets only
 # ---------------------------------------------------------------------------
-generate:tokyo:
-  extends: .generate_targets
-  stage: generate
+fetch:tokyo:
+  extends: .fetch_targets
   variables:
     FILTER_LOCATION: "Tokyo"
-    OUTPUT_FILE:     "generated-tokyo.yml"
-  artifacts:
-    paths:
-      - generated-tokyo.yml
-    expire_in: 2 hours
 
 # ---------------------------------------------------------------------------
-# Stage 2 – deploy
+# Stage 2 – generate: produce dynamic-pipeline.yml from targets.json
+# ---------------------------------------------------------------------------
+generate:tokyo:
+  extends: .generate_pipeline
+  needs:
+    - job: fetch:tokyo
+      artifacts: true
+
+# ---------------------------------------------------------------------------
+# Stage 3 – deploy
 # ---------------------------------------------------------------------------
 deploy:tokyo:
   stage: deploy
   trigger:
     include:
-      - artifact: generated-tokyo.yml
+      - artifact: dynamic-pipeline.yml
         job:      generate:tokyo
     strategy: depend

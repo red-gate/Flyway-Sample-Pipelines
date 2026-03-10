@@ -24,6 +24,7 @@ include:
   - local: '.gitlab/ci/flyway.yml'
 
 stages:
+  - fetch
   - generate
   - deploy
 
@@ -42,26 +43,29 @@ variables:
   INCLUDE_REPLICAS:    "1"
 
 # ---------------------------------------------------------------------------
-# Stage 1 – generate
+# Stage 1 – fetch: query the registry for New York targets only
 # ---------------------------------------------------------------------------
-generate:new-york:
-  extends: .generate_targets
-  stage: generate
+fetch:new-york:
+  extends: .fetch_targets
   variables:
     FILTER_LOCATION: "New York"
-    OUTPUT_FILE:     "generated-new-york.yml"
-  artifacts:
-    paths:
-      - generated-new-york.yml
-    expire_in: 2 hours
 
 # ---------------------------------------------------------------------------
-# Stage 2 – deploy
+# Stage 2 – generate: produce dynamic-pipeline.yml from targets.json
+# ---------------------------------------------------------------------------
+generate:new-york:
+  extends: .generate_pipeline
+  needs:
+    - job: fetch:new-york
+      artifacts: true
+
+# ---------------------------------------------------------------------------
+# Stage 3 – deploy
 # ---------------------------------------------------------------------------
 deploy:new-york:
   stage: deploy
   trigger:
     include:
-      - artifact: generated-new-york.yml
+      - artifact: dynamic-pipeline.yml
         job:      generate:new-york
     strategy: depend
