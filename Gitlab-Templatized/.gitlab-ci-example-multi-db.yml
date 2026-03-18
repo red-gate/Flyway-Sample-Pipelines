@@ -41,12 +41,12 @@ migrate:users-db:
     FLYWAY_URL: "${TARGET_DATABASE_JDBC_1}"
     FLYWAY_USER: "${TARGET_DATABASE_USER_1}"
     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_1}"
-    # Optional: Use separate SQL folder for this database
-    # FLYWAY_LOCATIONS: "filesystem:./sql/users"
-  only:
-    - main
+    # Optional: Use separate migrations folder for this database
+    # FLYWAY_LOCATIONS: "filesystem:./migrations/users"
   environment:
     name: users-database
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
 # Database 2: Orders DB
 migrate:orders-db:
@@ -56,11 +56,11 @@ migrate:orders-db:
     FLYWAY_URL: "${TARGET_DATABASE_JDBC_2}"
     FLYWAY_USER: "${TARGET_DATABASE_USER_2}"
     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_2}"
-    # FLYWAY_LOCATIONS: "filesystem:./sql/orders"
-  only:
-    - main
+    # FLYWAY_LOCATIONS: "filesystem:./migrations/orders"
   environment:
     name: orders-database
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
 # Database 3: Analytics DB
 migrate:analytics-db:
@@ -70,11 +70,11 @@ migrate:analytics-db:
     FLYWAY_URL: "${TARGET_DATABASE_JDBC_3}"
     FLYWAY_USER: "${TARGET_DATABASE_USER_3}"
     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_3}"
-    # FLYWAY_LOCATIONS: "filesystem:./sql/analytics"
-  only:
-    - main
+    # FLYWAY_LOCATIONS: "filesystem:./migrations/analytics"
   environment:
     name: analytics-database
-  when: manual  # Analytics can be deployed separately if needed
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual  # Analytics can be deployed separately if needed
 
 # Add more databases by copying the pattern above and incrementing the number

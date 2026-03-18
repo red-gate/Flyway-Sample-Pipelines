@@ -29,36 +29,33 @@ stages:
 validate:prod:
   extends: .flyway_validate
   stage: validate
-  only:
-    - main
-    - tags
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
 
 # Deploy to STAGING first
 migrate:staging:
   extends: .flyway_migrate
   stage: staging
-  only:
-    - main
   environment:
     name: staging
     url: https://staging.myapp.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
 # Show production info before migration
 info:production:
   extends: .flyway_info
   stage: production
-  only:
-    - tags
   environment:
     name: production
+  rules:
+    - if: $CI_COMMIT_TAG
 
 # Deploy to PRODUCTION (manual approval required)
 migrate:production:
   extends: .flyway_migrate
   stage: production
-  only:
-    - tags
-  when: manual
   environment:
     name: production
     url: https://myapp.com
@@ -69,13 +66,18 @@ migrate:production:
     - echo "Database URL: ${FLYWAY_URL}"
     - echo "This requires manual approval. Click 'Play' button to proceed."
     - echo "==========================================="
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
 
 # Manual repair for production (use with caution)
 repair:production:
   extends: .flyway_repair
   stage: production
-  only:
-    - main
-    - tags
   environment:
     name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - if: $CI_COMMIT_TAG
+      when: manual

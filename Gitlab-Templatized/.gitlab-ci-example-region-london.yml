@@ -24,7 +24,6 @@ include:
   - local: '.gitlab/ci/flyway.yml'
 
 stages:
-  - fetch
   - generate
   - deploy
 
@@ -39,28 +38,17 @@ variables:
 
   REGISTRY_DATABASE:   "flyway_registry"
   REGISTRY_PORT:       "1433"
-  SQL_SERVER_PORT:     "1433"
-  INCLUDE_REPLICAS:    "1"
 
 # ---------------------------------------------------------------------------
-# Stage 1 – fetch: query the registry for London targets only
+# Stage 1 – generate: query registry, build JDBCs, write dynamic-pipeline.yml
 # ---------------------------------------------------------------------------
-fetch:london:
-  extends: .fetch_targets
+generate:london:
+  extends: .generate_pipeline
   variables:
     FILTER_LOCATION: "London"
 
 # ---------------------------------------------------------------------------
-# Stage 2 – generate: produce dynamic-pipeline.yml from targets.json
-# ---------------------------------------------------------------------------
-generate:london:
-  extends: .generate_pipeline
-  needs:
-    - job: fetch:london
-      artifacts: true
-
-# ---------------------------------------------------------------------------
-# Stage 3 – deploy
+# Stage 2 – deploy: trigger the generated child pipeline
 # ---------------------------------------------------------------------------
 deploy:london:
   stage: deploy

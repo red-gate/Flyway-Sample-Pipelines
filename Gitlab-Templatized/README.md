@@ -1,78 +1,174 @@
 # GitLab Flyway Pipeline Templates
 
-DRY CI/CD templates for Flyway database migrations. Supports 1 to 100+ databases.
+Reusable GitLab CI/CD templates for Flyway Enterprise database migrations. Supports 1 to 100+ databases.
 
-## Setup
+Your Flyway project repo includes these templates via GitLab's cross-project `include:`. Migration scripts stay in your project; deployment logic lives here.
 
-### 1. Create a GitLab project
+## Repository Structure
 
-GitLab  **New project  Create blank project**, then push this folder's contents:
-
-```bash
-git clone <this-repo-url>
-cd Flyway-Sample-Pipelines/Gitlab-Templatized
-git init
-git remote add origin <your-gitlab-project-url>
-git add .
-git commit -m "Initial Flyway pipeline setup"
-git push -u origin main
+```
+.gitlab/ci/flyway.yml         # Flyway job templates (.flyway_validate, .flyway_migrate, etc.)
+.gitlab/ci/generate.yml       # Dynamic pipeline generation template (.generate_pipeline)
+scripts/generate_pipeline.py  # Queries registry sproc → builds JDBCs → writes child pipeline YAML
+scripts/requirements.txt      # Python dependencies (pymssql, PyYAML)
+scripts/client_registry_setup.sql  # SQL to create the registry database + sample data
+usage-examples/               # Ready-to-copy .gitlab-ci.yml files for consumer repos
 ```
 
-> Use **Create blank project**  "Import project" cannot target a subfolder, and "Create from template" has no Flyway templates.
+## How It Works
 
-### 2. Add CI/CD variables
+**Your Flyway project repo** includes templates from **this repo**:
 
-GitLab  **Settings  CI/CD  Variables**:
+```
+my-flyway-project/               this-repo (flyway-ci-templates)
+├── migrations/                   ├── .gitlab/ci/flyway.yml
+│   ├── V1__create_schema.sql     ├── .gitlab/ci/generate.yml
+│   └── V2__add_users.sql         └── scripts/generate_pipeline.py
+└── .gitlab-ci.yml  ──includes──►
+```
 
-| Variable | Example | Masked |
+## Quick Start
+
+### 1. Include the templates
+
+In your Flyway project's `.gitlab-ci.yml`:
+
+```yaml
+include:
+  - project: 'your-group/flyway-ci-templates'   # path to THIS repo
+    ref: 'v1.0.0'                                # pin to a tag
+    file: '/.gitlab/ci/flyway.yml'
+```
+
+### 2. Set CI/CD variables
+
+In your project: **Settings → CI/CD → Variables**:
+
+| Variable | Example | Protected | Masked |
+|----------|---------|-----------|--------|
+| `TARGET_DATABASE_JDBC` | `jdbc:sqlserver://host:1433;databaseName=mydb;encrypt=true` | ✓ | |
+| `TARGET_DATABASE_USER` | `flyway_user` | ✓ | |
+| `TARGET_DATABASE_PASSWORD` | `secret` | ✓ | ✓ |
+| `FLYWAY_EMAIL` | `you@company.com` | | |
+| `FLYWAY_TOKEN` | `flyway-license-token` | ✓ | ✓ |
+
+### 3. Extend the templates
+
+```yaml
+stages:
+  - validate
+  - deploy
+
+validate:
+  extends: .flyway_validate
+  stage: validate
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+migrate:dev:
+  extends: .flyway_migrate
+  stage: deploy
+  environment: { name: development }
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+```
+
+## Available Templates
+
+### flyway.yml — Job Templates
+
+| Template | Flyway Command | Notes |
+|----------|---------------|-------|
+| `.flyway_validate` | `flyway validate` | Check migrations are valid |
+| `.flyway_info` | `flyway info` | Show migration status |
+| `.flyway_migrate` | `flyway migrate` | Apply pending migrations |
+| `.flyway_repair` | `flyway repair` | Fix schema history (manual) |
+| `.flyway_clean` | `flyway clean` | Wipe database (manual, dev only) |
+| `.flyway_baseline` | `flyway baseline` | Baseline existing DB (manual) |
+
+Override any Flyway setting at the job level:
+
+```yaml
+migrate:custom:
+  extends: .flyway_migrate
+  variables:
+    FLYWAY_LOCATIONS: "filesystem:./db/scripts"
+    FLYWAY_OUT_OF_ORDER: "true"
+```
+
+### generate.yml — Dynamic Pipeline (100+ Databases)
+
+For large-scale deployments driven by a SQL Server registry database. A single Python script (`scripts/generate_pipeline.py`) calls `dbo.usp_GetFlywayTargets`, builds JDBC URLs from the `dbserver` and `db` columns, and writes a child pipeline with one migrate job per target.
+
+```yaml
+include:
+  - project: 'your-group/flyway-ci-templates'
+    ref: 'v1.0.0'
+    file:
+      - '/.gitlab/ci/flyway.yml'
+      - '/.gitlab/ci/generate.yml'
+
+stages:
+  - generate
+  - deploy
+
+generate:all:
+  extends: .generate_pipeline
+  # variables:
+  #   FILTER_LOCATION: "London"    # optional: filter to one region
+
+deploy:all:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline.yml
+        job: generate:all
+    strategy: depend
+```
+
+Additional CI/CD variables for registry access:
+
+| Variable | Purpose | Masked |
 |----------|---------|--------|
-| `TARGET_DATABASE_JDBC` | `jdbc:sqlserver://host:1433;databaseName=mydb` | No |
-| `TARGET_DATABASE_USER` | `flyway_user` | No |
-| `TARGET_DATABASE_PASSWORD` | `secret` |  |
+| `REGISTRY_SERVER` | Registry SQL Server hostname | |
+| `REGISTRY_USER` | Registry login | |
+| `REGISTRY_PASSWORD` | Registry password | ✓ |
 
-For multiple databases append a suffix: `TARGET_DATABASE_JDBC_1`, `TARGET_DATABASE_JDBC_2`, etc.
+Optional `generate_pipeline.py` settings:
 
-### 3. Pick a pipeline template
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FILTER_LOCATION` | `all` | Region filter (`London`, `New York`, `Tokyo`) |
+| `INCLUDE_REPLICAS` | `false` | Include replicated databases |
+| `JDBC_PORT` | `1433` | Port in generated JDBC URLs |
+| `TEMPLATE_PROJECT` | _(empty)_ | Templates repo path for child pipeline include |
+| `TEMPLATE_REF` | `main` | Git ref for cross-project child pipeline include |
 
-Copy an example to `.gitlab-ci.yml`:
+## Usage Examples
 
-| File | Use when |
+See [`usage-examples/`](usage-examples/) for complete `.gitlab-ci.yml` files:
+
+| File | Scenario |
 |------|----------|
-| `.gitlab-ci-example-dev.yml` | Single database, dev workflow |
-| `.gitlab-ci-example-prod.yml` | Staging + production with manual approval |
-| `.gitlab-ci-example-multi-db.yml` | 210 databases, explicit jobs |
-| `.gitlab-ci-example-matrix.yml` | 10100+ databases, parallel matrix |
-| `.gitlab-ci-example-all-regions.yml` | Multi-region, dynamically generated from registry |
+| `single-db-dev.gitlab-ci.yml` | Single database, dev branch |
+| `staging-and-production.gitlab-ci.yml` | Staging → production with manual approval |
+| `multi-database.gitlab-ci.yml` | 2–10 databases with explicit jobs |
 
-### 4. Add SQL migrations
+For parallel matrix (10–100 DBs), see `.gitlab-ci-example-matrix.yml`.
+For registry-driven dynamic pipelines (100+ DBs), see `.gitlab-ci-example-all-regions.yml`.
 
-Put versioned scripts in `sql/`:
+## Environment-Scoped Variables
 
-```
-sql/V1__create_schema.sql
-sql/V2__add_users_table.sql
-```
+For staging/production with different credentials, set the **Environment scope** when creating CI/CD variables:
 
-### 5. Push and run
+- Scope `staging` → `TARGET_DATABASE_JDBC = jdbc:sqlserver://staging-db:1433;...`
+- Scope `production` → `TARGET_DATABASE_JDBC = jdbc:sqlserver://prod-db:1433;...`
 
-```bash
-git add .gitlab-ci.yml sql/
-git commit -m "Add migrations"
-git push
-```
+GitLab automatically selects the right variable based on the job's `environment:` setting.
 
-Pipeline runs automatically. Check **CI/CD  Pipelines**.
+## Further Reading
 
-## Key files
-
-```
-.gitlab/ci/flyway.yml       # Single source of truth  all Flyway job templates
-scripts/                    # Registry DB setup + Python pipeline generator
-sql/                        # Your migration files go here
-```
-
-## Further reading
-
-- [SETUP_GUIDE.md](SETUP_GUIDE.md)  detailed walkthrough
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md)  one-page cheat sheet
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) — detailed walkthrough
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — one-page cheat sheet
 - [Flyway docs](https://documentation.red-gate.com/flyway)

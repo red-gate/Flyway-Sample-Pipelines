@@ -47,10 +47,10 @@ migrate:all-databases:
     FLYWAY_URL: "${TARGET_DATABASE_JDBC_${DB_NUMBER}}"
     FLYWAY_USER: "${TARGET_DATABASE_USER_${DB_NUMBER}}"
     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD_${DB_NUMBER}}"
-  only:
-    - main
   environment:
     name: database-${DB_NUMBER}
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
   # Optional: Control parallelism to avoid overwhelming database servers
   # Maximum 50 jobs run concurrently by default
 

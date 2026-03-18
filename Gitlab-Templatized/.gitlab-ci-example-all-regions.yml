@@ -22,11 +22,10 @@
 # =============================================================================
 
 include:
-  - local: '.gitlab/ci/generate.yml'   # .fetch_targets and .generate_pipeline templates
+  - local: '.gitlab/ci/generate.yml'   # .generate_pipeline template
   - local: '.gitlab/ci/flyway.yml'     # Flyway templates (used by child pipeline)
 
 stages:
-  - fetch
   - generate
   - deploy
 
@@ -43,37 +42,20 @@ variables:
   # Registry connection (set sensitive values in GitLab CI/CD Variables)
   REGISTRY_DATABASE:   "flyway_registry"
   REGISTRY_PORT:       "1433"
-  SQL_SERVER_PORT:     "1433"
-
-  # Set to "0" to target primary databases only (skip replicas)
-  INCLUDE_REPLICAS:    "1"
 
 # ---------------------------------------------------------------------------
-# Stage 1 – fetch: query the registry, write targets.json artifact
-# ---------------------------------------------------------------------------
-fetch:all-regions:
-  extends: .fetch_targets
-  variables:
-    FILTER_LOCATION: "all"
-  only:
-    - main
-    - tags
-
-# ---------------------------------------------------------------------------
-# Stage 2 – generate: read targets.json, write dynamic-pipeline.yml artifact
-# No database connection required at this stage.
+# Stage 1 – generate: query registry, build JDBCs, write dynamic-pipeline.yml
 # ---------------------------------------------------------------------------
 generate:all-regions:
   extends: .generate_pipeline
-  needs:
-    - job: fetch:all-regions
-      artifacts: true
-  only:
-    - main
-    - tags
+  variables:
+    FILTER_LOCATION: "all"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
 
 # ---------------------------------------------------------------------------
-# Stage 3 – deploy: trigger the generated child pipeline
+# Stage 2 – deploy: trigger the generated child pipeline
 # strategy: depend → parent waits for all child jobs to finish
 # ---------------------------------------------------------------------------
 deploy:all-regions:
@@ -83,6 +65,6 @@ deploy:all-regions:
       - artifact: dynamic-pipeline.yml
         job:      generate:all-regions
     strategy: depend
-  only:
-    - main
-    - tags
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG

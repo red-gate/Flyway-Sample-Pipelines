@@ -1,77 +1,57 @@
-﻿# Shared templates for dynamic pipeline generation from the jdbc_table_store registry.
+﻿# =============================================================================
+# Template for dynamic pipeline generation from the jdbc_table_store registry.
 #
-# Two job templates are provided to keep concerns separate:
+# One job template that does everything:
+#   .generate_pipeline  -- calls the sproc, builds JDBC URLs, writes dynamic-pipeline.yml
 #
-#   .fetch_targets      -- queries the registry DB, writes targets.json artifact
-#   .generate_pipeline  -- reads targets.json, writes dynamic-pipeline.yml artifact
+# The stored procedure returns raw rows from jdbc_table_store. The Python
+# script filters by location/availability, constructs JDBC URLs, and
+# generates a child pipeline with one .flyway_migrate job per target DB.
 #
-# Usage in your pipeline file:
+# =============================================================================
+# DEPLOY ALL REGIONS  (omit FILTER_LOCATION or set it to "all")
+# =============================================================================
 #
 #   include:
 #     - local: ".gitlab/ci/flyway.yml"
 #     - local: ".gitlab/ci/generate.yml"
 #
-#   stages: [fetch, generate, deploy]
+#   stages: [generate, deploy]
 #
-#   fetch:my-region:
-#     extends: .fetch_targets
-#     variables:
-#       FILTER_LOCATION: "London"   # or "New York" / "Tokyo" / "all"
-#
-#   generate:my-region:
+#   generate:all:
 #     extends: .generate_pipeline
-#     needs:
-#       - job: fetch:my-region
-#         artifacts: true
+#     # No FILTER_LOCATION — deploys to all regions
 #
-#   deploy:my-region:
+#   deploy:all:
 #     stage: deploy
 #     trigger:
 #       include:
 #         - artifact: dynamic-pipeline.yml
-#           job: generate:my-region
+#           job: generate:all
 #       strategy: depend
+#
+# =============================================================================
+# DEPLOY ONE REGION  (set FILTER_LOCATION to the exact region name)
+# =============================================================================
+#
+#   generate:london:
+#     extends: .generate_pipeline
+#     variables:
+#       FILTER_LOCATION: "London"   # exact value from the location column
+#                                   # e.g. "New York", "Tokyo", "London"
+#
+#   deploy:london:
+#     stage: deploy
+#     trigger:
+#       include:
+#         - artifact: dynamic-pipeline.yml
+#           job: generate:london
+#       strategy: depend
+#
+# =============================================================================
 
 # ---------------------------------------------------------------------------
-# Stage 1  fetch
-# Queries the registry stored procedure and writes targets.json.
-# ---------------------------------------------------------------------------
-.fetch_targets:
-  stage: fetch
-  image: python:3.11-slim
-  before_script:
-    - pip install --quiet -r scripts/requirements.txt
-  script:
-    - echo "Fetching targets for location: ${FILTER_LOCATION}"
-    - python scripts/fetch_targets.py
-    - echo "--- targets.json ---"
-    - cat targets.json
-  variables:
-    # -------------------------------------------------------------------------
-    # Registry database connection
-    # Set REGISTRY_SERVER, REGISTRY_USER, REGISTRY_PASSWORD in
-    # GitLab Settings -> CI/CD -> Variables (password: Protected + Masked)
-    # -------------------------------------------------------------------------
-    REGISTRY_DATABASE: "flyway_registry"
-    REGISTRY_PORT:     "1433"
-    SQL_SERVER_PORT:   "1433"
-    INCLUDE_REPLICAS:  "1"
-    OUTPUT_FILE:       "targets.json"
-
-    # Subclasses must set this:
-    # FILTER_LOCATION: all | London | New York | Tokyo
-  artifacts:
-    paths:
-      - targets.json
-    expire_in: never    # keep so it can be reused across pipeline runs
-  rules:
-    - when: always
-
-
-# ---------------------------------------------------------------------------
-# Stage 2  generate
-# Reads targets.json and produces dynamic-pipeline.yml.
-# No database connection required.
+# Single job: query registry → filter → build JDBCs → write child pipeline
 # ---------------------------------------------------------------------------
 .generate_pipeline:
   stage: generate
@@ -79,14 +59,41 @@
   before_script:
     - pip install --quiet -r scripts/requirements.txt
   script:
-    - echo "Generating dynamic-pipeline.yml from targets.json"
+    - echo "Generating pipeline for location=${FILTER_LOCATION:-all}"
     - python scripts/generate_pipeline.py
     - echo "--- dynamic-pipeline.yml ---"
     - cat dynamic-pipeline.yml
   variables:
-    FLYWAY_LOCATIONS: "filesystem:./sql"
-    TARGETS_FILE:     "targets.json"
-    OUTPUT_FILE:      "dynamic-pipeline.yml"
+    # -------------------------------------------------------------------------
+    # Registry database connection
+    # Set REGISTRY_SERVER, REGISTRY_USER, REGISTRY_PASSWORD in
+    # GitLab Settings → CI/CD → Variables (password: Protected + Masked)
+    # -------------------------------------------------------------------------
+    REGISTRY_DATABASE: "flyway_registry"
+    REGISTRY_PORT:     "1433"
+    JDBC_PORT:         "1433"
+    OUTPUT_FILE:       "dynamic-pipeline.yml"
+
+    # -------------------------------------------------------------------------
+    # Filtering
+    # Set FILTER_LOCATION in the calling job to limit to one region.
+    # Omit or set to "all" to deploy to every region.
+    # -------------------------------------------------------------------------
+    # FILTER_LOCATION: "all"
+    INCLUDE_REPLICAS:  "false"
+
+    # -------------------------------------------------------------------------
+    # Flyway migration path (passed through to child pipeline)
+    # -------------------------------------------------------------------------
+    FLYWAY_LOCATIONS: "filesystem:./migrations"
+
+    # -------------------------------------------------------------------------
+    # Cross-project include for child pipeline
+    # Set TEMPLATE_PROJECT to your templates repo path so the generated child
+    # pipeline can find flyway.yml. Leave empty if templates are in the same repo.
+    # -------------------------------------------------------------------------
+    # TEMPLATE_PROJECT: "your-group/flyway-ci-templates"
+    # TEMPLATE_REF:     "v1.0.0"
 
     # -------------------------------------------------------------------------
     # Regional runner tags
@@ -99,5 +106,7 @@
     paths:
       - dynamic-pipeline.yml
     expire_in: 2 hours
+  rules:
+    - when: always
   rules:
     - when: always

@@ -12,77 +12,82 @@
 #   include:
 #     - local: '.gitlab/ci/generate.yml'
 #
-# The Python script (scripts/generate_pipeline.py) calls usp_GetFlywayTargets
-# and produces a child pipeline whose jobs all extend .flyway_migrate below.
+# A single Python script (scripts/generate_pipeline.py) calls the sproc,
+# builds JDBC URLs from the dbserver/db columns, and produces a child
+# pipeline whose jobs all extend .flyway_migrate below.
 # Credentials are NEVER embedded in generated YAML – they come from GitLab
 # CI/CD variables TARGET_DATABASE_USER and TARGET_DATABASE_PASSWORD.
 # =============================================================================
 
 .flyway_base:
-  image: redgate/flyway:12-alpine
+  image:
+    name: redgate/flyway:latest
+    entrypoint: [""]
   variables:
     # Map GitLab CI/CD variables to Flyway environment variables
     # These can be overridden in specific jobs as needed
     FLYWAY_URL: "${TARGET_DATABASE_JDBC}"
     FLYWAY_USER: "${TARGET_DATABASE_USER}"
     FLYWAY_PASSWORD: "${TARGET_DATABASE_PASSWORD}"
-    FLYWAY_LOCATIONS: "filesystem:./sql"
+    FLYWAY_EMAIL: "${FLYWAY_EMAIL}"
+    FLYWAY_TOKEN: "${FLYWAY_TOKEN}"
+    # Override in your pipeline if your migrations live elsewhere.
+    # e.g. filesystem:./migrations  (Flyway Enterprise default)
+    #      filesystem:./db/migrations
+    FLYWAY_LOCATIONS: "filesystem:./migrations"
     FLYWAY_BASELINE_ON_MIGRATE: "true"
     FLYWAY_MIXED: "false"
     FLYWAY_OUT_OF_ORDER: "false"
   before_script:
-    - echo "=========================================="
-    - echo "Flyway Database Migration"
-    - echo "=========================================="
-    - echo "Flyway version:"
-    - flyway -v
-    - echo ""
-    - echo "Target database: ${FLYWAY_URL}"
-    - echo "Target user: ${FLYWAY_USER}"
-    - echo "SQL locations: ${FLYWAY_LOCATIONS}"
-    - echo "=========================================="
+    - "echo =========================================="
+    - "echo Flyway Database Migration"
+    - "echo =========================================="
+    - "flyway -v"
+    - "echo Target database: ${FLYWAY_URL}"
+    - "echo Target user: ${FLYWAY_USER}"
+    - "echo SQL locations: ${FLYWAY_LOCATIONS}"
+    - "echo =========================================="
 
 # Job template: Validate SQL migrations
 .flyway_validate:
   extends: .flyway_base
   script:
-    - flyway validate
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" -ignoreMigrationPatterns="*:pending" validate
   allow_failure: false
 
 # Job template: Get migration info
 .flyway_info:
   extends: .flyway_base
   script:
-    - flyway info
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
 
 # Job template: Run migrations
 .flyway_migrate:
   extends: .flyway_base
   script:
-    - flyway info
-    - flyway migrate
-    - flyway info
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" migrate
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
 
 # Job template: Repair migration history
 .flyway_repair:
   extends: .flyway_base
   script:
-    - flyway repair
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" repair
   when: manual
 
 # Job template: Clean database (DANGEROUS - use with caution)
 .flyway_clean:
   extends: .flyway_base
   script:
-    - flyway clean
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" clean
   when: manual
-  only:
-    - dev
-    - development
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^dev(elopment)?$/
 
 # Job template: Baseline existing database
 .flyway_baseline:
   extends: .flyway_base
   script:
-    - flyway baseline
+    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" baseline
   when: manual

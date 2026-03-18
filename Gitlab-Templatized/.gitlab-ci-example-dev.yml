@@ -20,33 +20,34 @@ stages:
 validate:dev:
   extends: .flyway_validate
   stage: validate
-  only:
-    - dev
-    - merge_requests
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_MERGE_REQUEST_IID
 
 # Show migration info
 info:dev:
   extends: .flyway_info
   stage: validate
-  only:
-    - dev
-    - merge_requests
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_MERGE_REQUEST_IID
 
 # Deploy migrations to DEV
 migrate:dev:
   extends: .flyway_migrate
   stage: deploy
-  only:
-    - dev
   environment:
     name: development
     url: https://dev.myapp.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
 
 # Manual repair option
 repair:dev:
   extends: .flyway_repair
   stage: deploy
-  only:
-    - dev
   environment:
     name: development
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+      when: manual
