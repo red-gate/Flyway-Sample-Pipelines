@@ -1,0 +1,83 @@
+# =============================================================================
+# Dynamic Pipeline — Registry-Driven Flyway Deployments
+# =============================================================================
+# Uses generate_pipeline.py to query a SQL Server registry database,
+# discover target databases, and produce a child pipeline with one
+# Flyway migrate job per target — no need to list databases manually.
+#
+# How it works:
+#   1. "generate-pipeline" runs the Python script, which connects to the
+#      registry and writes dynamic-pipeline.yml as a build artifact.
+#   2. "deploy-targets" triggers the artifact as a child pipeline.
+#      The child pipeline contains one .flyway_migrate job per database.
+#
+# CI/CD Variables required (Settings → CI/CD → Variables):
+#   REGISTRY_SERVER            = SQL Server hostname for the registry DB
+#   REGISTRY_USER              = Login for the registry DB
+#   REGISTRY_PASSWORD          = *** (Protected + Masked)
+#   TARGET_DATABASE_USER       = Login for target databases
+#   TARGET_DATABASE_PASSWORD   = *** (Protected + Masked)
+#   FLYWAY_EMAIL               = your@email.com
+#   FLYWAY_TOKEN               = *** (Protected + Masked)
+#
+# Optional CI/CD Variables:
+#   REGISTRY_DATABASE          = flyway_registry  (default)
+#   REGISTRY_PORT              = 1433             (default)
+#   JDBC_PORT                  = 1433             (default)
+#   FILTER_LOCATION            = all              (default — or e.g. "London")
+#   INCLUDE_REPLICAS           = false            (default)
+#   FLYWAY_LOCATIONS           = filesystem:./migrations (default)
+#   RUNNER_TAG_MAP             = JSON map of location → runner tag overrides
+#
+# Consumer repo structure:
+#   my-flyway-project/
+#   ├── migrations/
+#   │   ├── V1__create_schema.sql
+#   │   └── V2__add_users_table.sql
+#   └── .gitlab-ci.yml          ← this file
+#
+# Optional CI/CD Variables for template repo override:
+#   TEMPLATE_PROJECT           = root/templatized-with-parser (default)
+#   TEMPLATE_REF               = main                        (default)
+# =============================================================================
+
+stages:
+  - generate
+  - deploy
+
+variables:
+  TEMPLATE_PROJECT: "root/templatized-with-parser"
+  TEMPLATE_REF: "main"
+
+# ---------------------------------------------------------------------------
+# Stage 1: Generate the child pipeline YAML from the registry
+# ---------------------------------------------------------------------------
+generate-pipeline:
+  stage: generate
+  image: python:3.12-slim
+  script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - git clone --depth 1 --branch "$TEMPLATE_REF"
+        "http://gitlab-ci-token:${CI_JOB_TOKEN}@172.30.0.2/${TEMPLATE_PROJECT}.git"
+        /tmp/templates
+    - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    - python /tmp/templates/scripts/generate_pipeline.py
+  artifacts:
+    paths:
+      - dynamic-pipeline.yml
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ---------------------------------------------------------------------------
+# Stage 2: Trigger the generated child pipeline
+# ---------------------------------------------------------------------------
+deploy-targets:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline.yml
+        job: generate-pipeline
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

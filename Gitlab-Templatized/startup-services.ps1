@@ -14,6 +14,17 @@ if (Test-Path $envFile) {
 Write-Host "Starting services..." -ForegroundColor Yellow
 Write-Host ""
 
+# Create a dedicated Docker network with a fixed subnet (idempotent)
+$networkName = "gitlab-net"
+$subnet = "172.30.0.0/24"
+$networkExists = docker network ls --filter "name=^${networkName}$" --format '{{.Name}}' 2>&1
+if ($networkExists -ne $networkName) {
+    Write-Host "Creating Docker network '$networkName' (subnet $subnet)..." -ForegroundColor Cyan
+    docker network create --subnet $subnet $networkName | Out-Null
+} else {
+    Write-Host "Docker network '$networkName' already exists." -ForegroundColor Gray
+}
+
 # Ensure Rancher Desktop is running
 if (-not (Get-Process "Rancher Desktop" -ErrorAction SilentlyContinue)) {
     Write-Host "Rancher Desktop is not running. Starting it..." -ForegroundColor Yellow
@@ -38,6 +49,7 @@ if (-not (Get-Process "Rancher Desktop" -ErrorAction SilentlyContinue)) {
 Write-Host "Starting Rancher..." -ForegroundColor Cyan
 docker run -d --restart=unless-stopped `
     --name rancher `
+    --network gitlab-net --ip 172.30.0.10 `
     -p 80:80 -p 443:443 `
     --privileged `
     rancher/rancher:latest
@@ -46,6 +58,7 @@ docker run -d --restart=unless-stopped `
 Write-Host "Starting GitLab..." -ForegroundColor Cyan
 docker run -d --restart=unless-stopped `
     --name gitlab `
+    --network gitlab-net --ip 172.30.0.2 `
     -p 8080:80 -p 8443:443 -p 2222:22 `
     -v gitlab-config:/etc/gitlab `
     -v gitlab-logs:/var/log/gitlab `
@@ -56,6 +69,7 @@ docker run -d --restart=unless-stopped `
 Write-Host "Starting GitLab Runner..." -ForegroundColor Cyan
 docker run -d --restart=unless-stopped `
     --name gitlab-runner `
+    --network gitlab-net --ip 172.30.0.3 `
     -v gitlab-runner-config:/etc/gitlab-runner `
     -v //var/run/docker.sock:/var/run/docker.sock `
     gitlab/gitlab-runner:latest
@@ -74,10 +88,13 @@ if ($runnerConfig -notmatch '\[\[runners\]\]') {
             --executor "docker" `
             --docker-image "redgate/flyway:12-enterprise-alpine" `
             --description "local-runner" `
+            --tag-list "local-runner" `
             --run-untagged="true" `
-            --locked="false"
+            --locked="false" `
+            --docker-network-mode "gitlab-net" `
+            --clone-url $url
     } else {
-        Write-Host "WARNING: GITLAB_RUNNER_REGISTRATION_TOKEN or GITLAB_URL not set in .env — skipping registration." -ForegroundColor Yellow
+        Write-Host "WARNING: GITLAB_RUNNER_REGISTRATION_TOKEN or GITLAB_URL not set in .env - skipping registration." -ForegroundColor Yellow
     }
 }
 

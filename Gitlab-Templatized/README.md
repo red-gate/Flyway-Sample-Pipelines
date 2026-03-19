@@ -142,8 +142,31 @@ Optional `generate_pipeline.py` settings:
 | `FILTER_LOCATION` | `all` | Region filter (`London`, `New York`, `Tokyo`) |
 | `INCLUDE_REPLICAS` | `false` | Include replicated databases |
 | `JDBC_PORT` | `1433` | Port in generated JDBC URLs |
+| `RUNNER_TAG_DEFAULT` | _(empty)_ | Single runner tag for all generated jobs (overrides per-location tags) |
 | `TEMPLATE_PROJECT` | _(empty)_ | Templates repo path for child pipeline include |
 | `TEMPLATE_REF` | `main` | Git ref for cross-project child pipeline include |
+
+## Runner Tags
+
+Generated pipeline jobs are assigned runner tags based on each target's `location`. By default, a location like `Production` produces the tag `runner-production`.
+
+**Override all tags with one value** — set `RUNNER_TAG_DEFAULT` as a CI/CD variable:
+
+```
+RUNNER_TAG_DEFAULT = local-runner
+```
+
+Every generated job will use `local-runner` instead of per-location tags.
+
+**Per-location overrides** — set `RUNNER_TAG_MAP` as a JSON CI/CD variable:
+
+```
+RUNNER_TAG_MAP = {"Production": "prod-runner", "Development": "dev-runner"}
+```
+
+Or use individual variables: `RUNNER_TAG_LONDON`, `RUNNER_TAG_NEW_YORK`, `RUNNER_TAG_TOKYO`.
+
+**Priority order:** `RUNNER_TAG_DEFAULT` → `RUNNER_TAG_MAP` → individual `RUNNER_TAG_*` → auto-generated from location name.
 
 ## Usage Examples
 

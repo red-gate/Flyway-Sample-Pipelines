@@ -39,6 +39,7 @@ FLYWAY_LOCATIONS     Migration file path           (default: filesystem:./migrat
 TEMPLATE_PROJECT     Templates repo path for child pipeline include
 TEMPLATE_REF         Templates repo ref for child pipeline include
 OUTPUT_FILE          Output YAML filename          (default: dynamic-pipeline.yml)
+RUNNER_TAG_DEFAULT   Single runner tag for all jobs (overrides per-location tags)
 RUNNER_TAG_MAP       JSON map of location->runner tag overrides
 RUNNER_TAG_LONDON    Runner tag for London         (default: runner-london)
 RUNNER_TAG_NEW_YORK  Runner tag for New York       (default: runner-new-york)
@@ -51,6 +52,37 @@ import sys
 
 import pymssql
 import yaml
+
+
+# ---------------------------------------------------------------------------
+# Load .env file if present (local development)
+# In GitLab CI/CD, variables come from project/group CI/CD settings natively.
+# ---------------------------------------------------------------------------
+
+def load_dotenv(path=None):
+    """Load a .env file into os.environ without overwriting existing values."""
+    if path is None:
+        # Look for .env in the repo root (one level up from scripts/)
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".env")
+    path = os.path.normpath(path)
+    if not os.path.isfile(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Don't overwrite — GitLab CI/CD variables take precedence
+            if key not in os.environ:
+                os.environ[key] = value
+
+
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +107,8 @@ OUTPUT_FILE      = os.environ.get("OUTPUT_FILE", "dynamic-pipeline.yml")
 TEMPLATE_PROJECT = os.environ.get("TEMPLATE_PROJECT", "")
 TEMPLATE_REF     = os.environ.get("TEMPLATE_REF", "main")
 
-# Runner tags — JSON map takes priority, then individual env vars, then defaults
+# Runner tags — default overrides all, then JSON map, then individual env vars, then fallbacks
+RUNNER_TAG_DEFAULT = os.environ.get("RUNNER_TAG_DEFAULT", "")
 _runner_tag_map_raw = os.environ.get("RUNNER_TAG_MAP", "")
 if _runner_tag_map_raw:
     RUNNER_TAGS = json.loads(_runner_tag_map_raw)
@@ -178,6 +211,8 @@ def safe_job_name(value):
 
 
 def runner_tag_for(location):
+    if RUNNER_TAG_DEFAULT:
+        return RUNNER_TAG_DEFAULT
     return RUNNER_TAGS.get(location, f"runner-{location.lower().replace(' ', '-')}")
 
 
