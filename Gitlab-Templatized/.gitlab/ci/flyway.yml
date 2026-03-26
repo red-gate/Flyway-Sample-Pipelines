@@ -7,6 +7,10 @@
 #   include:
 #     - local: '.gitlab/ci/flyway.yml'
 #
+# For schema-model → migration-script generation, also include:
+#   include:
+#     - local: '.gitlab/ci/dev.yml'
+#
 # For dynamic multi-database deployments driven by the jdbc_table_store
 # registry, also include:
 #   include:

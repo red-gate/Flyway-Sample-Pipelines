@@ -8,6 +8,7 @@ Your Flyway project repo includes these templates via GitLab's cross-project `in
 
 ```
 .gitlab/ci/flyway.yml         # Flyway job templates (.flyway_validate, .flyway_migrate, etc.)
+.gitlab/ci/dev.yml            # Schema-model → migration generation templates (.flyway_generate_migrations, etc.)
 .gitlab/ci/generate.yml       # Dynamic pipeline generation template (.generate_pipeline)
 scripts/generate_pipeline.py  # Queries registry sproc → builds JDBCs → writes child pipeline YAML
 scripts/requirements.txt      # Python dependencies (pymssql, PyYAML)
@@ -35,8 +36,8 @@ In your Flyway project's `.gitlab-ci.yml`:
 
 ```yaml
 include:
-  - project: 'your-group/flyway-ci-templates'   # path to THIS repo
-    ref: 'v1.0.0'                                # pin to a tag
+  - project: 'root/templatized-with-parser'      # path to THIS repo
+    ref: 'main'                                  # pin to a tag or branch
     file: '/.gitlab/ci/flyway.yml'
 ```
 
@@ -97,14 +98,62 @@ migrate:custom:
     FLYWAY_OUT_OF_ORDER: "true"
 ```
 
+### dev.yml — Schema Model → Migration Generation
+
+Generate versioned migration scripts from schema-model changes using `flyway diff model` and `flyway diff generate`.  Includes a manual gate that creates a **merge request** so reviewers can inspect the generated SQL diff before merging.
+
+| Template | Purpose | Notes |
+|----------|---------|-------|
+| `.flyway_generate_migrations` | `flyway diff model` + `flyway diff generate` | Auto-generates V*__*.sql from schema-model diffs |
+| `.flyway_commit_migrations` | Push branch + create merge request | Manual gate — opens MR for script review |
+
+Additional CI/CD variables for schema-model workflows:
+
+| Variable | Example | Required | Notes |
+|----------|---------|----------|-------|
+| `TARGET_DATABASE_JDBC` | `jdbc:sqlserver://host:1433;databaseName=mydb;encrypt=true` | Yes | Dev database (diff source) |
+| `SHADOW_DATABASE_JDBC` | `jdbc:sqlserver://host:1433;databaseName=mydb_shadow;encrypt=true` | Yes | Empty DB Flyway rebuilds from migrations |
+| `GIT_PUSH_TOKEN` | `glpat-xxxxxxxxxxxx` | Yes* | PAT with `api` scope — see [Git Push Authentication](#git-push-authentication) |
+| `GITLAB_EXTERNAL_URL` | `http://localhost:8080` | No | Browser-reachable GitLab URL for MR links (defaults to `CI_SERVER_URL`; set when behind port mapping) |
+| `MR_TARGET_BRANCH` | `main` | No | Branch the MR targets (default: `main`) |
+
+\* Required unless CI job token permissions are enabled (Option B below).
+
+See [`usage-examples/schema-model.gitlab-ci.yml`](usage-examples/schema-model.gitlab-ci.yml) for a complete example.
+
+#### Git Push Authentication
+
+The `.flyway_commit_migrations` job pushes a branch and creates a merge request via the GitLab API. This requires write access. Two options:
+
+**Option A — Personal Access Token (recommended for self-hosted GitLab)**
+
+1. Go to your GitLab instance → **Profile → Access Tokens**
+2. Create a token with the **`api`** scope (covers both git push and MR creation)
+3. Add it as a **CI/CD variable** in your project:
+   - **Key:** `GIT_PUSH_TOKEN`
+   - **Value:** the token
+   - **Protected:** ✓  **Masked:** ✓
+
+This is the simplest approach and works on all GitLab versions.
+
+**Option B — CI Job Token permissions (GitLab 15.9+, GitLab.com)**
+
+1. Go to your project → **Settings → CI/CD → Token permissions**
+2. Enable **"Allow CI job token to push to this project"**
+3. Under **Settings → Repository → Protected branches**, ensure the job token role can push
+
+With this option, no `GIT_PUSH_TOKEN` variable is needed — the pipeline uses the built-in `CI_JOB_TOKEN`. However, not all GitLab versions support this, and some self-hosted instances restrict job token API access.
+
+> **Which should I use?** Option A is more reliable, especially for local or self-hosted GitLab. Option B is cleaner for GitLab.com since it requires no extra secrets.
+
 ### generate.yml — Dynamic Pipeline (100+ Databases)
 
 For large-scale deployments driven by a SQL Server registry database. A single Python script (`scripts/generate_pipeline.py`) calls `dbo.usp_GetFlywayTargets`, builds JDBC URLs from the `dbserver` and `db` columns, and writes a child pipeline with one migrate job per target.
 
 ```yaml
 include:
-  - project: 'your-group/flyway-ci-templates'
-    ref: 'v1.0.0'
+  - project: 'root/templatized-with-parser'
+    ref: 'main'
     file:
       - '/.gitlab/ci/flyway.yml'
       - '/.gitlab/ci/generate.yml'
@@ -175,11 +224,17 @@ See [`usage-examples/`](usage-examples/) for complete `.gitlab-ci.yml` files:
 | File | Scenario |
 |------|----------|
 | `single-db-dev.gitlab-ci.yml` | Single database, dev branch |
+| `schema-model.gitlab-ci.yml` | Schema-model → generated migrations with approval gate |
+| `schema-model-dynamic.gitlab-ci.yml` | Schema-model + registry-driven dynamic deploy to all targets |
 | `staging-and-production.gitlab-ci.yml` | Staging → production with manual approval |
 | `multi-database.gitlab-ci.yml` | 2–10 databases with explicit jobs |
-
-For parallel matrix (10–100 DBs), see `.gitlab-ci-example-matrix.yml`.
-For registry-driven dynamic pipelines (100+ DBs), see `.gitlab-ci-example-all-regions.yml`.
+| `variable-driven.gitlab-ci.yml` | Variable-driven, no registry or Python |
+| `matrix.gitlab-ci.yml` | Parallel matrix for 10–100 databases |
+| `dynamic-pipeline.gitlab-ci.yml` | Registry-driven dynamic child pipeline |
+| `all-regions.gitlab-ci.yml` | Dynamic pipeline — all regions |
+| `region-london.gitlab-ci.yml` | Dynamic pipeline — London only |
+| `region-new-york.gitlab-ci.yml` | Dynamic pipeline — New York only |
+| `region-tokyo.gitlab-ci.yml` | Dynamic pipeline — Tokyo only |
 
 ## Environment-Scoped Variables
 

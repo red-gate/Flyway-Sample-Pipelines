@@ -156,7 +156,7 @@ jdbc:oracle:thin:@//hostname:1521/service_name
 Copy the development example to create your active pipeline:
 
 ```bash
-cp .gitlab-ci-example-dev.yml .gitlab-ci.yml
+cp usage-examples/single-db-dev.gitlab-ci.yml .gitlab-ci.yml
 ```
 
 ### Step 2: Review and Customize (Optional)
@@ -244,7 +244,7 @@ git push origin dev
 Use the multi-database example:
 
 ```bash
-cp .gitlab-ci-example-multi-db.yml .gitlab-ci.yml
+cp usage-examples/multi-database.gitlab-ci.yml .gitlab-ci.yml
 ```
 
 Edit `.gitlab-ci.yml` to match your databases:

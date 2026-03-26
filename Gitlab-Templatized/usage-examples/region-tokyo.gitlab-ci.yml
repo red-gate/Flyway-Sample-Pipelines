@@ -1,0 +1,59 @@
+﻿# =============================================================================
+# Pipeline: Deploy TOKYO region only
+# =============================================================================
+# Deploys Flyway migrations to all Tokyo databases found in the
+# jdbc_table_store registry.  Jobs run exclusively on the
+# runner tagged RUNNER_TAG_TOKYO.
+#
+# SETUP REQUIRED – GitLab Settings → CI/CD → Variables
+# -------------------------------------------------------
+# Registry database (used by the Python generator):
+#   REGISTRY_SERVER   = <hostname of your flyway_registry SQL Server>
+#   REGISTRY_USER     = <login on that server>
+#   REGISTRY_PASSWORD = <password>  ← Protected + Masked
+#
+# Target databases (used by Flyway jobs at runtime):
+#   TARGET_DATABASE_USER     = flyway_user
+#   TARGET_DATABASE_PASSWORD = <password>  ← Protected + Masked
+#
+# RUNNER TAGS – set RUNNER_TAG_TOKYO to match your runner's actual tag.
+# =============================================================================
+
+include:
+  - local: '.gitlab/ci/generate.yml'
+  - local: '.gitlab/ci/flyway.yml'
+
+stages:
+  - generate
+  - deploy
+
+# ---------------------------------------------------------------------------
+# Configurable runner tag for this region.
+# Change RUNNER_TAG_TOKYO to match the tag on your Tokyo GitLab runner.
+# ---------------------------------------------------------------------------
+variables:
+  RUNNER_TAG_LONDON:   "runner-london"
+  RUNNER_TAG_NEW_YORK: "runner-new-york"
+  RUNNER_TAG_TOKYO:    "runner-tokyo"
+
+  REGISTRY_DATABASE:   "flyway_registry"
+  REGISTRY_PORT:       "1433"
+
+# ---------------------------------------------------------------------------
+# Stage 1 – generate: query registry, build JDBCs, write dynamic-pipeline.yml
+# ---------------------------------------------------------------------------
+generate:tokyo:
+  extends: .generate_pipeline
+  variables:
+    FILTER_LOCATION: "Tokyo"
+
+# ---------------------------------------------------------------------------
+# Stage 2 – deploy: trigger the generated child pipeline
+# ---------------------------------------------------------------------------
+deploy:tokyo:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline.yml
+        job:      generate:tokyo
+    strategy: depend

@@ -160,6 +160,26 @@ if ($runnerConfig -notmatch '\[\[runners\]\]') {
 }
 
 # ---------------------------------------------------------------------------
+# Configure Git SSH to use port 2222 for localhost (idempotent)
+# ---------------------------------------------------------------------------
+$sshDir = Join-Path $env:USERPROFILE ".ssh"
+if (-not (Test-Path $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
+$sshConfig = Join-Path $sshDir "config"
+$hostBlock = @"
+# GitLab local (added by startup-services.ps1)
+Host localhost
+  Port 2222
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+"@
+if ((Test-Path $sshConfig) -and (Get-Content $sshConfig -Raw) -match 'GitLab local') {
+    Write-Host "SSH config for localhost:2222 already exists." -ForegroundColor Gray
+} else {
+    Add-Content -Path $sshConfig -Value "`n$hostBlock`n"
+    Write-Host "Added SSH config: localhost → port 2222" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 Write-Host ""

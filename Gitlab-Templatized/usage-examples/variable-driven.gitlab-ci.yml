@@ -42,7 +42,7 @@
 # =============================================================================
 
 include:
-  - project: 'your-group/flyway-ci-templates'    # ← change to your templates repo
+  - project: 'root/templatized-with-parser'       # ← path to the templates repo
     ref: 'v1.0.0'                                 # ← pin to a release tag
     file: '/.gitlab/ci/flyway.yml'
 

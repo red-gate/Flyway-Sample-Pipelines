@@ -15,9 +15,9 @@
    TARGET_DATABASE_PASSWORD = your-password (Protected + Masked)
    ```
 
-3. **Choose pipeline template**
+3. **Choose pipeline template** from `usage-examples/`
    ```bash
-   cp .gitlab-ci-example-dev.yml .gitlab-ci.yml
+   cp usage-examples/single-db-dev.gitlab-ci.yml .gitlab-ci.yml
    ```
 
 4. **Add SQL migrations**
@@ -82,13 +82,14 @@ TARGET_DATABASE_JDBC     (scope: production)
 
 ## Pipeline Template Selection
 
-| Databases | Template to Use | Command |
-|-----------|----------------|---------|
-| **1 database** | `.gitlab-ci-example-dev.yml` | `cp .gitlab-ci-example-dev.yml .gitlab-ci.yml` |
-| **Dev + Staging + Prod** | `.gitlab-ci-example-prod.yml` | `cp .gitlab-ci-example-prod.yml .gitlab-ci.yml` |
-| **2-10 databases** | `.gitlab-ci-example-multi-db.yml` | `cp .gitlab-ci-example-multi-db.yml .gitlab-ci.yml` |
-| **10-100 databases** | `.gitlab-ci-example-matrix.yml` | `cp .gitlab-ci-example-matrix.yml .gitlab-ci.yml` |
-| **100+ databases** | See SETUP_GUIDE.md | Dynamic child pipelines |
+| Databases | Template (in `usage-examples/`) | Command |
+|-----------|--------------------------------|--------|
+| **1 database** | `single-db-dev.gitlab-ci.yml` | `cp usage-examples/single-db-dev.gitlab-ci.yml .gitlab-ci.yml` |
+| **Schema-model workflow** | `schema-model.gitlab-ci.yml` | `cp usage-examples/schema-model.gitlab-ci.yml .gitlab-ci.yml` |
+| **Dev + Staging + Prod** | `staging-and-production.gitlab-ci.yml` | `cp usage-examples/staging-and-production.gitlab-ci.yml .gitlab-ci.yml` |
+| **2-10 databases** | `multi-database.gitlab-ci.yml` | `cp usage-examples/multi-database.gitlab-ci.yml .gitlab-ci.yml` |
+| **10-100 databases** | `matrix.gitlab-ci.yml` | `cp usage-examples/matrix.gitlab-ci.yml .gitlab-ci.yml` |
+| **100+ databases** | `dynamic-pipeline.gitlab-ci.yml` | `cp usage-examples/dynamic-pipeline.gitlab-ci.yml .gitlab-ci.yml` |
 
 ---
 

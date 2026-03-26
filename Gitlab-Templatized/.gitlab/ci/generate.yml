@@ -92,7 +92,7 @@
     # Set TEMPLATE_PROJECT to your templates repo path so the generated child
     # pipeline can find flyway.yml. Leave empty if templates are in the same repo.
     # -------------------------------------------------------------------------
-    # TEMPLATE_PROJECT: "your-group/flyway-ci-templates"
+    # TEMPLATE_PROJECT: "root/templatized-with-parser"
     # TEMPLATE_REF:     "v1.0.0"
 
     # -------------------------------------------------------------------------
@@ -106,7 +106,5 @@
     paths:
       - dynamic-pipeline.yml
     expire_in: 2 hours
-  rules:
-    - when: always
   rules:
     - when: always

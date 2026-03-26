@@ -1,0 +1,70 @@
+﻿# =============================================================================
+# Pipeline: Deploy ALL regions at once (London + New York + Tokyo)
+# =============================================================================
+# This pipeline queries the jdbc_table_store registry and generates
+# a single child pipeline containing jobs for EVERY available database across
+# all three regions. Each job is automatically tagged to run on the runner
+# serving that region.
+#
+# SETUP REQUIRED – GitLab Settings → CI/CD → Variables
+# -------------------------------------------------------
+# Registry database (used by the Python generator):
+#   REGISTRY_SERVER   = <hostname of your flyway_registry SQL Server>
+#   REGISTRY_USER     = <login on that server>
+#   REGISTRY_PASSWORD = <password>  ← Protected + Masked
+#
+# Target databases (used by Flyway jobs at runtime):
+#   TARGET_DATABASE_USER     = flyway_user
+#   TARGET_DATABASE_PASSWORD = <password>  ← Protected + Masked
+#
+# RUNNER TAGS – change these to match your actual runner tag names
+# The defaults below follow the convention set in .gitlab/ci/generate.yml
+# =============================================================================
+
+include:
+  - local: '.gitlab/ci/generate.yml'   # .generate_pipeline template
+  - local: '.gitlab/ci/flyway.yml'     # Flyway templates (used by child pipeline)
+
+stages:
+  - generate
+  - deploy
+
+# ---------------------------------------------------------------------------
+# Configurable runner tags
+# Change these values to match the tags registered on your GitLab runners.
+# One-line change per region – that's all you need.
+# ---------------------------------------------------------------------------
+variables:
+  RUNNER_TAG_LONDON:   "runner-london"
+  RUNNER_TAG_NEW_YORK: "runner-new-york"
+  RUNNER_TAG_TOKYO:    "runner-tokyo"
+
+  # Registry connection (set sensitive values in GitLab CI/CD Variables)
+  REGISTRY_DATABASE:   "flyway_registry"
+  REGISTRY_PORT:       "1433"
+
+# ---------------------------------------------------------------------------
+# Stage 1 – generate: query registry, build JDBCs, write dynamic-pipeline.yml
+# ---------------------------------------------------------------------------
+generate:all-regions:
+  extends: .generate_pipeline
+  variables:
+    FILTER_LOCATION: "all"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# ---------------------------------------------------------------------------
+# Stage 2 – deploy: trigger the generated child pipeline
+# strategy: depend → parent waits for all child jobs to finish
+# ---------------------------------------------------------------------------
+deploy:all-regions:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline.yml
+        job:      generate:all-regions
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
