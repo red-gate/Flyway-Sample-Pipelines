@@ -8,7 +8,7 @@ Your Flyway project repo includes these templates via GitLab's cross-project `in
 
 ```
 .gitlab/ci/flyway.yml         # Flyway job templates (.flyway_validate, .flyway_migrate, etc.)
-.gitlab/ci/dev.yml            # Schema-model → migration generation templates (.flyway_generate_migrations, etc.)
+.gitlab/ci/generate-deployment-scripts.yml  # Schema-model → migration generation templates (.flyway_generate_migrations, etc.)
 .gitlab/ci/generate.yml       # Dynamic pipeline generation template (.generate_pipeline)
 scripts/generate_pipeline.py  # Queries registry sproc → builds JDBCs → writes child pipeline YAML
 scripts/requirements.txt      # Python dependencies (pymssql, PyYAML)
@@ -17,6 +17,16 @@ usage-examples/               # Ready-to-copy .gitlab-ci.yml files for consumer 
 ```
 
 ## How It Works
+
+### Template Overview
+
+| Template | Purpose |
+|----------|---------|
+| **flyway.yml** | Core Flyway job templates (`.flyway_base`, `.flyway_migrate`, `.flyway_validate`, etc.) — the building blocks for running Flyway commands against any database |
+| **generate-deployment-scripts.yml** | Schema-model workflow — `.flyway_generate_migrations` runs `flyway diff` to produce migration SQL, `.flyway_commit_migrations` commits them and opens an MR. Uses the Flyway image directly. |
+| **generate.yml** | Registry-driven dynamic pipeline — `.generate_pipeline` queries a SQL Server registry DB, discovers all target databases, and writes a `dynamic-pipeline.yml` child pipeline with one `.flyway_migrate` job per target (from flyway.yml). Uses Python. |
+
+**Flow:** `generate-deployment-scripts.yml` *creates* migration scripts → `generate.yml` *discovers where to deploy them* → `flyway.yml` *runs the actual migrations*.
 
 **Your Flyway project repo** includes templates from **this repo**:
 
@@ -98,7 +108,7 @@ migrate:custom:
     FLYWAY_OUT_OF_ORDER: "true"
 ```
 
-### dev.yml — Schema Model → Migration Generation
+### generate-deployment-scripts.yml — Schema Model → Migration Generation
 
 Generate versioned migration scripts from schema-model changes using `flyway diff model` and `flyway diff generate`.  Includes a manual gate that creates a **merge request** so reviewers can inspect the generated SQL diff before merging.
 
@@ -190,6 +200,26 @@ Optional `generate_pipeline.py` settings:
 |----------|---------|---------|
 | `FILTER_LOCATION` | `all` | Region filter (`London`, `New York`, `Tokyo`) |
 | `INCLUDE_REPLICAS` | `false` | Include replicated databases |
+
+### Deploying to Specific Regions
+
+`FILTER_LOCATION` controls which region(s) get deployed. It defaults to `all`.
+
+**Deploy all regions** — leave the default (no action needed):
+```yaml
+variables:
+  FILTER_LOCATION: "all"    # deploys to London, New York, Tokyo, etc.
+```
+
+**Deploy one region** — override at run time:
+1. Go to your project → **Build → Pipelines → Run pipeline**
+2. Select the `main` branch
+3. Add variable: `FILTER_LOCATION` = `London` (or `New York`, `Tokyo`)
+4. Click **Run pipeline**
+
+Only databases whose `location` column in the registry matches the filter value will be included in the generated child pipeline.
+
+Optional pipeline settings:
 | `JDBC_PORT` | `1433` | Port in generated JDBC URLs |
 | `RUNNER_TAG_DEFAULT` | _(empty)_ | Single runner tag for all generated jobs (overrides per-location tags) |
 | `TEMPLATE_PROJECT` | _(empty)_ | Templates repo path for child pipeline include |

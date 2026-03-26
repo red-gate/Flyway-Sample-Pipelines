@@ -45,7 +45,7 @@ include:
     ref: 'main'                                    # ← pin to a tag or branch
     file:
       - '/.gitlab/ci/flyway.yml'
-      - '/.gitlab/ci/dev.yml'
+      - '/.gitlab/ci/generate-deployment-scripts.yml'
 
 stages:
   - generate

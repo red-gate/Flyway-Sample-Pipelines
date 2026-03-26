@@ -62,7 +62,18 @@ include:
     ref: 'main'                                    # ← pin to a tag or branch
     file:
       - '/.gitlab/ci/flyway.yml'
-      - '/.gitlab/ci/dev.yml'
+      - '/.gitlab/ci/generate-deployment-scripts.yml'
+
+workflow:
+  name: '$PIPELINE_LABEL'
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        PIPELINE_LABEL: "DEV — Generate Migrations"
+    - if: $CI_COMMIT_BRANCH == "main"
+      variables:
+        PIPELINE_LABEL: "MAIN — Deploy to Targets"
+    - when: always
 
 stages:
   - generate
@@ -75,6 +86,10 @@ variables:
   DEPLOY_BRANCH: "main"
   TEMPLATE_PROJECT: "root/templatized-with-parser"
   TEMPLATE_REF: "main"
+  # Deploy region filter — "all" deploys everywhere, or set to a specific
+  # region name: "London", "New York", "Tokyo"
+  # Can be overridden at pipeline run time via "Run pipeline" → Variables.
+  FILTER_LOCATION: "all"
 
 # ---------------------------------------------------------------------------
 # 1. Generate migration scripts from schema-model changes (auto)
@@ -103,12 +118,12 @@ commit:scripts:
       when: manual
 
 # ---------------------------------------------------------------------------
-# 3. Generate the dynamic child pipeline from the registry (auto)
-#    Runs on main (after the MR is merged).  Queries the SQL Server
-#    registry to discover all target databases and produces a child
-#    pipeline YAML with one migrate job per target.
+# 3. Generate dynamic child pipelines from the registry (auto)
+#    Runs on main (after the MR is merged).  One generate job per region
+#    plus one for all.  Each queries the registry with a different
+#    FILTER_LOCATION and produces its own artifact.
 # ---------------------------------------------------------------------------
-generate:pipeline:
+.generate_base:
   stage: pipeline
   image: python:3.12-slim
   script:
@@ -117,23 +132,101 @@ generate:pipeline:
         "http://gitlab-ci-token:${CI_JOB_TOKEN}@172.30.0.2/${TEMPLATE_PROJECT}.git"
         /tmp/templates
     - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    - echo "Generating pipeline for ${FILTER_LOCATION} → ${OUTPUT_FILE}"
     - python /tmp/templates/scripts/generate_pipeline.py
-  artifacts:
-    paths:
-      - dynamic-pipeline.yml
-    expire_in: 1 hour
+    - cat "${OUTPUT_FILE}"
   rules:
     - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
 
+generate:all:
+  extends: .generate_base
+  variables:
+    FILTER_LOCATION: "all"
+    OUTPUT_FILE: "dynamic-pipeline-all.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-all.yml"]
+    expire_in: 1 hour
+
+generate:london:
+  extends: .generate_base
+  variables:
+    FILTER_LOCATION: "London"
+    OUTPUT_FILE: "dynamic-pipeline-london.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-london.yml"]
+    expire_in: 1 hour
+
+generate:new-york:
+  extends: .generate_base
+  variables:
+    FILTER_LOCATION: "New York"
+    OUTPUT_FILE: "dynamic-pipeline-new-york.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-new-york.yml"]
+    expire_in: 1 hour
+
+generate:tokyo:
+  extends: .generate_base
+  variables:
+    FILTER_LOCATION: "Tokyo"
+    OUTPUT_FILE: "dynamic-pipeline-tokyo.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-tokyo.yml"]
+    expire_in: 1 hour
+
 # ---------------------------------------------------------------------------
-# 4. Trigger the generated child pipeline to deploy to all targets
+# 4. Deploy — one button per region + deploy all
+#    After merge to main, you'll see these buttons in the pipeline:
+#      ▶ deploy:all        — deploy to every region
+#      ▶ deploy:london     — deploy to London only
+#      ▶ deploy:new-york   — deploy to New York only
+#      ▶ deploy:tokyo      — deploy to Tokyo only
+#    Click whichever you need.
 # ---------------------------------------------------------------------------
-deploy:targets:
+deploy:all:
   stage: deploy
   trigger:
     include:
-      - artifact: dynamic-pipeline.yml
-        job: generate:pipeline
+      - artifact: dynamic-pipeline-all.yml
+        job: generate:all
     strategy: depend
   rules:
     - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
+      when: manual
+      allow_failure: true
+
+deploy:london:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-london.yml
+        job: generate:london
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
+      when: manual
+      allow_failure: true
+
+deploy:new-york:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-new-york.yml
+        job: generate:new-york
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
+      when: manual
+      allow_failure: true
+
+deploy:tokyo:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-tokyo.yml
+        job: generate:tokyo
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
+      when: manual
+      allow_failure: true
