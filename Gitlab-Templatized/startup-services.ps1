@@ -4,6 +4,7 @@
 #   Rancher:       172.30.0.10  →  host ports 80 / 443
 #   GitLab:        172.30.0.2   →  host ports 8080 / 8443 / 2222
 #   GitLab Runner: 172.30.0.3   →  no host ports
+#   SQL Server:    172.30.0.4   →  host port 1434
 #
 # Passwords are read from .env and injected on first container creation.
 # Rancher and GitLab data are stored in named Docker volumes so state
@@ -134,6 +135,25 @@ if (-not (Start-OrCreate "gitlab-runner")) {
 }
 
 # ---------------------------------------------------------------------------
+# SQL Server  (172.30.0.4 — port 1434)
+# ---------------------------------------------------------------------------
+Write-Host "Starting SQL Server..." -ForegroundColor Cyan
+if (-not (Start-OrCreate "sqlserver-dev")) {
+    $sql2Pw = $env:SQL2_SA_PASSWORD
+    if (-not $sql2Pw) { $sql2Pw = 'Flyway2026!Secure' }
+
+    docker run -d --restart=unless-stopped `
+        --name sqlserver-dev `
+        --network gitlab-net --ip 172.30.0.4 `
+        -p 1434:1433 `
+        -e "ACCEPT_EULA=Y" `
+        -e "MSSQL_SA_PASSWORD=$sql2Pw" `
+        -v sqldev-data:/var/opt/mssql `
+        mcr.microsoft.com/mssql/server:2022-latest | Out-Null
+    Write-Host "  SQL Server sa password set from .env" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
 # Register runner if not already registered
 # ---------------------------------------------------------------------------
 $runnerConfig = docker exec gitlab-runner cat /etc/gitlab-runner/config.toml 2>&1
@@ -141,19 +161,38 @@ if ($runnerConfig -notmatch '\[\[runners\]\]') {
     $token = $env:GITLAB_RUNNER_REGISTRATION_TOKEN
     $url   = $env:GITLAB_URL
     if ($token -and $url) {
-        Write-Host "Registering GitLab Runner..." -ForegroundColor Yellow
-        docker exec gitlab-runner gitlab-runner register `
-            --non-interactive `
-            --url $url `
-            --registration-token $token `
-            --executor "docker" `
-            --docker-image "redgate/flyway:12-enterprise-alpine" `
-            --description "local-runner" `
-            --tag-list "local-runner" `
-            --run-untagged="true" `
-            --locked="false" `
-            --docker-network-mode "gitlab-net" `
-            --clone-url $url
+        # Wait for GitLab to be ready before registering
+        Write-Host "Waiting for GitLab to be ready (this can take a few minutes)..." -ForegroundColor Yellow
+        $glTimeout = 300
+        $glElapsed = 0
+        while ($glElapsed -lt $glTimeout) {
+            $health = docker exec gitlab-runner curl -sf "$url/-/readiness" 2>&1
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "  GitLab not ready yet... ($glElapsed`s)" -ForegroundColor Gray
+            Start-Sleep -Seconds 10
+            $glElapsed += 10
+        }
+        if ($glElapsed -ge $glTimeout) {
+            Write-Host "WARNING: GitLab did not become ready within $glTimeout seconds. Skipping runner registration." -ForegroundColor Yellow
+        } else {
+            Write-Host "GitLab is ready!" -ForegroundColor Green
+        }
+
+        if ($glElapsed -lt $glTimeout) {
+            Write-Host "Registering GitLab Runner..." -ForegroundColor Yellow
+            docker exec gitlab-runner gitlab-runner register `
+                --non-interactive `
+                --url $url `
+                --registration-token $token `
+                --executor "docker" `
+                --docker-image "redgate/flyway:12-enterprise-alpine" `
+                --description "local-runner" `
+                --tag-list "local-runner" `
+                --run-untagged="true" `
+                --locked="false" `
+                --docker-network-mode "gitlab-net" `
+                --clone-url $url
+        }
     } else {
         Write-Host "WARNING: GITLAB_RUNNER_REGISTRATION_TOKEN or GITLAB_URL not set in .env - skipping registration." -ForegroundColor Yellow
     }
@@ -180,6 +219,31 @@ if ((Test-Path $sshConfig) -and (Get-Content $sshConfig -Raw) -match 'GitLab loc
 }
 
 # ---------------------------------------------------------------------------
+# Retrieve Rancher bootstrap password
+# ---------------------------------------------------------------------------
+$rancherBootstrapPw = $null
+if ($env:RANCHER_BOOTSTRAP_PASSWORD) {
+    $rancherBootstrapPw = $env:RANCHER_BOOTSTRAP_PASSWORD
+} else {
+    # When no password is set via env, Rancher generates one and logs it
+    Write-Host "Retrieving Rancher bootstrap password from logs..." -ForegroundColor Yellow
+    $pwTimeout = 120
+    $pwElapsed = 0
+    while ($pwElapsed -lt $pwTimeout) {
+        $logLine = docker logs rancher 2>&1 | Select-String 'Bootstrap Password:' | Select-Object -Last 1
+        if ($logLine) {
+            $rancherBootstrapPw = ($logLine -replace '.*Bootstrap Password:\s*', '').Trim()
+            break
+        }
+        Start-Sleep -Seconds 5
+        $pwElapsed += 5
+    }
+    if (-not $rancherBootstrapPw) {
+        Write-Host "  Could not retrieve bootstrap password from logs within $pwTimeout`s" -ForegroundColor Yellow
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 Write-Host ""
@@ -189,9 +253,19 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Rancher:  https://localhost       (172.30.0.10)" -ForegroundColor White
 Write-Host "  GitLab:   http://localhost:8080   (172.30.0.2)" -ForegroundColor White
 Write-Host "  Runner:   connected on gitlab-net (172.30.0.3)" -ForegroundColor White
+Write-Host "  SQL Server: localhost,1434        (172.30.0.4)" -ForegroundColor White
 Write-Host ""
 Write-Host "  GitLab user: root" -ForegroundColor White
-Write-Host "  Passwords:   see .env file" -ForegroundColor White
+if ($rancherBootstrapPw) {
+    Write-Host "  Rancher:  $rancherBootstrapPw" -ForegroundColor White
+} else {
+    Write-Host '  Rancher:  (unknown - check: docker logs rancher 2>&1 | Select-String "Bootstrap Password:")' -ForegroundColor Yellow
+}
+if ($env:GITLAB_ROOT_PASSWORD) {
+    Write-Host "  GitLab:   $( $env:GITLAB_ROOT_PASSWORD )" -ForegroundColor White
+} else {
+    Write-Host '  GitLab:   (see initial root password in container)' -ForegroundColor Yellow
+}
 Write-Host "========================================"  -ForegroundColor Green
 
 Write-Host ""

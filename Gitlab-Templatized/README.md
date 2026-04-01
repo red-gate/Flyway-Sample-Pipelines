@@ -18,6 +18,8 @@ usage-examples/               # Ready-to-copy .gitlab-ci.yml files for consumer 
 
 ## How It Works
 
+schema-model-dynamic.gitlab-ci.yml is the pipeline that builds both the YML pipeline and the migration scripts from captured schema model
+
 ### Template Overview
 
 | Template | Purpose |
