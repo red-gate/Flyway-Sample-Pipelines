@@ -249,6 +249,69 @@ Or use individual variables: `RUNNER_TAG_LONDON`, `RUNNER_TAG_NEW_YORK`, `RUNNER
 
 **Priority order:** `RUNNER_TAG_DEFAULT` → `RUNNER_TAG_MAP` → individual `RUNNER_TAG_*` → auto-generated from location name.
 
+## Branch Promotion Strategy
+
+When using a branch-based promotion model (e.g. `dev` → `qa` → `prod`), configure the following project settings to keep branches clean and in sync.
+
+### Recommended Project Settings
+
+Go to **Settings → Merge Requests** in your consumer project and set:
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| **Merge method** | **Fast-forward merge** | Prevents merge commits that cause branches to diverge ("N commits behind") |
+| **Delete source branch** | **Unchecked** | Prevents `dev`/`qa` from being deleted after each MR |
+
+These can also be set via the API:
+
+```bash
+curl --request PUT --header "PRIVATE-TOKEN: <token>" \
+  "https://gitlab.example.com/api/v4/projects/<id>" \
+  --data "merge_method=ff&remove_source_branch_after_merge=false"
+```
+
+### Why fast-forward merge?
+
+With the default **merge commit** strategy, each MR from `qa` → `prod` creates a new commit on `prod` that doesn't exist on `qa`. This causes `qa` to fall "behind" `prod`, and subsequent MRs show inflated commit counts.
+
+**Fast-forward merge** avoids this entirely — the target branch pointer simply moves forward to match the source branch. No extra commits, no divergence.
+
+### Branch protection
+
+Protect `qa` and `prod` so changes can only arrive via merge requests:
+
+| Branch | Allowed to push | Allowed to merge |
+|--------|----------------|-----------------|
+| `dev` | Developers + Maintainers | Developers + Maintainers |
+| `qa` | No one | Maintainers |
+| `prod` | No one | Maintainers |
+
+### Recovery: branches deleted or diverged
+
+If source branches were accidentally deleted by a previous MR:
+
+```bash
+# Recreate from prod (or whichever branch has the latest state)
+git fetch origin
+git checkout -b qa origin/prod
+git push origin qa
+git checkout -b dev origin/prod
+git push origin dev
+```
+
+Or via the GitLab API:
+
+```bash
+# Get prod HEAD SHA
+curl -s --header "PRIVATE-TOKEN: <token>" \
+  "https://gitlab.example.com/api/v4/projects/<id>/repository/branches/prod" \
+  | jq -r '.commit.id'
+
+# Create branch from that SHA
+curl --request POST --header "PRIVATE-TOKEN: <token>" \
+  "https://gitlab.example.com/api/v4/projects/<id>/repository/branches?branch=qa&ref=<sha>"
+```
+
 ## Usage Examples
 
 See [`usage-examples/`](usage-examples/) for complete `.gitlab-ci.yml` files:
