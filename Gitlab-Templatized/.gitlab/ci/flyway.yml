@@ -27,7 +27,6 @@
   image:
     name: redgate/flyway:latest
     entrypoint: [""]
-    pull_policy: if-not-present
   variables:
     # Map GitLab CI/CD variables to Flyway environment variables
     # These can be overridden in specific jobs as needed
