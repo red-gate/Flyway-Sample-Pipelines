@@ -7,7 +7,8 @@
 # Flow:
 #   1. Dev pushes schema-model changes to the dev branch
 #   2. Pipeline auto-generates migration scripts (flyway diff)
-#   3. Auto-commits scripts and creates MR from dev → qa
+#   3. Reviewer clicks ▶ Play to commit scripts to dev and open MR → qa
+#      Migration scripts are visible in the MR diff for review
 #   4. Merge into qa triggers QA pipeline:
 #      - Generates per-region child pipelines from QA registry
 #      - Manual deploy buttons per region (▶ london / ▶ new-york / ▶ tokyo / ▶ all)
@@ -16,11 +17,11 @@
 #      - Generates per-region child pipelines from Prod registry
 #      - Manual deploy buttons per region
 #
-# ┌─────────┐     ┌─────────┐     ┌──────────┐
-# │   dev   │ MR  │   qa    │ MR  │   prod   │
-# │ (auto)  │────▶│ (manual │────▶│ (manual  │
-# │ generate│     │  deploy)│     │  deploy) │
-# └─────────┘     └─────────┘     └──────────┘
+# ┌─────────┐  ▶  ┌─────────┐     ┌─────────┐     ┌──────────┐
+# │   dev   │────▶│  commit │ MR  │   qa    │ MR  │   prod   │
+# │ (auto)  │     │(manual) │────▶│ (manual │────▶│ (manual  │
+# │ generate│     │ + MR    │     │  deploy)│     │  deploy) │
+# └─────────┘     └─────────┘     └─────────┘     └──────────┘
 #
 # CI/CD Variables required (Settings → CI/CD → Variables):
 #   TARGET_DATABASE_JDBC         JDBC URL of the Dev database (diff source)
@@ -73,6 +74,7 @@ workflow:
 
 stages:
   - generate          # dev: generate migration scripts
+  - review            # dev: commit scripts to branch (manual)
   - pipeline          # qa/prod: generate per-region child pipelines
   - deploy            # qa/prod: manual per-region deploy buttons
 
@@ -93,6 +95,19 @@ generate:scripts:
   stage: generate
   rules:
     - if: $CI_COMMIT_BRANCH == "dev" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+
+# Commit generated migration scripts to dev and open MR to qa.
+# Click ▶ Play after reviewing the generated SQL in the artifacts.
+# The scripts will be visible in the MR diff for code review.
+commit:scripts:
+  extends: .flyway_commit_migrations
+  stage: review
+  variables:
+    MR_TARGET_BRANCH: "qa"
+  needs: ["generate:scripts"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+      when: manual
 
 
 # =============================================================================

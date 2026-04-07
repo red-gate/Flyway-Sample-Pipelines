@@ -105,6 +105,37 @@
   artifacts:
     paths:
       - dynamic-pipeline.yml
+    reports:
+      dotenv: generate.env
     expire_in: 2 hours
+  cache:
+    key: "${CI_JOB_NAME}-targets"
+    paths:
+      - .targets_hash
   rules:
     - when: always
+
+# ---------------------------------------------------------------------------
+# Trigger template: only run the child pipeline if targets changed.
+# Use alongside .generate_pipeline:
+#
+#   generate:all:
+#     extends: .generate_pipeline
+#
+#   deploy:all:
+#     extends: .deploy_if_changed
+#     needs: [generate:all]
+#     trigger:
+#       include:
+#         - artifact: dynamic-pipeline.yml
+#           job: generate:all
+#       strategy: depend
+#
+# To always deploy regardless, use the trigger job without this template.
+# ---------------------------------------------------------------------------
+.deploy_if_changed:
+  stage: deploy
+  rules:
+    - if: $TARGETS_CHANGED == "true"
+    - if: $FORCE_DEPLOY == "true"
+    - when: never

@@ -27,6 +27,7 @@
   image:
     name: redgate/flyway:latest
     entrypoint: [""]
+    pull_policy: if-not-present
   variables:
     # Map GitLab CI/CD variables to Flyway environment variables
     # These can be overridden in specific jobs as needed
@@ -66,28 +67,23 @@
 .flyway_validate:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" -ignoreMigrationPatterns="*:pending" validate
+    - flyway -ignoreMigrationPatterns="*:pending" validate
   allow_failure: false
 
 # Job template: Get migration info
 .flyway_info:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
+    - flyway info
 
-# Job template: Run migrations (with code analysis report + snapshot)
+# Job template: Run migrations (with post-migrate snapshot)
 .flyway_migrate:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
-    - >
-      flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}"
-      info check -code
-      -check.rulesLocation="${CHECK_RULES_LOCATION}"
-      -reportFilename="${REPORT_DIR}/${CI_JOB_NAME}-${CI_PIPELINE_ID}-code-analysis.html"
-      || true
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" migrate -saveSnapshot=true
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
+    - flyway info
+    - flyway migrate
+    - flyway snapshot -filename=snapshothistory:current
+    - flyway info
   artifacts:
     expose_as: "Flyway Reports"
     paths:
@@ -95,31 +91,18 @@
     when: always
     expire_in: 30 days
 
-# Job template: Drift detection (compare snapshot against live DB)
-.flyway_drift:
-  extends: .flyway_base
-  script:
-    - "echo '--- Drift Detection ---'"
-    - |
-      if [ -f flyway-snapshot.json ]; then
-        flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" diff \
-          -diff.source=snapshot:flyway-snapshot.json \
-          -diff.target=env:target
-      else
-        echo 'No snapshot file found — skipping drift detection'
-      fi
-  allow_failure: true
-
-# Job template: Code analysis (SQLFluff rules via Flyway check)
+# Job template: Drift + code analysis (combined report)
 .flyway_check:
   extends: .flyway_base
   script:
-    - "echo '--- Code Analysis Report ---'"
+    - "echo '--- Drift + Code Analysis Report ---'"
     - >
-      flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}"
-      info check -code
+      flyway check -drift -code -dryrun
+      -check.deployedSnapshot=snapshothistory:current
+      -check.failOnDrift=false
+      -check.code.failOnError=false
       -check.rulesLocation="${CHECK_RULES_LOCATION}"
-      -reportFilename="${REPORT_DIR}/${CI_JOB_NAME}-${CI_PIPELINE_ID}-code-analysis.html"
+      -reportFilename="${REPORT_DIR}/${CI_JOB_NAME}-${CI_PIPELINE_ID}-report.html"
   artifacts:
     expose_as: "Flyway Reports"
     paths:
@@ -128,31 +111,26 @@
     expire_in: 30 days
   allow_failure: true
 
-# Job template: Migrate + drift detection + code analysis (all-in-one)
+# Job template: Migrate + drift + code analysis (all-in-one)
 .flyway_migrate_full:
   extends: .flyway_base
   script:
-    - "echo '--- Code Analysis Report ---'"
+    - "echo '--- Drift + Code Analysis Report ---'"
     - >
-      flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}"
-      info check -code
+      flyway check -drift -code -dryrun
+      -check.deployedSnapshot=snapshothistory:current
+      -check.failOnDrift=false
+      -check.code.failOnError=false
       -check.rulesLocation="${CHECK_RULES_LOCATION}"
-      -reportFilename="${REPORT_DIR}/${CI_JOB_NAME}-${CI_PIPELINE_ID}-code-analysis.html"
+      -reportFilename="${REPORT_DIR}/${CI_JOB_NAME}-${CI_PIPELINE_ID}-report.html"
     - "echo '--- Pre-Migration Info ---'"
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
-    - "echo '--- Migrate with Snapshot ---'"
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" migrate -saveSnapshot=true
+    - flyway info
+    - "echo '--- Migrate ---'"
+    - flyway migrate
+    - "echo '--- Post-Migration Snapshot ---'"
+    - flyway snapshot -filename=snapshothistory:current
     - "echo '--- Post-Migration Info ---'"
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" info
-    - "echo '--- Drift Detection ---'"
-    - |
-      if [ -f flyway-snapshot.json ]; then
-        flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" diff \
-          -diff.source=snapshot:flyway-snapshot.json \
-          -diff.target=env:target || true
-      else
-        echo 'No snapshot file found — skipping drift detection'
-      fi
+    - flyway info
   artifacts:
     expose_as: "Flyway Reports"
     paths:
@@ -164,14 +142,14 @@
 .flyway_repair:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" repair
+    - flyway repair
   when: manual
 
 # Job template: Clean database (DANGEROUS - use with caution)
 .flyway_clean:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" clean
+    - flyway clean
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH =~ /^dev(elopment)?$/
@@ -180,5 +158,5 @@
 .flyway_baseline:
   extends: .flyway_base
   script:
-    - flyway -email="${FLYWAY_EMAIL}" -token="${FLYWAY_TOKEN}" baseline
+    - flyway baseline
   when: manual

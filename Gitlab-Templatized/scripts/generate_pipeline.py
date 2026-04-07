@@ -46,6 +46,7 @@ RUNNER_TAG_NEW_YORK  Runner tag for New York       (default: runner-new-york)
 RUNNER_TAG_TOKYO     Runner tag for Tokyo          (default: runner-tokyo)
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -102,6 +103,8 @@ FILTER_LOCATION  = os.environ.get("FILTER_LOCATION", "all")
 INCLUDE_REPLICAS = os.environ.get("INCLUDE_REPLICAS", "false").lower() in ("true", "1", "yes")
 FLYWAY_LOCATIONS = os.environ.get("FLYWAY_LOCATIONS", "filesystem:./migrations")
 OUTPUT_FILE      = os.environ.get("OUTPUT_FILE", "dynamic-pipeline.yml")
+DOTENV_FILE      = os.environ.get("DOTENV_FILE", "generate.env")
+HASH_FILE        = os.environ.get("HASH_FILE", ".targets_hash")
 
 # For the child pipeline's include directive
 TEMPLATE_PROJECT = os.environ.get("TEMPLATE_PROJECT", "")
@@ -240,7 +243,7 @@ def build_pipeline(targets):
 
     pipeline = {
         "include": [include_entry],
-        "stages": ["migrate"],
+        "stages": ["check", "migrate"],
         "variables": {
             "FLYWAY_LOCATIONS": FLYWAY_LOCATIONS,
         },
@@ -258,33 +261,79 @@ def build_pipeline(targets):
 
     seen_names = set()
     for target in targets:
-        base = (
-            f"migrate"
-            f":{safe_job_name(target['location'])}"
-            f":{safe_job_name(target['name'])}"
-            f":{safe_job_name(target['db'])}"
-        )
-        job_name = unique_job_name(base, seen_names)
-        seen_names.add(job_name)
+        loc = safe_job_name(target['location'])
+        name = safe_job_name(target['name'])
+        db = safe_job_name(target['db'])
 
-        env_name = (
-            f"{safe_job_name(target['location'])}"
-            f"/{safe_job_name(target['name'])}-{safe_job_name(target['db'])}"
-        )
+        env_name = f"{loc}/{name}-{db}"
 
-        pipeline[job_name] = {
+        shared_vars = {
+            "FLYWAY_URL":      target["jdbc_url"],
+            "FLYWAY_USER":     "${TARGET_DATABASE_USER}",
+            "FLYWAY_PASSWORD": "${TARGET_DATABASE_PASSWORD}",
+        }
+
+        # --- check job (runs first) ---
+        check_base = f"check:{loc}:{name}:{db}"
+        check_name = unique_job_name(check_base, seen_names)
+        seen_names.add(check_name)
+
+        pipeline[check_name] = {
+            "extends": ".flyway_check",
+            "stage": "check",
+            "tags": [runner_tag_for(target["location"])],
+            "variables": shared_vars,
+        }
+
+        # --- migrate job (runs after all checks pass) ---
+        migrate_base = f"migrate:{loc}:{name}:{db}"
+        migrate_name = unique_job_name(migrate_base, seen_names)
+        seen_names.add(migrate_name)
+
+        pipeline[migrate_name] = {
             "extends": ".flyway_migrate",
             "stage": "migrate",
             "tags": [runner_tag_for(target["location"])],
-            "variables": {
-                "FLYWAY_URL":      target["jdbc_url"],
-                "FLYWAY_USER":     "${TARGET_DATABASE_USER}",
-                "FLYWAY_PASSWORD": "${TARGET_DATABASE_PASSWORD}",
-            },
+            "variables": shared_vars,
             "environment": {"name": env_name},
         }
 
     return pipeline
+
+
+# ---------------------------------------------------------------------------
+# Change detection — hash targets to skip unchanged pipelines
+# ---------------------------------------------------------------------------
+
+def compute_targets_hash(targets):
+    """Compute a SHA256 hash of the sorted target data for change detection."""
+    canonical = json.dumps(
+        sorted(targets, key=lambda t: (t["location"], t["name"], t["db"])),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def read_cached_hash(path):
+    """Read the previously cached hash, or return None."""
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
+
+
+def write_cached_hash(path, hash_value):
+    """Persist the current hash for the next run."""
+    with open(path, "w") as f:
+        f.write(hash_value)
+
+
+def write_dotenv(path, changed):
+    """Write a dotenv artifact so downstream jobs can check TARGETS_CHANGED."""
+    with open(path, "w") as f:
+        f.write(f"TARGETS_CHANGED={'true' if changed else 'false'}\n")
+    print(f"Wrote {path}: TARGETS_CHANGED={'true' if changed else 'false'}")
 
 
 # ---------------------------------------------------------------------------
@@ -322,13 +371,31 @@ def main():
     for t in targets:
         print(f"  [{t['location']}] {t['name']}: {t['jdbc_url']}")
 
-    # 3. Generate the child pipeline YAML
+    # 3. Change detection — compare target hash with cached value
+    current_hash = compute_targets_hash(targets)
+    cached_hash = read_cached_hash(HASH_FILE)
+
+    if current_hash == cached_hash:
+        print(f"\nTargets unchanged (hash: {current_hash[:12]}...) — skipping pipeline generation")
+        write_dotenv(DOTENV_FILE, changed=False)
+        # Still write the YAML so the artifact exists (trigger job needs it)
+        pipeline = build_pipeline(targets)
+        with open(OUTPUT_FILE, "w") as f:
+            yaml.dump(pipeline, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        print(f"Wrote {OUTPUT_FILE} (unchanged)")
+        return
+
+    print(f"\nTargets changed (old: {(cached_hash or 'none')[:12]}{'...' if cached_hash else ''} → new: {current_hash[:12]}...)")
+    write_cached_hash(HASH_FILE, current_hash)
+    write_dotenv(DOTENV_FILE, changed=True)
+
+    # 4. Generate the child pipeline YAML
     pipeline = build_pipeline(targets)
 
     with open(OUTPUT_FILE, "w") as f:
         yaml.dump(pipeline, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-    print(f"\nWrote {OUTPUT_FILE} with {len(targets)} deploy jobs")
+    print(f"Wrote {OUTPUT_FILE} with {len(targets)} targets ({len(targets)} check + {len(targets)} migrate jobs)")
 
 
 if __name__ == "__main__":
