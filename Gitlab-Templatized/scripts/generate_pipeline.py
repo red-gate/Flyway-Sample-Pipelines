@@ -106,6 +106,12 @@ OUTPUT_FILE      = os.environ.get("OUTPUT_FILE", "dynamic-pipeline.yml")
 DOTENV_FILE      = os.environ.get("DOTENV_FILE", "generate.env")
 HASH_FILE        = os.environ.get("HASH_FILE", ".targets_hash")
 
+# Variable names used for target DB credentials in the generated child pipeline.
+# Override to point at environment-specific CI/CD variables.
+# e.g. TARGET_USER_VAR=QA_TARGET_DATABASE_USER
+TARGET_USER_VAR     = os.environ.get("TARGET_USER_VAR",     "TARGET_DATABASE_USER")
+TARGET_PASSWORD_VAR = os.environ.get("TARGET_PASSWORD_VAR", "TARGET_DATABASE_PASSWORD")
+
 # For the child pipeline's include directive
 TEMPLATE_PROJECT = os.environ.get("TEMPLATE_PROJECT", "")
 TEMPLATE_REF     = os.environ.get("TEMPLATE_REF", "main")
@@ -269,8 +275,8 @@ def build_pipeline(targets):
 
         shared_vars = {
             "FLYWAY_URL":      target["jdbc_url"],
-            "FLYWAY_USER":     "${TARGET_DATABASE_USER}",
-            "FLYWAY_PASSWORD": "${TARGET_DATABASE_PASSWORD}",
+            "FLYWAY_USER":     "${" + TARGET_USER_VAR + "}",
+            "FLYWAY_PASSWORD": "${" + TARGET_PASSWORD_VAR + "}",
         }
 
         # --- check job (runs first) ---

@@ -31,6 +31,8 @@
 #   QA_REGISTRY_SERVER           SQL Server for QA registry
 #   QA_REGISTRY_USER             Login for the QA registry
 #   QA_REGISTRY_PASSWORD         *** (Protected + Masked)
+#   QA_TARGET_DATABASE_USER      Login for QA target databases
+#   QA_TARGET_DATABASE_PASSWORD  *** (Protected + Masked)
 #   PROD_REGISTRY_SERVER         SQL Server for Prod registry
 #   PROD_REGISTRY_USER           Login for the Prod registry
 #   PROD_REGISTRY_PASSWORD       *** (Protected + Masked)
@@ -123,6 +125,12 @@ commit:scripts:
         "http://gitlab-ci-token:${CI_JOB_TOKEN}@172.30.0.2/${TEMPLATE_PROJECT}.git"
         /tmp/templates
     - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    # Force registry variables — project-level REGISTRY_SERVER would
+    # otherwise override the job-level value due to GitLab precedence.
+    - export REGISTRY_SERVER="${OVERRIDE_REGISTRY_SERVER}"
+    - export REGISTRY_USER="${OVERRIDE_REGISTRY_USER}"
+    - export REGISTRY_PASSWORD="${OVERRIDE_REGISTRY_PASSWORD}"
+    - echo "Registry server=${REGISTRY_SERVER}"
     - echo "Generating pipeline for ${FILTER_LOCATION} → ${OUTPUT_FILE}"
     - python /tmp/templates/scripts/generate_pipeline.py
     - cat "${OUTPUT_FILE}"
@@ -135,9 +143,11 @@ commit:scripts:
 generate:qa:all:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
-    REGISTRY_USER:     "$QA_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
     FILTER_LOCATION:   "all"
     OUTPUT_FILE:       "dynamic-pipeline-qa-all.yml"
   artifacts:
@@ -149,9 +159,11 @@ generate:qa:all:
 generate:qa:london:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
-    REGISTRY_USER:     "$QA_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
     FILTER_LOCATION:   "London"
     OUTPUT_FILE:       "dynamic-pipeline-qa-london.yml"
   artifacts:
@@ -163,9 +175,11 @@ generate:qa:london:
 generate:qa:new-york:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
-    REGISTRY_USER:     "$QA_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
     FILTER_LOCATION:   "New York"
     OUTPUT_FILE:       "dynamic-pipeline-qa-new-york.yml"
   artifacts:
@@ -177,9 +191,11 @@ generate:qa:new-york:
 generate:qa:tokyo:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
-    REGISTRY_USER:     "$QA_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
     FILTER_LOCATION:   "Tokyo"
     OUTPUT_FILE:       "dynamic-pipeline-qa-tokyo.yml"
   artifacts:
@@ -248,9 +264,9 @@ deploy:qa:tokyo:
 generate:prod:all:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
-    REGISTRY_USER:     "$PROD_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
     FILTER_LOCATION:   "all"
     OUTPUT_FILE:       "dynamic-pipeline-prod-all.yml"
   artifacts:
@@ -262,9 +278,9 @@ generate:prod:all:
 generate:prod:london:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
-    REGISTRY_USER:     "$PROD_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
     FILTER_LOCATION:   "London"
     OUTPUT_FILE:       "dynamic-pipeline-prod-london.yml"
   artifacts:
@@ -276,9 +292,9 @@ generate:prod:london:
 generate:prod:new-york:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
-    REGISTRY_USER:     "$PROD_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
     FILTER_LOCATION:   "New York"
     OUTPUT_FILE:       "dynamic-pipeline-prod-new-york.yml"
   artifacts:
@@ -290,9 +306,9 @@ generate:prod:new-york:
 generate:prod:tokyo:
   extends: .generate_base
   variables:
-    REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
-    REGISTRY_USER:     "$PROD_REGISTRY_USER"
-    REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
     FILTER_LOCATION:   "Tokyo"
     OUTPUT_FILE:       "dynamic-pipeline-prod-tokyo.yml"
   artifacts:
