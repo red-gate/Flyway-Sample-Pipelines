@@ -16,6 +16,57 @@ scripts/client_registry_setup.sql  # SQL to create the registry database + sampl
 usage-examples/               # Ready-to-copy .gitlab-ci.yml files for consumer repos
 ```
 
+## CI/CD Variables
+
+Set these in your consumer project under **Settings → CI/CD → Variables**.
+
+### Required
+
+- `FLYWAY_EMAIL` — Redgate account email (Flyway Enterprise license)
+- `FLYWAY_TOKEN` — Redgate auth token (Protected, Masked)
+- `TARGET_DATABASE_JDBC` — JDBC URL for the dev/default database
+- `TARGET_DATABASE_USER` — Login for the dev/default database
+- `TARGET_DATABASE_PASSWORD` — Password (Protected, Masked)
+
+### Schema-Model Workflows
+
+- `SHADOW_DATABASE_JDBC` — JDBC URL of an empty shadow database Flyway rebuilds from migrations
+- `GIT_PUSH_TOKEN` — GitLab PAT with `api` scope for pushing branches and creating MRs (Protected, Masked)
+
+### Registry-Driven Dynamic Pipelines
+
+- `REGISTRY_SERVER` — SQL Server hostname for the registry database
+- `REGISTRY_USER` — Login for the registry database
+- `REGISTRY_PASSWORD` — Password (Protected, Masked)
+
+### Multi-Environment (QA / Prod)
+
+When QA and Prod use separate registries or credentials:
+
+- `QA_REGISTRY_SERVER` — SQL Server for QA registry
+- `QA_REGISTRY_USER` — Login for QA registry
+- `QA_REGISTRY_PASSWORD` — Password (Protected, Masked)
+- `QA_TARGET_DATABASE_USER` — Login for QA target databases (if different from `TARGET_DATABASE_USER`)
+- `QA_TARGET_DATABASE_PASSWORD` — Password for QA targets (Protected, Masked)
+- `PROD_REGISTRY_SERVER` — SQL Server for Prod registry
+- `PROD_REGISTRY_USER` — Login for Prod registry
+- `PROD_REGISTRY_PASSWORD` — Password (Protected, Masked)
+
+### Optional
+
+- `GITLAB_EXTERNAL_URL` — Browser-reachable GitLab URL (e.g. `http://localhost:8080`); defaults to `CI_SERVER_URL`
+- `MR_TARGET_BRANCH` — Branch the auto-created MR targets (default: `main`)
+- `FLYWAY_LOCATIONS` — Migration file path (default: `filesystem:./migrations`)
+- `FILTER_LOCATION` — Region filter for dynamic pipelines (default: `all`)
+- `INCLUDE_REPLICAS` — Include replicated databases (default: `false`)
+- `JDBC_PORT` — Port in generated JDBC URLs (default: `1433`)
+- `REGISTRY_DATABASE` — Registry DB name (default: `flyway_registry`)
+- `REGISTRY_PORT` — Registry SQL Server port (default: `1433`)
+- `RUNNER_TAG_DEFAULT` — Single runner tag for all generated jobs
+- `RUNNER_TAG_MAP` — JSON map of location → runner tag (e.g. `{"London":"tag1"}`)
+- `TEMPLATE_PROJECT` — Path to this templates repo (default: `root/templatized-with-parser`)
+- `TEMPLATE_REF` — Git ref for template include (default: `main`)
+
 ## How It Works
 
 schema-model-dynamic.gitlab-ci.yml is the pipeline that builds both the YML pipeline and the migration scripts from captured schema model
