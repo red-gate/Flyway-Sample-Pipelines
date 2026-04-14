@@ -87,7 +87,7 @@
     - "echo '--- Step 1: Sync SchemaModel with Dev database ---'"
     - "flyway diff model -workingDirectory=${WORKING_DIRECTORY} -diff.source=dev -diff.target=schemaModel -environments.dev.url=${SOURCE_DATABASE_JDBC} -environments.dev.user=${SOURCE_DATABASE_USER} -environments.dev.password=${SOURCE_DATABASE_PASSWORD}"
     - "echo '--- Step 2: Generate migration scripts ---'"
-    - "flyway diff generate -workingDirectory=${WORKING_DIRECTORY} -diff.source=schemaModel -diff.target=migrations -generate.types=${GENERATE_TYPES} -generate.description=${GENERATE_DESCRIPTION} -diff.buildEnvironment=shadow -environments.shadow.url=${SHADOW_DATABASE_JDBC} -environments.shadow.user=${SHADOW_DATABASE_USER} -environments.shadow.password=${SHADOW_DATABASE_PASSWORD}"
+    - "flyway diff generate -workingDirectory=${WORKING_DIRECTORY} -diff.source=schemaModel -diff.target=migrations -generate.types=${GENERATE_TYPES} -generate.description=${GENERATE_DESCRIPTION} -diff.buildEnvironment=shadow -environments.shadow.url=${SHADOW_DATABASE_JDBC} -environments.shadow.user=${SHADOW_DATABASE_USER} -environments.shadow.password=${SHADOW_DATABASE_PASSWORD} -redgateCompare.sqlserver.options.behavior.addObjectExistenceChecks=true"
     - "echo ''"
     - "echo '========================================'"
     - "echo '  Generated Migration Scripts'"
