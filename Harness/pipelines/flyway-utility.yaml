@@ -1,0 +1,77 @@
+# =============================================================================
+# Harness Open Source — Flyway Utility Operations
+# =============================================================================
+# Manual utility operations: repair, clean, baseline.
+# Equivalent of the GitLab .flyway_repair / .flyway_clean / .flyway_baseline
+# templates.
+#
+# Run this pipeline manually from the Harness UI when needed.
+#
+# Environment variables:
+#   FLYWAY_URL           — JDBC connection string for the target database
+#   FLYWAY_USER          — Database username
+#   FLYWAY_PASSWORD      — Database password (secret)
+#   FLYWAY_EMAIL         — Flyway license email
+#   FLYWAY_TOKEN         — Flyway license token (secret)
+#   FLYWAY_OPERATION     — One of: repair, clean, baseline, info, validate
+# =============================================================================
+
+kind: pipeline
+spec:
+  stages:
+  - type: ci
+    name: flyway-utility
+    spec:
+      steps:
+      - name: flyway_operation
+        type: run
+        spec:
+          container: redgate/flyway:latest
+          envs:
+            FLYWAY_URL: ${{ FLYWAY_URL }}
+            FLYWAY_USER: ${{ FLYWAY_USER }}
+            FLYWAY_PASSWORD: ${{ FLYWAY_PASSWORD }}
+            FLYWAY_EMAIL: ${{ FLYWAY_EMAIL }}
+            FLYWAY_TOKEN: ${{ FLYWAY_TOKEN }}
+            FLYWAY_BASELINE_ON_MIGRATE: "true"
+            FLYWAY_OPERATION: ${{ FLYWAY_OPERATION }}
+          script: |
+            echo "=========================================="
+            echo "Flyway -- Utility Operation"
+            echo "=========================================="
+            flyway -v
+            echo "Target:    ${FLYWAY_URL}"
+            echo "Operation: ${FLYWAY_OPERATION}"
+            echo "=========================================="
+
+            case "${FLYWAY_OPERATION}" in
+              repair)
+                echo "--- Repairing schema history ---"
+                flyway repair
+                ;;
+              clean)
+                echo "--- WARNING: Cleaning database (dropping all objects) ---"
+                flyway clean
+                ;;
+              baseline)
+                echo "--- Baselining database ---"
+                flyway baseline
+                ;;
+              info)
+                echo "--- Migration info ---"
+                flyway info
+                ;;
+              validate)
+                echo "--- Validating migrations ---"
+                flyway -ignoreMigrationPatterns="*:pending" validate
+                ;;
+              *)
+                echo "ERROR: Unknown operation '${FLYWAY_OPERATION}'"
+                echo "Valid operations: repair, clean, baseline, info, validate"
+                exit 1
+                ;;
+            esac
+
+            echo "=========================================="
+            echo "  ${FLYWAY_OPERATION} complete"
+            echo "=========================================="

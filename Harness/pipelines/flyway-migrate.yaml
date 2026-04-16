@@ -1,0 +1,122 @@
+# =============================================================================
+# Harness Open Source — Flyway Migration Pipeline
+# =============================================================================
+# Equivalent of the GitLab .flyway_migrate / .flyway_check templates.
+#
+# This pipeline runs inside the redgate/flyway Docker image and performs:
+#   1. Flyway info     — show current migration status
+#   2. Flyway check    — drift detection + code analysis (allowed to fail)
+#   3. Flyway migrate  — apply pending migrations
+#   4. Flyway snapshot — capture post-migration state
+#   5. Flyway info     — show final migration status
+#
+# Environment variables (set in Harness repo/project secrets):
+#   FLYWAY_URL           — JDBC connection string for the target database
+#   FLYWAY_USER          — Database username
+#   FLYWAY_PASSWORD      — Database password (secret)
+#   FLYWAY_EMAIL         — Flyway license email
+#   FLYWAY_TOKEN         — Flyway license token (secret)
+#   FLYWAY_LOCATIONS     — Migration file path (default: filesystem:./migrations)
+# =============================================================================
+
+kind: pipeline
+spec:
+  stages:
+
+  # -------------------------------------------------------------------
+  # Stage 1: Check (drift + code analysis)
+  # -------------------------------------------------------------------
+  - type: ci
+    name: check
+    spec:
+      steps:
+      - name: flyway_check
+        type: run
+        spec:
+          container: redgate/flyway:latest
+          envs:
+            FLYWAY_URL: ${{ FLYWAY_URL }}
+            FLYWAY_USER: ${{ FLYWAY_USER }}
+            FLYWAY_PASSWORD: ${{ FLYWAY_PASSWORD }}
+            FLYWAY_EMAIL: ${{ FLYWAY_EMAIL }}
+            FLYWAY_TOKEN: ${{ FLYWAY_TOKEN }}
+            FLYWAY_LOCATIONS: ${{ FLYWAY_LOCATIONS }}
+            FLYWAY_BASELINE_ON_MIGRATE: "true"
+          script: |
+            echo "=========================================="
+            echo "Flyway — Drift + Code Analysis"
+            echo "=========================================="
+            flyway -v
+            echo "Target: ${FLYWAY_URL}"
+            echo "=========================================="
+
+            mkdir -p reports
+
+            echo "--- Drift + Code Analysis Report ---"
+            flyway check -drift -code -dryrun \
+              -check.deployedSnapshot=snapshothistory:current \
+              -check.failOnDrift=false \
+              -check.code.failOnError=false \
+              -reportFilename="reports/check-report.html" \
+              || true
+
+            echo "--- Check complete ---"
+        # Allow check stage to fail without blocking migrate
+        failure:
+          type: ignore
+
+  # -------------------------------------------------------------------
+  # Stage 2: Migrate
+  # -------------------------------------------------------------------
+  - type: ci
+    name: migrate
+    spec:
+      steps:
+      - name: flyway_info_pre
+        type: run
+        spec:
+          container: redgate/flyway:latest
+          envs:
+            FLYWAY_URL: ${{ FLYWAY_URL }}
+            FLYWAY_USER: ${{ FLYWAY_USER }}
+            FLYWAY_PASSWORD: ${{ FLYWAY_PASSWORD }}
+            FLYWAY_EMAIL: ${{ FLYWAY_EMAIL }}
+            FLYWAY_TOKEN: ${{ FLYWAY_TOKEN }}
+            FLYWAY_LOCATIONS: ${{ FLYWAY_LOCATIONS }}
+            FLYWAY_BASELINE_ON_MIGRATE: "true"
+          script: |
+            echo "=========================================="
+            echo "Flyway — Pre-Migration Info"
+            echo "=========================================="
+            flyway -v
+            echo "Target: ${FLYWAY_URL}"
+            echo "=========================================="
+            flyway info
+
+      - name: flyway_migrate
+        type: run
+        spec:
+          container: redgate/flyway:latest
+          envs:
+            FLYWAY_URL: ${{ FLYWAY_URL }}
+            FLYWAY_USER: ${{ FLYWAY_USER }}
+            FLYWAY_PASSWORD: ${{ FLYWAY_PASSWORD }}
+            FLYWAY_EMAIL: ${{ FLYWAY_EMAIL }}
+            FLYWAY_TOKEN: ${{ FLYWAY_TOKEN }}
+            FLYWAY_LOCATIONS: ${{ FLYWAY_LOCATIONS }}
+            FLYWAY_BASELINE_ON_MIGRATE: "true"
+            FLYWAY_MIXED: "true"
+            FLYWAY_OUT_OF_ORDER: "true"
+          script: |
+            echo "--- Migrate ---"
+            flyway migrate
+
+            echo "--- Post-Migration Snapshot ---"
+            flyway snapshot -filename=snapshothistory:current
+
+            echo "--- Post-Migration Info ---"
+            flyway info
+
+            echo "=========================================="
+            echo "  Migration complete"
+            echo "=========================================="

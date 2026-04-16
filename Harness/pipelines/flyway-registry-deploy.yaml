@@ -1,0 +1,75 @@
+# =============================================================================
+# Harness Open Source — Registry-Driven Dynamic Flyway Pipeline
+# =============================================================================
+# Equivalent of the GitLab dynamic pipeline workflow.
+#
+# Since Harness Open Source does not support dynamic child pipelines,
+# this pipeline uses a two-step approach:
+#   1. Query the SQL Server registry for target databases
+#   2. Generate and execute Flyway commands for each target
+#
+# The Python script queries the registry, builds JDBC URLs, and runs
+# flyway migrate for each target database in sequence.
+#
+# Environment variables (set in Harness repo/project secrets):
+#   REGISTRY_SERVER          — SQL Server hostname for the registry DB
+#   REGISTRY_USER            — Registry DB login
+#   REGISTRY_PASSWORD        — Registry DB password (secret)
+#   REGISTRY_DATABASE        — Registry DB name (default: flyway_registry)
+#   REGISTRY_PORT            — Registry SQL Server port (default: 1433)
+#   TARGET_DATABASE_USER     — Login for target databases
+#   TARGET_DATABASE_PASSWORD — Target DB password (secret)
+#   FLYWAY_EMAIL             — Flyway license email
+#   FLYWAY_TOKEN             — Flyway license token (secret)
+#   FILTER_LOCATION          — Region filter: "all", "London", "New York", etc.
+#   INCLUDE_REPLICAS         — Include replicated DBs (default: false)
+#   JDBC_PORT                — Port for target JDBC URLs (default: 1433)
+# =============================================================================
+
+kind: pipeline
+spec:
+  stages:
+
+  # -------------------------------------------------------------------
+  # Stage 1: Query registry and deploy to all targets
+  # -------------------------------------------------------------------
+  - type: ci
+    name: deploy
+    spec:
+      steps:
+
+      # Background: SQL Server (if running in-pipeline; otherwise
+      # the registry is an external server and this step can be removed)
+      # - name: database
+      #   type: background
+      #   spec:
+      #     container: mcr.microsoft.com/mssql/server:2022-latest
+      #     envs:
+      #       ACCEPT_EULA: "Y"
+      #       MSSQL_SA_PASSWORD: "YourPassword123!"
+
+      - name: query_and_deploy
+        type: run
+        spec:
+          container: python:3.12-slim
+          envs:
+            REGISTRY_SERVER: ${{ REGISTRY_SERVER }}
+            REGISTRY_PORT: ${{ REGISTRY_PORT }}
+            REGISTRY_USER: ${{ REGISTRY_USER }}
+            REGISTRY_PASSWORD: ${{ REGISTRY_PASSWORD }}
+            REGISTRY_DATABASE: ${{ REGISTRY_DATABASE }}
+            TARGET_DATABASE_USER: ${{ TARGET_DATABASE_USER }}
+            TARGET_DATABASE_PASSWORD: ${{ TARGET_DATABASE_PASSWORD }}
+            FLYWAY_EMAIL: ${{ FLYWAY_EMAIL }}
+            FLYWAY_TOKEN: ${{ FLYWAY_TOKEN }}
+            FILTER_LOCATION: ${{ FILTER_LOCATION }}
+            INCLUDE_REPLICAS: ${{ INCLUDE_REPLICAS }}
+            JDBC_PORT: ${{ JDBC_PORT }}
+          script: |
+            echo "=========================================="
+            echo "Flyway — Registry-Driven Deployment"
+            echo "=========================================="
+
+            pip install --quiet pymssql PyYAML
+
+            python scripts/deploy_from_registry.py
