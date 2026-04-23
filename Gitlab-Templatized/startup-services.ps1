@@ -4,7 +4,8 @@
 #   Rancher:       172.30.0.10  →  host ports 80 / 443
 #   GitLab:        172.30.0.2   →  host ports 8080 / 8443 / 2222
 #   GitLab Runner: 172.30.0.3   →  no host ports
-#   SQL Server:    172.30.0.4   →  host port 1434
+#   SQL Server:    172.30.0.4   →  host port 1434  (dev/QA)
+#   SQL Server:    172.30.0.5   →  host port 1435  (prod)
 #
 # Passwords are read from .env and injected on first container creation.
 # Rancher and GitLab data are stored in named Docker volumes so state
@@ -154,19 +155,44 @@ if (-not (Start-OrCreate "sqlserver-dev")) {
 }
 
 # ---------------------------------------------------------------------------
+# SQL Server — Prod  (172.30.0.5 — port 1435)
+# ---------------------------------------------------------------------------
+Write-Host "Starting SQL Server (prod)..." -ForegroundColor Cyan
+if (-not (Start-OrCreate "sqlserver-prod")) {
+    $sql2Pw = $env:SQL2_SA_PASSWORD
+    if (-not $sql2Pw) { $sql2Pw = 'Flyway2026!Secure' }
+
+    docker run -d --restart=unless-stopped `
+        --name sqlserver-prod `
+        --network gitlab-net --ip 172.30.0.5 `
+        -p 1435:1433 `
+        -e "ACCEPT_EULA=Y" `
+        -e "MSSQL_SA_PASSWORD=$sql2Pw" `
+        -v sqlprod-data:/var/opt/mssql `
+        mcr.microsoft.com/mssql/server:2022-latest | Out-Null
+    Write-Host "  SQL Server (prod) sa password set from .env" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
 # Register runner if not already registered
+# ---------------------------------------------------------------------------
+# GitLab 16+ removed the old registration-token workflow. We now:
+#   1. Create a temporary root PAT via rails console
+#   2. POST /api/v4/user/runners to get an authentication token
+#   3. Register with --token (the new flow)
 # ---------------------------------------------------------------------------
 $runnerConfig = docker exec gitlab-runner cat /etc/gitlab-runner/config.toml 2>&1
 if ($runnerConfig -notmatch '\[\[runners\]\]') {
-    $token = $env:GITLAB_RUNNER_REGISTRATION_TOKEN
-    $url   = $env:GITLAB_URL
-    if ($token -and $url) {
+    $url = $env:GITLAB_URL
+    if ($url) {
         # Wait for GitLab to be ready before registering
+        # NOTE: /-/readiness is restricted to whitelisted IPs (localhost only by default),
+        # so we must curl from inside the GitLab container, not from the runner.
         Write-Host "Waiting for GitLab to be ready (this can take a few minutes)..." -ForegroundColor Yellow
         $glTimeout = 300
         $glElapsed = 0
         while ($glElapsed -lt $glTimeout) {
-            $health = docker exec gitlab-runner curl -sf "$url/-/readiness" 2>&1
+            $health = docker exec gitlab curl -sf http://localhost/-/readiness 2>&1
             if ($LASTEXITCODE -eq 0) { break }
             Write-Host "  GitLab not ready yet... ($glElapsed`s)" -ForegroundColor Gray
             Start-Sleep -Seconds 10
@@ -179,22 +205,48 @@ if ($runnerConfig -notmatch '\[\[runners\]\]') {
         }
 
         if ($glElapsed -lt $glTimeout) {
-            Write-Host "Registering GitLab Runner..." -ForegroundColor Yellow
-            docker exec gitlab-runner gitlab-runner register `
-                --non-interactive `
-                --url $url `
-                --registration-token $token `
-                --executor "docker" `
-                --docker-image "redgate/flyway:12-enterprise-alpine" `
-                --description "local-runner" `
-                --tag-list "local-runner" `
-                --run-untagged="true" `
-                --locked="false" `
-                --docker-network-mode "gitlab-net" `
-                --clone-url $url
+            Write-Host "Creating temporary API token for runner registration..." -ForegroundColor Cyan
+            $pat = docker exec gitlab gitlab-rails runner `
+                "token = User.find_by_username('root').personal_access_tokens.create!(name: 'runner-setup', scopes: ['api'], expires_at: 10.minutes.from_now); puts token.token" 2>&1 `
+                | Select-String -Pattern '^glpat-' | ForEach-Object { $_.ToString().Trim() }
+
+            if (-not $pat) {
+                Write-Host "WARNING: Could not create API token. Skipping runner registration." -ForegroundColor Yellow
+            } else {
+                Write-Host "Creating runner via API..." -ForegroundColor Cyan
+                $runnerJson = docker exec gitlab-runner curl -sf `
+                    --request POST "$url/api/v4/user/runners" `
+                    --header "PRIVATE-TOKEN: $pat" `
+                    --data "runner_type=instance_type" `
+                    --data "description=local-runner" `
+                    --data "tag_list=local-runner" `
+                    --data "run_untagged=true" `
+                    --data "locked=false" 2>&1
+
+                $runnerToken = ($runnerJson | ConvertFrom-Json).token
+
+                if (-not $runnerToken) {
+                    Write-Host "WARNING: Could not create runner via API. Response: $runnerJson" -ForegroundColor Yellow
+                } else {
+                    Write-Host "Registering GitLab Runner..." -ForegroundColor Yellow
+                    docker exec gitlab-runner gitlab-runner register `
+                        --non-interactive `
+                        --url $url `
+                        --token $runnerToken `
+                        --executor "docker" `
+                        --docker-image "redgate/flyway:12-enterprise-alpine" `
+                        --description "local-runner" `
+                        --docker-network-mode "gitlab-net" `
+                        --clone-url $url
+                }
+
+                # Revoke the temporary PAT
+                docker exec gitlab gitlab-rails runner `
+                    "PersonalAccessToken.find_by_token('$pat')&.revoke!" 2>&1 | Out-Null
+            }
         }
     } else {
-        Write-Host "WARNING: GITLAB_RUNNER_REGISTRATION_TOKEN or GITLAB_URL not set in .env - skipping registration." -ForegroundColor Yellow
+        Write-Host "WARNING: GITLAB_URL not set in .env - skipping runner registration." -ForegroundColor Yellow
     }
 }
 
@@ -253,7 +305,8 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Rancher:  https://localhost       (172.30.0.10)" -ForegroundColor White
 Write-Host "  GitLab:   http://localhost:8080   (172.30.0.2)" -ForegroundColor White
 Write-Host "  Runner:   connected on gitlab-net (172.30.0.3)" -ForegroundColor White
-Write-Host "  SQL Server: localhost,1434        (172.30.0.4)" -ForegroundColor White
+Write-Host "  SQL Server (dev/QA): localhost,1434  (172.30.0.4)" -ForegroundColor White
+Write-Host "  SQL Server (prod):   localhost,1435  (172.30.0.5)" -ForegroundColor White
 Write-Host ""
 Write-Host "  GitLab user: root" -ForegroundColor White
 if ($rancherBootstrapPw) {

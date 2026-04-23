@@ -138,4 +138,61 @@
   rules:
     - if: $TARGETS_CHANGED == "true"
     - if: $FORCE_DEPLOY == "true"
-    - when: never
+
+
+# ---------------------------------------------------------------------------
+# Cross-project pipeline generator
+# ---------------------------------------------------------------------------
+# Use this when the generate_pipeline.py script lives in a separate template
+# repo (the common case for consumer projects).  It clones the template repo
+# at TEMPLATE_PROJECT/TEMPLATE_REF, installs dependencies, and runs the
+# generator.
+#
+# Consumer projects override OVERRIDE_REGISTRY_* to point at the right
+# registry per environment, avoiding GitLab variable-precedence issues.
+#
+# Usage:
+#   .my_generate:
+#     extends: .generate_pipeline_remote
+#     variables:
+#       OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+#       OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+#       OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+#       TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+#       TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
+#       FILTER_LOCATION:     "London"
+#       OUTPUT_FILE:         "dynamic-pipeline-qa-london.yml"
+#     artifacts:
+#       paths: ["dynamic-pipeline-qa-london.yml"]
+#     rules:
+#       - if: $CI_COMMIT_BRANCH == "qa"
+# ---------------------------------------------------------------------------
+.generate_pipeline_remote:
+  stage: pipeline
+  image: python:3.12-slim
+  variables:
+    TEMPLATE_PROJECT: "root/templatized-with-parser"
+    TEMPLATE_REF: "main"
+    REGISTRY_DATABASE: "flyway_registry"
+    REGISTRY_PORT: "1433"
+    JDBC_PORT: "1433"
+    OUTPUT_FILE: "dynamic-pipeline.yml"
+    INCLUDE_REPLICAS: "false"
+    FLYWAY_LOCATIONS: "filesystem:./migrations"
+  script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - git clone --depth 1 --branch "$TEMPLATE_REF"
+        "http://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}:${CI_SERVER_PORT}/${TEMPLATE_PROJECT}.git"
+        /tmp/templates
+    - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    - export REGISTRY_SERVER="${OVERRIDE_REGISTRY_SERVER}"
+    - export REGISTRY_USER="${OVERRIDE_REGISTRY_USER}"
+    - export REGISTRY_PASSWORD="${OVERRIDE_REGISTRY_PASSWORD}"
+    - echo "Registry server=${REGISTRY_SERVER}"
+    - echo "Generating pipeline for ${FILTER_LOCATION:-all} → ${OUTPUT_FILE}"
+    - python /tmp/templates/scripts/generate_pipeline.py
+    - cat "${OUTPUT_FILE}"
+  artifacts:
+    paths:
+      - "${OUTPUT_FILE}"
+    expire_in: 2 hours

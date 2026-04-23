@@ -87,7 +87,7 @@
     - "echo '--- Step 1: Sync SchemaModel with Dev database ---'"
     - "flyway diff model -workingDirectory=${WORKING_DIRECTORY} -diff.source=dev -diff.target=schemaModel -environments.dev.url=${SOURCE_DATABASE_JDBC} -environments.dev.user=${SOURCE_DATABASE_USER} -environments.dev.password=${SOURCE_DATABASE_PASSWORD}"
     - "echo '--- Step 2: Generate migration scripts ---'"
-    - "flyway diff generate -workingDirectory=${WORKING_DIRECTORY} -diff.source=schemaModel -diff.target=migrations -generate.types=${GENERATE_TYPES} -generate.description=${GENERATE_DESCRIPTION} -diff.buildEnvironment=shadow -environments.shadow.url=${SHADOW_DATABASE_JDBC} -environments.shadow.user=${SHADOW_DATABASE_USER} -environments.shadow.password=${SHADOW_DATABASE_PASSWORD} -redgateCompare.sqlserver.options.behavior.addObjectExistenceChecks=true"
+    - "FLYWAY_CLEAN_DISABLED=false flyway diff generate -workingDirectory=${WORKING_DIRECTORY} -diff.source=schemaModel -diff.target=migrations -generate.types=${GENERATE_TYPES} -generate.description=${GENERATE_DESCRIPTION} -diff.buildEnvironment=shadow -environments.shadow.url=${SHADOW_DATABASE_JDBC} -environments.shadow.user=${SHADOW_DATABASE_USER} -environments.shadow.password=${SHADOW_DATABASE_PASSWORD} -redgateCompare.sqlserver.options.behavior.addObjectExistenceChecks=true"
     - "echo ''"
     - "echo '========================================'"
     - "echo '  Generated Migration Scripts'"
@@ -100,11 +100,11 @@
     - "apk add --no-cache git >/dev/null 2>&1 || apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || true"
     - "git config user.email gitlab-ci@${CI_SERVER_HOST}"
     - "git config user.name 'GitLab CI'"
-    - "git add migrations/ schema-model/"
+    - "git add -f migrations/ schema-model/"
     - "if git diff --cached --quiet; then echo 'No new migration scripts — nothing to commit.'; exit 0; fi"
     - "git diff --cached --stat"
     - "git commit -m 'chore: add auto-generated migration scripts'"
-    - "if [ -n \"${GIT_PUSH_TOKEN}\" ]; then CURRENT_URL=$(git remote get-url origin); PUSH_URL=$(echo \"${CURRENT_URL}\" | sed \"s|gitlab-ci-token:[^@]*|gitlab-ci-token:${GIT_PUSH_TOKEN}|\"); git remote set-url origin \"${PUSH_URL}\"; fi"
+    - "if [ -n \"${GIT_PUSH_TOKEN}\" ]; then CURRENT_URL=$(git remote get-url origin); PUSH_URL=$(echo \"${CURRENT_URL}\" | sed \"s|://[^@]*@|://oauth2:${GIT_PUSH_TOKEN}@|\"); git remote set-url origin \"${PUSH_URL}\"; fi"
     - "git push origin HEAD:${CI_COMMIT_REF_NAME}"
     - "echo '========================================'"
     - "echo 'Migration scripts committed to ${CI_COMMIT_REF_NAME}'"
@@ -145,11 +145,11 @@
   script:
     - "git config user.email gitlab-ci@${CI_SERVER_HOST}"
     - "git config user.name 'GitLab CI'"
-    - "git add ${MIGRATIONS_PATH}/"
+    - "git add -f ${MIGRATIONS_PATH}/"
     - "if git diff --cached --quiet; then echo 'No new migration scripts — nothing to do.'; exit 0; fi"
     - "git diff --cached --stat"
     - "git commit -m \"${GIT_COMMIT_MESSAGE}\""
-    - "if [ -n \"${GIT_PUSH_TOKEN}\" ]; then CURRENT_URL=$(git remote get-url origin); PUSH_URL=$(echo \"${CURRENT_URL}\" | sed \"s|gitlab-ci-token:[^@]*|gitlab-ci-token:${GIT_PUSH_TOKEN}|\"); git remote set-url origin \"${PUSH_URL}\"; fi"
+    - "if [ -n \"${GIT_PUSH_TOKEN}\" ]; then CURRENT_URL=$(git remote get-url origin); PUSH_URL=$(echo \"${CURRENT_URL}\" | sed \"s|://[^@]*@|://oauth2:${GIT_PUSH_TOKEN}@|\"); git remote set-url origin \"${PUSH_URL}\"; fi"
     - "git push origin HEAD:${CI_COMMIT_REF_NAME}"
     - "echo '--- Creating merge request ---'"
     - "API_TOKEN=${GIT_PUSH_TOKEN:-${CI_JOB_TOKEN}}"
@@ -165,4 +165,31 @@
     url: "http://localhost:8080/$CI_PROJECT_PATH/-/merge_requests"
     action: prepare
   when: manual
+  allow_failure: false
+
+
+# ---------------------------------------------------------------------------
+# Validate schema-model folder
+# ---------------------------------------------------------------------------
+# Quick check that the schema-model directory exists and contains SQL files.
+# Use on branches where developers only edit schema-model (e.g. dev).
+#
+#   validate:schema-model:
+#     extends: .flyway_validate_schema_model
+#     rules:
+#       - if: $CI_COMMIT_BRANCH == "dev"
+# ---------------------------------------------------------------------------
+.flyway_validate_schema_model:
+  image: alpine:latest
+  variables:
+    SCHEMA_MODEL_PATH: "schema-model"
+  script:
+    - "echo '========================================'"
+    - "echo '  Validating schema-model'"
+    - "echo '========================================'"
+    - "ls -la ${SCHEMA_MODEL_PATH}/"
+    - "SQL_COUNT=$(find ${SCHEMA_MODEL_PATH}/ -name '*.sql' | wc -l)"
+    - "echo \"Found $SQL_COUNT SQL object definitions\""
+    - "if [ \"$SQL_COUNT\" -eq 0 ]; then echo 'ERROR — schema-model contains no .sql files'; exit 1; fi"
+    - "echo 'Schema model looks good.'"
   allow_failure: false
