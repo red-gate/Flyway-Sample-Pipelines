@@ -1,27 +1,33 @@
 # =============================================================================
-# Dev → QA → Prod Pipeline with Schema Model + Per-Region Deploys
+# Dev → Integration → QA → Prod Pipeline with Schema Model + Per-Region Deploys
 # =============================================================================
-# Three-branch promotion workflow:
-#   dev → qa → prod
+# Four-branch promotion workflow:
+#   dev → integration → qa → prod
 #
 # Flow:
 #   1. Dev pushes schema-model changes to the dev branch
-#   2. Pipeline auto-generates migration scripts (flyway diff)
-#   3. Reviewer clicks ▶ Play to commit scripts to dev and open MR → qa
-#      Migration scripts are visible in the MR diff for review
-#   4. Merge into qa triggers QA pipeline:
-#      - Generates per-region child pipelines from QA registry
-#      - Manual deploy buttons per region (▶ london / ▶ new-york / ▶ tokyo / ▶ all)
-#      - After deploy, auto-creates MR from qa → prod
-#   5. Merge into prod triggers Prod pipeline:
-#      - Generates per-region child pipelines from Prod registry
-#      - Manual deploy buttons per region
+#   2. Pipeline validates the schema-model
+#   3. Create MR: dev → integration (guard pipeline validates direction)
+#   4. Merge into integration triggers migration script generation (flyway diff)
+#   5. Reviewer clicks ▶ Play to commit scripts and open MR → qa
+#   6. Merge into qa triggers QA pipeline with per-region deploy buttons
+#   7. Merge into prod triggers Prod pipeline with per-region deploy buttons
 #
-# ┌─────────┐  ▶  ┌─────────┐     ┌─────────┐     ┌──────────┐
-# │   dev   │────▶│  commit │ MR  │   qa    │ MR  │   prod   │
-# │ (auto)  │     │(manual) │────▶│ (manual │────▶│ (manual  │
-# │ generate│     │ + MR    │     │  deploy)│     │  deploy) │
-# └─────────┘     └─────────┘     └─────────┘     └──────────┘
+# Guard rails (run in MR pipelines):
+#   - Merge direction:  only forward merges allowed (dev→integration→qa→prod)
+#   - Migration files:  blocked in MRs targeting dev or integration
+#
+# ┌─────────┐  MR  ┌─────────────┐  ▶  ┌─────────┐  MR  ┌──────────┐
+# │   dev   │─────▶│ integration │────▶│  commit │─────▶│   qa     │
+# │(validate│      │  (auto      │     │(manual) │      │ (manual  │
+# │ schema) │      │   generate) │     │ + MR    │      │  deploy) │
+# └─────────┘      └─────────────┘     └─────────┘      └──────────┘
+#                                                    MR
+#                                                   ────▶ ┌──────────┐
+#                                                         │   prod   │
+#                                                         │ (manual  │
+#                                                         │  deploy) │
+#                                                         └──────────┘
 #
 # CI/CD Variables required (Settings → CI/CD → Variables):
 #   TARGET_DATABASE_JDBC         JDBC URL of the Dev database (diff source)
@@ -59,24 +65,31 @@ include:
     file:
       - '/.gitlab/ci/flyway.yml'
       - '/.gitlab/ci/generate-deployment-scripts.yml'
+      - '/.gitlab/ci/merge-guard.yml'
 
 workflow:
   name: '$PIPELINE_LABEL'
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PIPELINE_LABEL: "MR Guard — $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME → $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
     - if: $CI_COMMIT_BRANCH == "dev"
       variables:
-        PIPELINE_LABEL: "DEV — Generate Migrations"
+        PIPELINE_LABEL: "DEV — Validate Schema Model"
+    - if: $CI_COMMIT_BRANCH == "integration"
+      variables:
+        PIPELINE_LABEL: "INTEGRATION — Generate Migrations"
     - if: $CI_COMMIT_BRANCH == "qa"
       variables:
         PIPELINE_LABEL: "QA — Deploy to QA Targets"
     - if: $CI_COMMIT_BRANCH == "prod"
       variables:
         PIPELINE_LABEL: "PROD — Deploy to Production"
-    - when: always
 
 stages:
-  - generate          # dev: generate migration scripts
-  - review            # dev: commit scripts to branch (manual)
+  - guard             # MR pipelines: enforce merge direction + migration rules
+  - generate          # dev: validate schema-model / integration: generate migrations
+  - review            # integration: commit scripts to branch (manual)
   - pipeline          # qa/prod: generate per-region child pipelines
   - deploy            # qa/prod: manual per-region deploy buttons
 
@@ -86,19 +99,45 @@ variables:
 
 
 # =============================================================================
-# DEV BRANCH — Generate & commit migration scripts
+# MR PIPELINE — Guard rails (run automatically on every merge request)
+# =============================================================================
+
+# Block reverse merges (e.g. prod → qa, qa → dev).
+guard:merge-direction:
+  extends: .merge_direction_guard
+  variables:
+    PROMOTION_ORDER: "dev,integration,qa,prod"
+
+# Block migration file changes in MRs targeting dev or integration.
+guard:migration-files:
+  extends: .migration_guard
+  variables:
+    MIGRATION_PROTECTED_BRANCHES: "dev,integration"
+
+
+# =============================================================================
+# DEV BRANCH — Validate schema-model only (no migration scripts here)
+# =============================================================================
+
+validate:schema-model:
+  extends: .flyway_validate_schema_model
+  stage: generate
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+
+# =============================================================================
+# INTEGRATION BRANCH — Generate & commit migration scripts
 # =============================================================================
 
 # Auto-generate migration SQL from schema-model changes.
-# Generated scripts are saved as artifacts for review.
-# After reviewing, create an MR from dev → qa manually.
 generate:scripts:
   extends: .flyway_generate_migrations
   stage: generate
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+    - if: $CI_COMMIT_BRANCH == "integration" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
 
-# Commit generated migration scripts to dev and open MR to qa.
+# Commit generated migration scripts to integration and open MR to qa.
 # Click ▶ Play after reviewing the generated SQL in the artifacts.
 # The scripts will be visible in the MR diff for code review.
 commit:scripts:
@@ -108,7 +147,7 @@ commit:scripts:
     MR_TARGET_BRANCH: "qa"
   needs: ["generate:scripts"]
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+    - if: $CI_COMMIT_BRANCH == "integration" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
       when: manual
 
 

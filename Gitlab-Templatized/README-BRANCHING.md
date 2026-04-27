@@ -5,11 +5,11 @@
 This project uses a four-branch promotion model for Flyway database migrations:
 
 ```
-┌─────────┐  MR  ┌─────────────┐   ▶   ┌─────────┐  MR  ┌──────────┐
-│   dev   │─────▶│ integration │──────▶│   qa    │─────▶│   prod   │
-│ (schema │      │  (generate  │       │ (manual │      │ (manual  │
-│  model) │      │   scripts)  │       │  deploy)│      │  deploy) │
-└─────────┘      └─────────────┘       └─────────┘      └──────────┘
+┌─────────┐  MR  ┌─────────────┐  MR  ┌─────────┐  MR  ┌──────────┐
+│   dev   │─────▶│ integration │─────▶│   qa    │─────▶│   prod   │
+│ (schema │      │  (generate  │      │ (manual │      │ (manual  │
+│  model) │      │   scripts)  │      │  deploy)│      │  deploy) │
+└─────────┘      └─────────────┘      └─────────┘      └──────────┘
 ```
 
 | Branch        | What lives here                          | Pipeline behaviour                        |
@@ -32,148 +32,137 @@ Developers only edit `schema-model/` (the declarative SQL object definitions). T
 - Prevents accidental manual edits to migration scripts on the development branch.
 - Merge conflicts in auto-generated SQL are avoided entirely.
 
-## How It Works: Per-Branch `.gitignore`
+## How It Works: CI Pipeline Guards
 
-Each branch has a different `.gitignore`:
+Two CI guard jobs enforce the branching policy. They run automatically in every **merge request pipeline** and must pass before the MR can be merged. No special Git configuration, merge drivers, or per-branch `.gitignore` files are needed.
 
-**`dev` branch `.gitignore`** — excludes migrations:
-```gitignore
-# Flyway ignores
-*.user.toml
-*.artifact
-report.html
-report.json
+### 1. Merge Direction Guard
 
-# Migration scripts are generated on the integration branch.
-# They must never be committed to dev.
-migrations/
+Defines the promotion order (`dev → integration → qa → prod`) and **fails the MR pipeline** if the source branch is at the same level or downstream of the target.
+
+| Merge request          | Result  | Reason                           |
+|------------------------|---------|----------------------------------|
+| `dev → integration`    | ✅ Pass | Forward promotion                |
+| `dev → qa`             | ✅ Pass | Forward promotion (skipping)     |
+| `integration → qa`     | ✅ Pass | Forward promotion                |
+| `qa → prod`            | ✅ Pass | Forward promotion                |
+| `prod → qa`            | ❌ Fail | Reverse merge                    |
+| `qa → dev`             | ❌ Fail | Reverse merge                    |
+| `prod → dev`           | ❌ Fail | Reverse merge                    |
+| `feature/xyz → dev`    | ✅ Pass | Feature branches are unrestricted|
+| `hotfix/abc → prod`    | ✅ Pass | Feature branches are unrestricted|
+
+The promotion order is configured via the `PROMOTION_ORDER` variable and supports wildcard prefixes (e.g. `qa*` matches `qa`, `qa-london`, `qa-staging`).
+
+### 2. Migration File Guard
+
+**Fails the MR pipeline** if the merge request introduces any changes under `migrations/**` when targeting a protected branch.
+
+| MR target       | `migrations/` changed? | Result  |
+|------------------|------------------------|---------|
+| `dev`            | Yes                    | ❌ Fail |
+| `dev`            | No                     | ✅ Pass |
+| `integration`    | Yes                    | ❌ Fail |
+| `integration`    | No                     | ✅ Pass |
+| `qa`             | Yes                    | ✅ Pass |
+| `prod`           | Yes                    | ✅ Pass |
+
+Protected branches are configured via `MIGRATION_PROTECTED_BRANCHES`. Migration scripts committed directly by CI (e.g. the `flyway diff` auto-generation on `integration`) are **not affected** — the guard only runs in MR pipelines.
+
+### How it looks in `.gitlab-ci.yml`
+
+Consumer pipelines include the template and instantiate the guards:
+
+```yaml
+include:
+  - project: 'root/templatized-with-parser'
+    ref: 'main'
+    file:
+      - '/.gitlab/ci/flyway.yml'
+      - '/.gitlab/ci/generate-deployment-scripts.yml'
+      - '/.gitlab/ci/merge-guard.yml'
+
+stages:
+  - guard        # ← MR pipeline: merge direction + migration checks
+  - generate
+  - review
+  - pipeline
+  - deploy
+
+guard:merge-direction:
+  extends: .merge_direction_guard
+  variables:
+    PROMOTION_ORDER: "dev,integration,qa,prod"
+
+guard:migration-files:
+  extends: .migration_guard
+  variables:
+    MIGRATION_PROTECTED_BRANCHES: "dev,integration"
 ```
 
-**`integration` / `qa` / `prod` branch `.gitignore`** — includes migrations:
-```gitignore
-# Flyway ignores
-*.user.toml
-*.artifact
-report.html
-report.json
-```
+## GitLab Project Settings
 
-### Protecting `.gitignore` During Merges
+Two manual settings complete the enforcement. These are configured once per project in the GitLab UI.
 
-When merging `dev → integration`, Git would normally try to bring dev's `.gitignore` (which ignores `migrations/`) into integration. This would break the pipeline.
+### Branch protection
 
-The solution is a **custom merge driver** that tells Git: "when merging `.gitignore`, always keep the current branch's version."
+**Settings → Repository → Protected Branches**
 
-Every branch has a `.gitattributes` file:
-```
-.gitignore merge=ours
-```
+Protect each long-lived branch (`dev`, `integration`, `qa*`, `prod`):
 
-And Git is configured with:
-```ini
-[merge "ours"]
-    driver = true
-```
+| Setting             | Value        | Why                                    |
+|---------------------|--------------|----------------------------------------|
+| Allowed to merge    | Maintainers  | (or your team's preference)            |
+| Allowed to push     | No one       | Forces all changes through merge requests |
+| Allow force push    | No           | Prevents history rewriting             |
+| Allow deletion      | No           | Long-lived branches must not be deleted |
 
-The `driver = true` means "the merge is already resolved — keep ours." This is fully automatic; no manual conflict resolution is needed.
+### Merge request requirements
+
+**Settings → Merge requests**
+
+| Setting                                          | Value   |
+|--------------------------------------------------|---------|
+| **Pipelines must succeed**                       | Enabled |
+| **Enable "Delete source branch" option by default** | Unchecked |
+
+With "Pipelines must succeed" enabled, the guard jobs gate every merge. No merge method constraint is required — merge commit, squash, and rebase are all compatible.
 
 ## Replicating This Setup
 
 ### Prerequisites
 
 - A Git repository with `schema-model/` and `migrations/` folders
-- A `.gitlab-ci.yml` configured for the four-branch workflow (see the project's `.gitlab-ci.yml`)
 - The template project (`root/templatized-with-parser`) available in your GitLab instance
 
-### Step 0: Configure GitLab project merge settings
-
-In your GitLab project, go to **Settings → Merge requests**:
-
-1. **Merge method** — select **Merge commit** (the default)
-   - The `merge=ours` driver in `.gitattributes` relies on merge commits to auto-resolve `.gitignore` conflicts between branches
-   - This is the **only merge method** compatible with this branching strategy — see warning below
-
-2. **Merge options** — uncheck **"Enable 'Delete source branch' option by default"**
-   - Branches (`dev`, `integration`, `qa`, `prod`) are long-lived and must never be deleted
-
-> **⚠ Why merge commit is the only option that works**
->
-> `integration` will always be **ahead** of `dev` because auto-generated migration commits only exist on `integration` and never flow back to `dev`. This divergence is inherent to the design — migration scripts flow forward only (`integration → qa → prod`).
->
-> Additionally, `dev` and `integration` have intentionally different `.gitignore` files (dev excludes `migrations/`, integration does not).
->
-> These two factors rule out the other merge methods:
-> - **Fast-forward merge** requires the target branch to be a direct ancestor of the source. Since `integration` has commits `dev` doesn't, fast-forward will always fail with "Fast forward merge is not possible. Please rebase."
-> - **Rebase** replays commits individually instead of performing a merge. Merge drivers (`merge=ours` on `.gitignore`) only activate during `git merge`, not `git rebase`, so the `.gitignore` conflict cannot auto-resolve and will block the rebase.
->
-> **Merge commit** handles both problems: it combines divergent histories and triggers the merge driver to keep each branch's `.gitignore` intact.
-
-### Step 1: Configure the merge driver
-
-Run this once (per clone, or globally with `--global`):
+### Step 1: Create the branches
 
 ```bash
-git config merge.ours.driver true
-```
-
-### Step 2: Set up the `dev` branch
-
-```bash
-git checkout dev
-
-# Add migrations/ to .gitignore
-echo "" >> .gitignore
-echo "# Migration scripts are generated on the integration branch." >> .gitignore
-echo "# They must never be committed to dev." >> .gitignore
-echo "migrations/" >> .gitignore
-
-# Remove migrations from Git's tracking (files stay on disk but are untracked)
-git rm --cached -r migrations/
-
-# Add .gitattributes with the merge driver
-cat > .gitattributes << 'EOF'
-# Keep dev's .gitignore (which excludes migrations/) when merging.
-# Requires: git config merge.ours.driver true
-.gitignore merge=ours
-EOF
-
-git add .gitignore .gitattributes
-git commit -m "chore: exclude migrations/ from dev, add merge driver for .gitignore"
-```
-
-### Step 3: Create the `integration` branch
-
-Create it from the commit **before** migrations were removed (so it still tracks them):
-
-```bash
-# Go back to the commit that still has migrations tracked
-git checkout -b integration HEAD~1
-
-# Add .gitattributes (integration's .gitignore does NOT exclude migrations/)
-cat > .gitattributes << 'EOF'
-# Keep this branch's .gitignore (which includes migrations/) when merging from dev.
-# Requires: git config merge.ours.driver true
-.gitignore merge=ours
-EOF
-
-git add .gitattributes
-git commit -m "chore: add merge driver for .gitignore on integration"
-```
-
-### Step 4: Create `qa` and `prod` branches
-
-```bash
-git checkout -b qa integration
-git checkout -b prod integration
-```
-
-### Step 5: Push all branches
-
-```bash
+git checkout -b dev
+git checkout -b integration
+git checkout -b qa
+git checkout -b prod
 git push -u origin dev integration qa prod
 ```
 
-### Step 6: Set up CI/CD variables in GitLab
+### Step 2: Add your `.gitlab-ci.yml`
+
+Copy one of the usage examples and adjust for your workflow:
+
+- **Four-branch** (`dev → integration → qa → prod`): see `usage-examples/staging-and-production.gitlab-ci.yml`
+- **Two-branch** (`dev → main`): see `usage-examples/schema-model-dynamic.gitlab-ci.yml`
+
+The key additions for guard support are:
+1. Include `/.gitlab/ci/merge-guard.yml` in your `include:` block
+2. Add `guard` as the first stage
+3. Add `merge_request_event` to your `workflow:rules`
+4. Instantiate the guard jobs with your promotion order
+
+### Step 3: Configure GitLab project settings
+
+Apply the branch protection and merge request settings described above.
+
+### Step 4: Set up CI/CD variables in GitLab
 
 Navigate to **Settings → CI/CD → Variables** and add:
 
@@ -200,32 +189,57 @@ Navigate to **Settings → CI/CD → Variables** and add:
 
 1. **On `dev`**: Edit files in `schema-model/` (e.g. add a column to `Tables/dbo.Products.sql`)
 2. **Push** to `dev` — pipeline validates the schema-model
-3. **Create MR**: `dev → integration`
+3. **Create MR**: `dev → integration` — guard pipeline runs and must pass
 4. **Merge** — integration pipeline auto-runs `flyway diff` and generates migration SQL
 5. **Review** the generated scripts in the pipeline artifacts
 6. **Click ▶ Play** on `commit:scripts` — commits scripts to `integration` and opens MR → `qa`
-7. **Merge to `qa`** — pipeline generates per-region deploy jobs
+7. **Merge to `qa`** — guard pipeline passes (forward merge, migrations allowed on qa), then per-region deploy jobs appear
 8. **Click ▶ Play** on the region deploy buttons (▶ london, ▶ new-york, etc.)
 9. **Merge to `prod`** — same deploy flow for production
 
-### What if I accidentally merge integration back to dev?
+### What if someone tries to merge backward?
 
-The `merge=ours` driver on `.gitignore` protects you. Dev's `.gitignore` will remain unchanged (still excluding `migrations/`), so the migration files won't appear in dev's working tree. The files would technically be in the merge commit's tree but Git will continue to ignore them.
+The merge direction guard blocks it. For example, if someone creates an MR from `prod → dev`, the guard pipeline fails with:
+
+```
+=========================================
+  BLOCKED — reverse merge detected
+=========================================
+
+  prod (rank 3) → dev (rank 0)
+
+  Promotions must flow forward:
+  dev,integration,qa,prod
+
+  Reverse or same-level merges are not allowed.
+=========================================
+```
+
+The MR cannot be merged until the pipeline passes, which it never will for a reverse merge.
 
 ## Troubleshooting
 
-### "merge driver not found" warnings
-Run `git config merge.ours.driver true` in your local clone. This must be set per-clone (it's in `.git/config`, not committed to the repo).
+### Guard pipeline not running on merge requests
+Ensure your `workflow:rules` includes `merge_request_event`:
+```yaml
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "dev"
+    # ...
+```
 
-### Migrations appearing on `dev` after a merge
-Check that `dev`'s `.gitignore` still contains `migrations/`. If it was overwritten, restore it and re-commit.
+### Guard passes but MR still blocked
+Check **Settings → Merge requests** — "Pipelines must succeed" must be enabled. Also verify the branch is protected in **Settings → Repository → Protected Branches**.
 
 ### CI pipeline not running on a branch
-Ensure the branch name matches exactly (`dev`, `integration`, `qa`, `prod`). The `workflow.rules` in `.gitlab-ci.yml` filter by branch name.
+Ensure the branch name matches exactly (`dev`, `integration`, `qa`, `prod`). The `workflow:rules` in `.gitlab-ci.yml` filter by branch name.
 
-### New developer setup
-After cloning, every developer must run:
-```bash
-git config merge.ours.driver true
-```
-Consider adding this to a setup script or documenting it in your project's contributing guide.
+### Someone pushed directly to a protected branch
+Verify **Allowed to push** is set to "No one" for the branch in **Settings → Repository → Protected Branches**. Direct pushes bypass MR pipelines and therefore bypass the guards.
+
+### Migration guard false positive
+If the migration guard blocks an MR that shouldn't be blocked, check the `MIGRATION_PROTECTED_BRANCHES` variable. Only `dev` and `integration` should be listed — `qa` and `prod` need to accept migration file changes via promotion.
+
+### Duplicate pipelines (branch + MR)
+When an MR is open, GitLab may run both a branch pipeline (on push) and an MR pipeline. This is expected — the branch pipeline handles the normal workflow (generate scripts, deploy), while the MR pipeline runs the guards. Only the MR pipeline gates the merge.

@@ -58,15 +58,19 @@
 # =============================================================================
 
 include:
-  - project: 'root/templatized-with-parser'       # ← path to the templates repo
-    ref: 'main'                                    # ← pin to a tag or branch
+  - project: 'root/templatized-with-parser'
+    ref: 'main'
     file:
       - '/.gitlab/ci/flyway.yml'
       - '/.gitlab/ci/generate-deployment-scripts.yml'
+      - '/.gitlab/ci/merge-guard.yml'
 
 workflow:
   name: '$PIPELINE_LABEL'
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PIPELINE_LABEL: "MR Guard — $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME → $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
     - if: $CI_COMMIT_BRANCH == "dev"
       variables:
         PIPELINE_LABEL: "DEV — Generate Migrations"
@@ -76,6 +80,7 @@ workflow:
     - when: always
 
 stages:
+  - guard
   - generate
   - review
   - pipeline
@@ -91,34 +96,57 @@ variables:
   # Can be overridden at pipeline run time via "Run pipeline" → Variables.
   FILTER_LOCATION: "all"
 
-# ---------------------------------------------------------------------------
-# 1. Generate migration scripts from schema-model changes (auto)
-#    Runs on the dev branch.  Flyway diffs the Dev database against the
-#    SchemaModel and produces new V*__*.sql files saved as artifacts.
-# ---------------------------------------------------------------------------
+# =============================================================================
+# MR PIPELINE — Guard rails (run automatically on every merge request)
+# =============================================================================
+
+# Block reverse merges (e.g. main → dev).
+guard:merge-direction:
+  extends: .merge_direction_guard
+  variables:
+    PROMOTION_ORDER: "dev,main"
+
+# Block migration file changes in MRs targeting dev.
+guard:migration-files:
+  extends: .migration_guard
+  variables:
+    MIGRATION_PROTECTED_BRANCHES: "dev"
+
+
+# =============================================================================
+# DEV BRANCH — Validate schema-model only (no migration scripts here)
+# =============================================================================
+
+validate:schema-model:
+  extends: .flyway_validate_schema_model
+  stage: generate
+  rules:
+    - if: $CI_COMMIT_BRANCH == $DEV_BRANCH
+
+
+# =============================================================================
+# MAIN BRANCH — Generate & commit migration scripts, then deploy
+# =============================================================================
+
+# Auto-generate migration SQL from schema-model changes.
 generate:scripts:
   extends: .flyway_generate_migrations
   stage: generate
   rules:
-    - if: $CI_COMMIT_BRANCH == $DEV_BRANCH && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
 
-# ---------------------------------------------------------------------------
-# 2. Commit scripts to dev and open MR to main (manual)
-#    Reviewer clicks ▶ Play to commit the generated scripts to dev and
-#    open a merge request from dev → main.  Review/edit the SQL diff
-#    in the MR, then merge to trigger deployment.
-# ---------------------------------------------------------------------------
+# Commit generated migration scripts to main.
 commit:scripts:
   extends: .flyway_commit_migrations
   stage: review
   variables:
     MR_TARGET_BRANCH: "$DEPLOY_BRANCH"
   rules:
-    - if: $CI_COMMIT_BRANCH == $DEV_BRANCH && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
       when: manual
 
 # ---------------------------------------------------------------------------
-# 3. Generate dynamic child pipelines from the registry (auto)
+# Generate dynamic child pipelines from the registry (auto)
 #    Runs on main (after the MR is merged).  One generate job per region
 #    plus one for all.  Each queries the registry with a different
 #    FILTER_LOCATION and produces its own artifact.

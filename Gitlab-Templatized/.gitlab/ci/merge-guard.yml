@@ -1,0 +1,250 @@
+# =============================================================================
+# Merge Request Guard Rails — Branch Protection via CI
+# =============================================================================
+# Enforces merge direction policy and migration file protection in MR
+# pipelines.  These guards run automatically when a merge request is
+# created or updated; the MR cannot be merged until they pass.
+#
+# Include in any consumer pipeline:
+#   include:
+#     - project: 'root/templatized-with-parser'
+#       ref: 'main'
+#       file:
+#         - '/.gitlab/ci/merge-guard.yml'
+#
+# Then instantiate the guard jobs in your .gitlab-ci.yml:
+#
+#   guard:merge-direction:
+#     extends: .merge_direction_guard
+#     variables:
+#       PROMOTION_ORDER: "dev,integration,qa,prod"
+#
+#   guard:migration-files:
+#     extends: .migration_guard
+#     variables:
+#       MIGRATION_PROTECTED_BRANCHES: "dev,integration"
+#
+# Prerequisites:
+#   1. Add a 'guard' stage before your other stages:
+#        stages:
+#          - guard
+#          - generate
+#          - ...
+#
+#   2. workflow:rules must include merge_request_event:
+#        workflow:
+#          rules:
+#            - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+#            - if: $CI_COMMIT_BRANCH == "dev"
+#            ...
+#
+#   3. GitLab project settings (manual, one-time):
+#      - Settings → Merge requests → "Pipelines must succeed" = enabled
+#      - Settings → Repository → Protected branches:
+#          Allowed to push: "No one" (forces all changes through MRs)
+#          Allow force push: disabled
+#          Allow deletion: disabled
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Guard: One-way merge direction
+# ---------------------------------------------------------------------------
+# Defines a promotion order (e.g. dev → integration → qa → prod) and fails
+# the MR pipeline if the source branch is at the same level or downstream
+# of the target branch.
+#
+# Feature branches (not in the promotion order) can merge into any target.
+#
+# Entries ending with * are treated as prefix matches:
+#   PROMOTION_ORDER: "dev,integration,qa*,prod"
+#   → matches qa, qa-london, qa-staging, etc. at rank 2
+#
+# Override PROMOTION_ORDER to match your branching model:
+#   "dev,integration,qa,prod"   — four-branch
+#   "dev,qa,prod"               — three-branch
+#   "dev,main"                  — two-branch
+# ---------------------------------------------------------------------------
+.merge_direction_guard:
+  image: alpine:latest
+  stage: guard
+  variables:
+    PROMOTION_ORDER: "dev,integration,qa,prod"
+  script:
+    - |
+      SOURCE="$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
+      TARGET="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+      echo "Merge request: $SOURCE → $TARGET"
+      echo "Promotion order: $PROMOTION_ORDER"
+      echo ""
+
+      # ── helper: find the rank of a branch in the promotion order ──
+      # Returns the 0-based index, or -1 if not found.
+      # Entries ending with * match as prefixes.
+      branch_rank() {
+        local branch="$1" i=0
+        OLD_IFS="$IFS"; IFS=','
+        for pattern in $PROMOTION_ORDER; do
+          case "$pattern" in
+            *\*)
+              prefix="${pattern%\*}"
+              case "$branch" in "$prefix"*) IFS="$OLD_IFS"; echo $i; return ;; esac
+              ;;
+            *)
+              if [ "$branch" = "$pattern" ]; then IFS="$OLD_IFS"; echo $i; return; fi
+              ;;
+          esac
+          i=$((i + 1))
+        done
+        IFS="$OLD_IFS"
+        echo -1
+      }
+
+      SOURCE_RANK=$(branch_rank "$SOURCE")
+      TARGET_RANK=$(branch_rank "$TARGET")
+
+      echo "Source '$SOURCE' → rank $SOURCE_RANK"
+      echo "Target '$TARGET' → rank $TARGET_RANK"
+      echo ""
+
+      # If source is not an environment branch (e.g. feature/xyz), allow it
+      if [ "$SOURCE_RANK" -eq -1 ]; then
+        echo "Source '$SOURCE' is not in the promotion order — allowed."
+        exit 0
+      fi
+
+      # If target is not an environment branch, allow it
+      if [ "$TARGET_RANK" -eq -1 ]; then
+        echo "Target '$TARGET' is not in the promotion order — allowed."
+        exit 0
+      fi
+
+      # Both are environment branches — enforce forward-only
+      if [ "$SOURCE_RANK" -ge "$TARGET_RANK" ]; then
+        echo "========================================="
+        echo "  BLOCKED — reverse merge detected"
+        echo "========================================="
+        echo ""
+        echo "  $SOURCE (rank $SOURCE_RANK) → $TARGET (rank $TARGET_RANK)"
+        echo ""
+        echo "  Promotions must flow forward:"
+        echo "  $PROMOTION_ORDER"
+        echo ""
+        echo "  Reverse or same-level merges are not allowed."
+        echo "========================================="
+        exit 1
+      fi
+
+      echo "Forward merge ($SOURCE → $TARGET) — OK."
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: false
+
+
+# ---------------------------------------------------------------------------
+# Guard: Migration file protection
+# ---------------------------------------------------------------------------
+# Fails the MR pipeline if the merge request introduces any changes under
+# migrations/** when targeting a protected branch.
+#
+# Protected branches are those where migration scripts should not be
+# manually introduced — they are either auto-generated by CI (integration)
+# or don't belong at all (dev).
+#
+# Entries ending with * are treated as prefix matches (same as above).
+#
+# Override MIGRATION_PROTECTED_BRANCHES to match your model:
+#   "dev,integration"   — four-branch (migrations generated on integration)
+#   "dev"               — three/two-branch (migrations generated on dev by CI)
+# ---------------------------------------------------------------------------
+.migration_guard:
+  image: alpine:latest
+  stage: guard
+  variables:
+    MIGRATION_PROTECTED_BRANCHES: "dev,integration"
+    MIGRATIONS_PATH: "migrations"
+  before_script:
+    - apk add --no-cache git >/dev/null 2>&1
+  script:
+    - |
+      TARGET="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+      # ── helper: check if a branch matches any protected pattern ──
+      is_protected() {
+        local branch="$1"
+        OLD_IFS="$IFS"; IFS=','
+        for pattern in $MIGRATION_PROTECTED_BRANCHES; do
+          case "$pattern" in
+            *\*)
+              prefix="${pattern%\*}"
+              case "$branch" in "$prefix"*) IFS="$OLD_IFS"; return 0 ;; esac
+              ;;
+            *)
+              if [ "$branch" = "$pattern" ]; then IFS="$OLD_IFS"; return 0; fi
+              ;;
+          esac
+        done
+        IFS="$OLD_IFS"
+        return 1
+      }
+
+      if ! is_protected "$TARGET"; then
+        echo "Target '$TARGET' is not migration-protected — skipping."
+        exit 0
+      fi
+
+      echo "Checking for ${MIGRATIONS_PATH}/ changes in MR targeting '$TARGET'..."
+
+      # We must check only what the SOURCE branch introduces, not what
+      # the target branch already has.  In MR pipelines, HEAD is the
+      # merge ref (source merged into target), so diffing base..HEAD
+      # would include migrations that already exist on the target.
+      #
+      # Instead, fetch the source branch and diff the merge base against
+      # the source branch tip.  This shows only the files the source
+      # branch is contributing.
+      SOURCE="$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
+
+      echo "Fetching source branch '$SOURCE'..."
+      git fetch origin "$SOURCE" --depth=50 >/dev/null 2>&1
+      SOURCE_SHA=$(git rev-parse "origin/$SOURCE")
+
+      DIFF_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA}"
+      if [ -z "$DIFF_BASE" ] || ! git cat-file -e "$DIFF_BASE" 2>/dev/null; then
+        echo "Diff-base SHA unavailable; fetching target branch for comparison."
+        git fetch origin "$TARGET" --depth=50 >/dev/null 2>&1
+        DIFF_BASE=$(git merge-base "origin/$TARGET" "origin/$SOURCE" 2>/dev/null || echo "origin/$TARGET")
+      fi
+
+      echo "Source branch: $SOURCE ($SOURCE_SHA)"
+      echo "Diff base:     $DIFF_BASE"
+      echo "Diff: $DIFF_BASE..$SOURCE_SHA -- ${MIGRATIONS_PATH}/"
+      # Only flag additions, copies, modifications, or renames (ACMR).
+      # Deletions are allowed — removing migration files from a protected
+      # branch is fine (and expected when cleaning up dev).
+      CHANGED=$(git diff --name-only --diff-filter=ACMR "$DIFF_BASE" "$SOURCE_SHA" -- "${MIGRATIONS_PATH}/" 2>/dev/null || true)
+
+      if [ -n "$CHANGED" ]; then
+        echo ""
+        echo "========================================="
+        echo "  BLOCKED — migration changes detected"
+        echo "========================================="
+        echo ""
+        echo "  The following files under ${MIGRATIONS_PATH}/ were changed:"
+        echo ""
+        echo "$CHANGED" | sed 's/^/    /'
+        echo ""
+        echo "  Migration scripts must not be added or modified"
+        echo "  via merge requests into '$TARGET'."
+        echo ""
+        echo "  On the integration branch, migrations are"
+        echo "  auto-generated by the CI pipeline (flyway diff)."
+        echo "========================================="
+        exit 1
+      fi
+
+      echo "No migration changes detected — OK."
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: false
