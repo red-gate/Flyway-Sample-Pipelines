@@ -6,12 +6,10 @@
 #
 # Flow:
 #   1. Dev pushes schema-model changes to the dev branch
-#   2. Pipeline validates the schema-model
-#   3. Create MR: dev → integration (guard pipeline validates direction)
-#   4. Merge into integration triggers migration script generation (flyway diff)
-#   5. Reviewer clicks ▶ Play to commit scripts and open MR → qa
-#   6. Merge into qa triggers QA pipeline with per-region deploy buttons
-#   7. Merge into prod triggers Prod pipeline with per-region deploy buttons
+#   2. Pipeline auto-generates migration scripts (flyway diff)
+#   3. Reviewer clicks ▶ Play to commit scripts and open MR → qa
+#   4. Merge into qa triggers QA pipeline with per-region deploy buttons
+#   5. Merge into prod triggers Prod pipeline with per-region deploy buttons
 #
 # Guard rails (run in MR pipelines):
 #   - Merge direction:  only forward merges allowed (dev→integration→qa→prod)
