@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 #Flyway Version to Use - Check here for latest version information - https://documentation.red-gate.com/fd/command-line-184127404.html
  
-$flywayVersion = '10.17.3'
+$flywayVersion = '12.6.1'
  
 #Flyway URL to download CLI
  
