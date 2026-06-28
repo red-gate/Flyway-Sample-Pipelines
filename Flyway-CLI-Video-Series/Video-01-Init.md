@@ -118,10 +118,11 @@ shadowEnvironment = "shadow"
 ```toml
 [environments.development]
 url = "jdbc:sqlserver://localhost;databaseName=MyDevDB;encrypt=true;integratedSecurity=true;trustServerCertificate=true"
+provisioner = "create-database"
 
 [environments.shadow]
 url = "jdbc:sqlserver://localhost;databaseName=MyShadowDB;encrypt=true;integratedSecurity=true;trustServerCertificate=true"
-provisioner = "clean"
+provisioner = "create-database"
 ```
 
 ### Closing (30 seconds)
