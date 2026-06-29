@@ -28,7 +28,7 @@ Learn how to use `flyway generate` to create versioned migration scripts from yo
 - `flyway generate` uses a diff artifact to create migration scripts
 - `-generate.types` controls *which kinds* of scripts are produced: `versioned`, `undo`, `baseline`
 - A baseline gives you a starting point that builds the whole schema; versioned + undo scripts capture each change going forward and back
-- Requires a shadow/build environment to determine what's already scripted
+- When the diff target is `migrations`, you need a `buildEnvironment` - Flyway runs the existing migrations against this shadow/build database, and the resulting schema becomes the target it compares against to determine what's already scripted
 
 **The workflow we'll follow in this video:**
 1. **Start with a baseline** - generate a baseline script that builds the entire schema from scratch (development → empty)
@@ -41,7 +41,7 @@ Learn how to use `flyway generate` to create versioned migration scripts from yo
 **Talking Points:**
 - A baseline represents the schema that already exists, so you can build on top of it in version control
 - When you adopt Flyway on a database that's *already* in production, you don't want to re-create those objects on deploy - production already has them. The baseline is treated as already-applied, and every versioned migration after it builds on top and deploys cleanly to production
-- A baseline can take several forms - a backup file, a snapshot (see Video 12), or a SQL script. Here we generate the **baseline script** form: a single SQL file that builds the full schema
+- A baseline can take several forms - a backup file, a snapshot, or a SQL script. Here we generate the **baseline script** form: a single SQL file that builds the full schema
 - We compare `development` (which mirrors production) against an `empty` target so *every* object is treated as new - giving us a complete from-scratch build script
 
 **Commands:**
@@ -50,7 +50,10 @@ Learn how to use `flyway generate` to create versioned migration scripts from yo
 flyway diff "-diff.source=development" "-diff.target=empty"
 
 # Generate a baseline script that builds the entire schema from scratch
-flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
+flyway generate "-generate.types=baseline" "-generate.description=Baseline"
+
+# Combining them together
+flyway diff generate "-diff.source=development" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline"
 ```
 
 **Expected Output:**
@@ -77,7 +80,7 @@ Generated: migrations\B001_20260312160122__Production_Baseline.sql
 ALTER TABLE [Sales].[Products] ADD [Discontinued] BIT NOT NULL DEFAULT (0)
 GO
 
--- ...or modify a view
+-- Modify the view
 ALTER VIEW [Sales].[vProductCatalog]
 AS
 SELECT ProductId, ProductName, Price, Discontinued
@@ -213,7 +216,7 @@ flyway generate "-generate.location=C:\temp\pending-migrations" "-generate.descr
 ```
 
 ### Closing (30 seconds)
-"You've now generated your first migration script! This script can be applied to any database using `flyway migrate`. Remember the workflow: diff, then generate. In the next video, we'll learn how to apply these migrations to target databases."
+"You've now generated your first migration script! This script can be applied to any database using `flyway migrate`. Remember the workflow: initialize the project with a baseline script or backup file, then as you make changes - run diff, model, and generate to produce your versioned and undo scripts."
 
 ---
 
