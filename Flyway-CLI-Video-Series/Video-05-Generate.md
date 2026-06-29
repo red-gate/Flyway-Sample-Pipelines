@@ -52,8 +52,7 @@ flyway diff "-diff.source=development" "-diff.target=empty"
 # Generate a baseline script that builds the entire schema from scratch
 flyway generate "-generate.types=baseline" "-generate.description=Baseline"
 
-# Combining them together
-flyway diff generate "-diff.source=development" "-diff.target=empty" "-generate.types=baseline" "-generate.description=Baseline"
+# Combining them t
 ```
 
 **Expected Output:**
@@ -81,7 +80,7 @@ ALTER TABLE [Sales].[Products] ADD [Discontinued] BIT NOT NULL DEFAULT (0)
 GO
 
 -- Modify the view
-ALTER VIEW [Sales].[vProductCatalog]
+ALTER VIEW [Sales].[ProductSummary]
 AS
 SELECT ProductId, ProductName, Price, Discontinued
 FROM Sales.Products
@@ -96,11 +95,9 @@ GO
 
 **Commands:**
 ```powershell
-# Diff development against the schema model to find your change
-flyway diff "-diff.source=development" "-diff.target=schemaModel"
+# Diff development against the schema model to find your change and model to write the change into the schema model
+flyway diff model "-diff.source=development" "-diff.target=schemaModel"
 
-# Write the change into the schema model
-flyway model
 ```
 
 **Expected Output:**
@@ -184,10 +181,15 @@ GO
 ```
 
 **Key features:**
+- Ordered correctly - effortlessly handles complex dependencies
+- For safety purposes - will pull in de-selected dependencies by default
+- Warn you about potential data loss and other risky scenarios encountered when generating scripts
+- Scripts will run as written - edit them if need be
 - SET statements for consistent behavior
 - PRINT statements for progress visibility
-- Existence checks where appropriate
+- Existence checks optional
 - Proper GO batch separators
+
 
 ### Part 8: Generating Specific Changes (1.5 minutes)
 
