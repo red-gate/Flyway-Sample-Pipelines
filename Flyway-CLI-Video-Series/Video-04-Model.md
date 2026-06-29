@@ -138,17 +138,17 @@ flyway model
 flyway diff "-diff.source=development" "-diff.target=schemaModel"
 flyway model "-model.changes=changeId1,changeId2"
 
-# Exclude dependencies (recommended)
+# Exclude dependencies
 flyway model "-model.changes=changeId" "-redgateCompare.sqlserver.options.behavior.includeDependencies=false"
 ```
 
 ## Best Practices
 
 1. **Always run diff first** - model uses the diff artifact
-2. **Review changes before applying** - use `flyway diffText` first
+2. **Review changes before applying** - use `flyway diffText` first - so you can exclude other people's changes
 3. **Commit frequently** - small, focused commits are easier to review
 4. **Exclude dependencies for targeted changes** - prevents unintended updates
-5. **Use with version control** - the schema model should be in Git
+5. **Use with version control** - the project and schema model should be in Git
 
 ## Schema Model vs Migrations
 

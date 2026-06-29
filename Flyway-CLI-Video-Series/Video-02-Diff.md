@@ -71,7 +71,6 @@ CREATE TABLE Sales.Customers (
     Email NVARCHAR(255)
 );
 GO
-
 CREATE VIEW Sales.ProductSummary AS
 SELECT ProductId, ProductName, Price FROM Sales.Products;
 ```

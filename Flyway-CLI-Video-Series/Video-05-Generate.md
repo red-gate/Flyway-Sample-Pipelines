@@ -8,12 +8,12 @@ Learn how to use `flyway generate` to create versioned migration scripts from yo
 
 ## Learning Objectives
 - Understand the migration generation workflow
-- Generate migrations from diff artifacts
+- Use `-generate.types` to control which script types are produced
+- Generate a baseline script that builds the entire schema from scratch (development → empty)
+- Make a development change, capture it into the schema model, then generate scripts for it
+- Generate paired versioned and undo (rollback) scripts
 - Customize migration descriptions
 - Generate specific changes vs all changes
-- Use `-generate.types` to control which script types are produced
-- Generate a baseline script that builds the entire schema from scratch
-- Generate paired versioned and undo (rollback) scripts
 
 ---
 
@@ -25,62 +25,146 @@ Learn how to use `flyway generate` to create versioned migration scripts from yo
 ### Part 1: Understanding the Generate Workflow (1.5 minutes)
 
 **Talking Points:**
-- Generate uses a diff artifact to create migration scripts
-- Typically compares schema model (or development) to migrations
+- `flyway generate` uses a diff artifact to create migration scripts
+- `-generate.types` controls *which kinds* of scripts are produced: `versioned`, `undo`, `baseline`
+- A baseline gives you a starting point that builds the whole schema; versioned + undo scripts capture each change going forward and back
 - Requires a shadow/build environment to determine what's already scripted
-- Creates properly named versioned migration files
 
-**The workflow:**
-1. Make changes in development database
-2. Run `flyway diff` (schemaModel → migrations with buildEnvironment)
-3. Run `flyway generate` to create the script
-4. Script appears in migrations folder
+**The workflow we'll follow in this video:**
+1. **Start with a baseline** - generate a baseline script that builds the entire schema from scratch (development → empty)
+2. **Make a change** in the development database (e.g. add a column or modify a view)
+3. **Capture the change** into the schema model (`diff` development → schemaModel, then `model`)
+4. **Generate versioned + undo scripts** for that change (`diff` schemaModel → migrations, then `generate`)
 
-### Part 2: Basic Generate Usage (2 minutes)
+### Part 2: Start with a Baseline Script (2.5 minutes)
+
+**Talking Points:**
+- A baseline represents the schema that already exists, so you can build on top of it in version control
+- When you adopt Flyway on a database that's *already* in production, you don't want to re-create those objects on deploy - production already has them. The baseline is treated as already-applied, and every versioned migration after it builds on top and deploys cleanly to production
+- A baseline can take several forms - a backup file, a snapshot (see Video 12), or a SQL script. Here we generate the **baseline script** form: a single SQL file that builds the full schema
+- We compare `development` (which mirrors production) against an `empty` target so *every* object is treated as new - giving us a complete from-scratch build script
 
 **Commands:**
 ```powershell
-# Step 1: Ensure schema model is up to date
-flyway diff "-diff.source=development" "-diff.target=schemaModel"
-flyway model
+# Compare development against an empty database so the whole schema is "new"
+flyway diff "-diff.source=development" "-diff.target=empty"
 
-# Step 2: Create diff artifact for generate
-flyway diff "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
-
-# Step 3: Generate the migration
-flyway generate "-generate.description=Add_Sales_Schema"
+# Generate a baseline script that builds the entire schema from scratch
+flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
 ```
 
 **Expected Output:**
 ```
 Using diff artifact: C:\...\flyway.artifact.diff
-Generating versioned migration: migrations\V001_20260312155434__Add_Sales_Schema.sql
-Generated: migrations\V001_20260312155434__Add_Sales_Schema.sql
+Generating baseline migration: migrations\B001_20260312160122__Production_Baseline.sql
+Generated: migrations\B001_20260312160122__Production_Baseline.sql
 ```
 
-### Part 3: Understanding Generated File Names (1 minute)
+> Note the `B` prefix - baseline scripts use `B` instead of `V`. On production, Flyway
+> treats the baseline as already-applied (it isn't re-run), so subsequent versioned
+> migrations build on top of it and deploy without trying to re-create existing objects.
+
+### Part 3: Make a Change in Development (1 minute)
+
+**Talking Points:**
+- With the baseline in place, all future work is incremental
+- Make a real schema change in your development database - this is what we'll script next
+- Keep it small and focused so the generated migration is easy to review
+
+**Example change (run against development):**
+```sql
+-- Add a column to an existing table...
+ALTER TABLE [Sales].[Products] ADD [Discontinued] BIT NOT NULL DEFAULT (0)
+GO
+
+-- ...or modify a view
+ALTER VIEW [Sales].[vProductCatalog]
+AS
+SELECT ProductId, ProductName, Price, Discontinued
+FROM Sales.Products
+GO
+```
+
+### Part 4: Capture the Change into the Schema Model (1.5 minutes)
+
+**Talking Points:**
+- First bring the schema model up to date with what changed in development
+- `diff` finds the difference, `model` writes it into the schema model files
+
+**Commands:**
+```powershell
+# Diff development against the schema model to find your change
+flyway diff "-diff.source=development" "-diff.target=schemaModel"
+
+# Write the change into the schema model
+flyway model
+```
+
+**Expected Output:**
+```
+Differences found between development and schemaModel
++ Sales.Products.Discontinued (column added)
+~ Sales.vProductCatalog (view modified)
+Schema model updated
+```
+
+### Part 5: Generate Versioned + Undo Scripts (2 minutes)
+
+**Talking Points:**
+- Now produce the deployable migration *and* its rollback in one step
+- `-generate.types=versioned,undo` keeps the forward migration and its undo in lockstep - the undo reverses exactly what the versioned script applies
+- The diff here compares the schema model to the existing migrations (using the shadow build environment) so only the *new* change is scripted
+
+**Commands:**
+```powershell
+# Diff schema model against existing migrations to find what isn't scripted yet
+flyway diff "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
+
+# Generate the versioned migration AND its matching undo script
+flyway generate "-generate.types=versioned,undo" "-generate.description=Add_Discontinued_Flag"
+```
+
+**Expected Output:**
+```
+Generating versioned migration: migrations\V002_20260312160233__Add_Discontinued_Flag.sql
+Generating undo migration:      migrations\U002_20260312160233__Add_Discontinued_Flag.sql
+Generated 2 files
+```
+
+> The undo script uses the `U` prefix and shares the version number of its versioned
+> partner, so `flyway undo` knows which forward migration it reverses.
+
+### Part 6: Understanding Generated File Names (1 minute)
 
 **File naming pattern:**
 ```
-V{version}_{timestamp}__{description}.sql
+{prefix}{version}_{timestamp}__{description}.sql
 ```
 
-**Example:** `V001_20260312155434__Initial_Schema.sql`
+**Example:** `V002_20260312160233__Add_Discontinued_Flag.sql`
 
 | Part | Meaning |
 |------|---------|
-| `V` | Versioned migration prefix |
-| `001` | Version number |
-| `20260312155434` | Timestamp (YYYYMMDDHHMMSS) |
+| `V` | Migration prefix (see prefix table below) |
+| `002` | Version number |
+| `20260312160233` | Timestamp (YYYYMMDDHHMMSS) |
 | `__` | Double underscore separator |
-| `Initial_Schema` | Your description (underscores for spaces) |
+| `Add_Discontinued_Flag` | Your description (underscores for spaces) |
 | `.sql` | SQL file extension |
 
-### Part 4: Viewing the Generated Script (1.5 minutes)
+**Script type prefixes at a glance:**
+
+| Prefix | Type | Purpose |
+|--------|------|---------|
+| `V` | Versioned | Apply the change going forward |
+| `U` | Undo | Roll the change back |
+| `B` | Baseline | Represent the existing schema to build on top of |
+
+### Part 7: Viewing the Generated Script (1.5 minutes)
 
 **Command:**
 ```powershell
-Get-Content "migrations\V001_20260312155434__Add_Sales_Schema.sql"
+Get-Content "migrations\V002_20260312160233__Add_Discontinued_Flag.sql"
 ```
 
 **Example Generated Content:**
@@ -89,21 +173,9 @@ SET NUMERIC_ROUNDABORT OFF
 GO
 SET ANSI_PADDING, ANSI_WARNINGS, CONCAT_NULL_YIELDS_NULL, ARITHABORT, QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-PRINT N'Creating schemas'
+PRINT N'Altering [Sales].[Products]'
 GO
-IF SCHEMA_ID(N'Sales') IS NULL
-EXEC sp_executesql N'CREATE SCHEMA [Sales]
-AUTHORIZATION [dbo]'
-GO
-PRINT N'Creating [Sales].[Products]'
-GO
-CREATE TABLE [Sales].[Products]
-(
-[ProductId] [int] NOT NULL IDENTITY(1, 1),
-[ProductName] [nvarchar] (100) NOT NULL,
-[Price] [decimal] (10, 2) NOT NULL,
-[CreatedDate] [datetime2] NULL DEFAULT (getdate())
-)
+ALTER TABLE [Sales].[Products] ADD [Discontinued] [bit] NOT NULL CONSTRAINT [DF_Products_Discontinued] DEFAULT (0)
 GO
 -- ... more statements
 ```
@@ -114,7 +186,7 @@ GO
 - Existence checks where appropriate
 - Proper GO batch separators
 
-### Part 5: Generating Specific Changes (1.5 minutes)
+### Part 8: Generating Specific Changes (1.5 minutes)
 
 **Talking Points:**
 - Use `-generate.changes` to create scripts for specific objects only
@@ -132,79 +204,7 @@ flyway generate "-generate.changes=cesR4V7ULE8it4G_ftbKCMoII8E" "-generate.descr
 flyway generate "-generate.changes=changeId" "-redgateCompare.sqlserver.options.behavior.includeDependencies=false" "-generate.description=My_Change"
 ```
 
-### Part 6: Controlling Script Types with `-generate.types` (2.5 minutes)
-
-**Talking Points:**
-- `-generate.types` controls *which kinds* of scripts `flyway generate` produces
-- Accepts a comma-separated list of: `versioned`, `undo`, `baseline`
-- Defaults to `versioned` when omitted
-- Each type answers a different question:
-  - `versioned` - "What changed?" → the incremental migration that moves you forward
-  - `undo` - "How do I roll this change back?" → the paired reverse script
-  - `baseline` - "How do I represent the schema that already exists?" → a full-schema starting point
-
-**Generating a baseline script (import an existing production schema):**
-When you adopt Flyway on a database that's *already* in production, you don't want to
-re-create those objects on deploy - production already has them. A baseline represents
-the existing production schema as a starting point in version control. Flyway marks that
-point as already-applied on production, so every versioned migration you generate afterwards
-sits *on top* of the baseline and deploys cleanly to production.
-
-A baseline can take several forms - a backup file, a snapshot (see Video 12), or a SQL
-script. Here we're generating the **baseline script** form: a single SQL file that builds
-the full existing schema.
-
-```powershell
-# Point the schema model at your live production database, then capture it
-flyway diff "-diff.source=production" "-diff.target=schemaModel"
-flyway model
-
-# Generate a baseline script that represents the existing production schema
-flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
-```
-
-**Expected Output:**
-```
-Using diff artifact: C:\...\flyway.artifact.diff
-Generating baseline migration: migrations\B001_20260312160122__Production_Baseline.sql
-Generated: migrations\B001_20260312160122__Production_Baseline.sql
-```
-
-> Note the `B` prefix - baseline scripts use `B` instead of `V`. On production, Flyway
-> treats the baseline as already-applied (it isn't re-run), so subsequent versioned
-> migrations build on top of it and deploy without trying to re-create existing objects.
-
-**Generating versioned + undo together (forward and rollback):**
-Asking for both types in one command keeps your forward migration and its rollback
-in lockstep - the undo script reverses exactly what the versioned script applies.
-
-```powershell
-# Standard diff for what needs scripting
-flyway diff "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
-
-# Generate the versioned migration AND its matching undo script
-flyway generate "-generate.types=versioned,undo" "-generate.description=Add_Sales_Schema"
-```
-
-**Expected Output:**
-```
-Generating versioned migration: migrations\V002_20260312160233__Add_Sales_Schema.sql
-Generating undo migration:      migrations\U002_20260312160233__Add_Sales_Schema.sql
-Generated 2 files
-```
-
-> The undo script uses the `U` prefix and shares the version number of its versioned
-> partner, so `flyway undo` knows which forward migration it reverses.
-
-**Script type prefixes at a glance:**
-
-| Prefix | Type | Purpose |
-|--------|------|---------|
-| `V` | Versioned | Apply the change going forward |
-| `U` | Undo | Roll the change back |
-| `B` | Baseline | Represent the existing schema to build on top of |
-
-### Part 7: Custom Output Location (30 seconds)
+### Part 9: Custom Output Location (30 seconds)
 
 **Command:**
 ```powershell
@@ -220,21 +220,22 @@ flyway generate "-generate.location=C:\temp\pending-migrations" "-generate.descr
 ## Commands Summary
 
 ```powershell
-# Standard generate workflow
+# Generate a baseline script (full schema from scratch: development → empty)
+flyway diff "-diff.source=development" "-diff.target=empty"
+flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
+
+# Standard generate workflow (versioned only)
 flyway diff "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
 flyway generate "-generate.description=My_Description"
+
+# Generate versioned + undo (rollback) scripts together
+flyway generate "-generate.types=versioned,undo" "-generate.description=My_Change"
 
 # Generate specific changes only
 flyway generate "-generate.changes=id1,id2" "-generate.description=Specific_Changes"
 
 # Exclude dependencies
 flyway generate "-generate.changes=id" "-redgateCompare.sqlserver.options.behavior.includeDependencies=false" "-generate.description=My_Change"
-
-# Generate a baseline script (import an existing production schema)
-flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
-
-# Generate versioned + undo (rollback) scripts together
-flyway generate "-generate.types=versioned,undo" "-generate.description=My_Change"
 
 # Custom output location
 flyway generate "-generate.location=C:\path\to\folder" "-generate.description=My_Change"
@@ -243,19 +244,26 @@ flyway generate "-generate.location=C:\path\to\folder" "-generate.description=My
 ## Complete Development Workflow
 
 ```powershell
-# 1. Update schema model from development
+# 0. (One time) Establish a baseline for the existing schema
+flyway diff "-diff.source=development" "-diff.target=empty"
+flyway generate "-generate.types=baseline" "-generate.description=Production_Baseline"
+
+# 1. Make a change in development (add a column, modify a view, etc.)
+
+# 2. Capture the change into the schema model
 flyway diff "-diff.source=development" "-diff.target=schemaModel"
 flyway model
 
-# 2. Generate migration script
+# 3. Generate versioned + undo scripts for the change
 flyway diff "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
-flyway generate "-generate.description=Add_New_Feature"
+flyway generate "-generate.types=versioned,undo" "-generate.description=Add_New_Feature"
 
-# 3. Apply to shadow to verify
+# 4. Apply to shadow to verify
 flyway migrate -environment=shadow
 
-# 4. Commit everything to Git
+# 5. Commit everything to Git
 # migrations/V00X__Add_New_Feature.sql
+# migrations/U00X__Add_New_Feature.sql
 # schema-model/* changes
 ```
 

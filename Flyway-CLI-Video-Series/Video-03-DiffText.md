@@ -27,7 +27,8 @@ Learn how to use `flyway diffText` to see the actual SQL differences between sou
 
 **Command:**
 ```powershell
-flyway diffText "-diff.source=development" "-diff.target=schemaModel"
+flyway diff -source=development -target=schemaModel
+flyway diffText 
 ```
 
 **Expected Output:**
@@ -68,13 +69,13 @@ GO
 **Commands:**
 ```powershell
 # First, run diff to see change IDs
-flyway diff "-diff.source=development" "-diff.target=schemaModel"
+flyway diff -source=development target=schemaModel
 
 # Then view specific changes (use actual IDs from your diff)
-flyway diffText "-diff.source=development" "-diff.target=schemaModel" "-diffText.changes=cesR4V7ULE8it4G_ftbKCMoII8E"
+flyway diffText "-diffText.changes=cesR4V7ULE8it4G_ftbKCMoII8E"
 
 # Multiple changes (comma-separated)
-flyway diffText "-diff.source=development" "-diff.target=schemaModel" "-diffText.changes=id1,id2,id3"
+flyway diffText "-diffText.changes=id1,id2,id3"
 ```
 
 ### Part 3: Edit vs Add Visualization (1 minute)
@@ -111,13 +112,14 @@ CREATE TABLE [Sales].[Products]
 
 ```powershell
 # View all differences as SQL
-flyway diffText "-diff.source=development" "-diff.target=schemaModel"
+flyway diff diffText "-diff.source=development" "-diff.target=schemaModel"
 
 # View specific changes only
-flyway diffText "-diff.source=development" "-diff.target=schemaModel" "-diffText.changes=changeId1,changeId2"
+flyway diff "-diff.source=development" "-diff.target=schemaModel"
+flyway diffText "-diffText.changes=changeId1,changeId2"
 
 # Compare schema model to migrations
-flyway diffText "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
+flyway diff diffText "-diff.source=schemaModel" "-diff.target=migrations" "-diff.buildEnvironment=shadow"
 ```
 
 ## Workflow Tip
