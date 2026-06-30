@@ -1,0 +1,188 @@
+# =============================================================================
+# Dynamic Undo Pipeline — Revert the Last Migration Across Targets
+# =============================================================================
+# A dedicated pipeline for rolling back the most recently applied versioned
+# migration on registry-driven targets. Mirrors the regular deploy pipeline:
+# one button per region plus an "all regions" button.
+#
+# It reuses the same registry query and FILTER_LOCATION filtering as the
+# migrate pipeline — the only difference is PIPELINE_MODE: "undo", which makes
+# the generator emit one `flyway undo` job per target instead of check+migrate.
+#
+# Pipeline flow:
+#   ┌──────────┐     ┌──────────┐
+#   │ generate │ ──▶ │   undo   │   (one generate + undo button pair per region)
+#   │ (manual) │     │ (child)  │
+#   └──────────┘     └──────────┘
+#
+# REQUIREMENTS
+#   * Undo scripts (U*__*.sql) must exist alongside your versioned migrations.
+#   * Flyway undo is an Enterprise/Teams feature (your FLYWAY_TOKEN must cover it).
+#   * By default `flyway undo` reverts only the LAST applied versioned migration
+#     on each target. To undo down to a specific version, set FLYWAY_TARGET
+#     (e.g. FLYWAY_TARGET: "3" undoes everything applied above V3).
+#
+# CI/CD Variables required (Settings → CI/CD → Variables):
+#   TARGET_DATABASE_USER       = Login for the target databases
+#   TARGET_DATABASE_PASSWORD   = *** (Protected + Masked)
+#   REGISTRY_SERVER            = SQL Server hostname for the registry DB
+#   REGISTRY_USER              = Login for the registry DB
+#   REGISTRY_PASSWORD          = *** (Protected + Masked)
+#   FLYWAY_EMAIL               = your@email.com
+#   FLYWAY_TOKEN               = *** (Protected + Masked)
+#
+# Optional CI/CD Variables:
+#   FILTER_LOCATION            = all  (default — or e.g. "London"); can also be
+#                                set at run time via "Run pipeline" → Variables
+#   FLYWAY_TARGET              = version to undo down to (default: undo last only)
+#   INCLUDE_REPLICAS           = false  (default)
+#   FLYWAY_LOCATIONS           = filesystem:./migrations  (default)
+#   REGISTRY_DATABASE          = flyway_registry  (default)
+#   REGISTRY_PORT / JDBC_PORT  = 1433  (default)
+#   RUNNER_TAG_MAP             = JSON map of location → runner tag overrides
+#   TEMPLATE_PROJECT           = root/templatized-with-parser  (default)
+#   TEMPLATE_REF               = main  (default)
+# =============================================================================
+
+include:
+  - project: 'root/templatized-with-parser'
+    ref: 'main'
+    file:
+      - '/.gitlab/ci/flyway.yml'
+
+workflow:
+  name: '$PIPELINE_LABEL'
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      variables:
+        PIPELINE_LABEL: "UNDO — Revert Last Migration"
+    - when: always
+
+stages:
+  - pipeline
+  - undo
+
+variables:
+  TEMPLATE_PROJECT: "root/templatized-with-parser"
+  TEMPLATE_REF: "main"
+  # Tells the generator to emit `flyway undo` jobs instead of check + migrate.
+  PIPELINE_MODE: "undo"
+  # Region filter — "all" undoes everywhere, or set to a specific region name:
+  # "London", "New York", "Tokyo". Override per generate job below.
+  FILTER_LOCATION: "all"
+
+# ---------------------------------------------------------------------------
+# Generate the dynamic undo child pipelines from the registry.
+#   One generate job per region plus one for all. Each queries the registry
+#   with a different FILTER_LOCATION (and PIPELINE_MODE=undo) and produces its
+#   own artifact. Manual — generating an undo plan is a deliberate action.
+# ---------------------------------------------------------------------------
+.generate_undo_base:
+  stage: pipeline
+  image: python:3.12-slim
+  script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - git clone --depth 1 --branch "$TEMPLATE_REF"
+        "http://gitlab-ci-token:${CI_JOB_TOKEN}@172.30.0.2/${TEMPLATE_PROJECT}.git"
+        /tmp/templates
+    - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    - echo "Generating UNDO pipeline for ${FILTER_LOCATION} → ${OUTPUT_FILE}"
+    - python /tmp/templates/scripts/generate_pipeline.py
+    - cat "${OUTPUT_FILE}"
+  rules:
+    - when: manual
+      allow_failure: true
+
+generate:undo:all:
+  extends: .generate_undo_base
+  variables:
+    FILTER_LOCATION: "all"
+    OUTPUT_FILE: "undo-pipeline-all.yml"
+  artifacts:
+    paths: ["undo-pipeline-all.yml"]
+    expire_in: 1 hour
+
+generate:undo:london:
+  extends: .generate_undo_base
+  variables:
+    FILTER_LOCATION: "London"
+    OUTPUT_FILE: "undo-pipeline-london.yml"
+  artifacts:
+    paths: ["undo-pipeline-london.yml"]
+    expire_in: 1 hour
+
+generate:undo:new-york:
+  extends: .generate_undo_base
+  variables:
+    FILTER_LOCATION: "New York"
+    OUTPUT_FILE: "undo-pipeline-new-york.yml"
+  artifacts:
+    paths: ["undo-pipeline-new-york.yml"]
+    expire_in: 1 hour
+
+generate:undo:tokyo:
+  extends: .generate_undo_base
+  variables:
+    FILTER_LOCATION: "Tokyo"
+    OUTPUT_FILE: "undo-pipeline-tokyo.yml"
+  artifacts:
+    paths: ["undo-pipeline-tokyo.yml"]
+    expire_in: 1 hour
+
+# ---------------------------------------------------------------------------
+# Undo — one button per region + undo all.
+#   After generating, you'll see these buttons in the pipeline:
+#     ▶ undo:all        — revert last migration in every region
+#     ▶ undo:london     — revert last migration in London only
+#     ▶ undo:new-york   — revert last migration in New York only
+#     ▶ undo:tokyo      — revert last migration in Tokyo only
+#   Each triggers a child pipeline whose individual undo jobs are themselves
+#   manual (from .flyway_undo), so the actual undo is a second deliberate click.
+# ---------------------------------------------------------------------------
+undo:all:
+  stage: undo
+  needs: ["generate:undo:all"]
+  trigger:
+    include:
+      - artifact: undo-pipeline-all.yml
+        job: generate:undo:all
+    strategy: depend
+  rules:
+    - when: manual
+      allow_failure: true
+
+undo:london:
+  stage: undo
+  needs: ["generate:undo:london"]
+  trigger:
+    include:
+      - artifact: undo-pipeline-london.yml
+        job: generate:undo:london
+    strategy: depend
+  rules:
+    - when: manual
+      allow_failure: true
+
+undo:new-york:
+  stage: undo
+  needs: ["generate:undo:new-york"]
+  trigger:
+    include:
+      - artifact: undo-pipeline-new-york.yml
+        job: generate:undo:new-york
+    strategy: depend
+  rules:
+    - when: manual
+      allow_failure: true
+
+undo:tokyo:
+  stage: undo
+  needs: ["generate:undo:tokyo"]
+  trigger:
+    include:
+      - artifact: undo-pipeline-tokyo.yml
+        job: generate:undo:tokyo
+    strategy: depend
+  rules:
+    - when: manual
+      allow_failure: true

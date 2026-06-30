@@ -137,6 +137,31 @@
     when: always
     expire_in: 30 days
 
+# Job template: Undo the last applied versioned migration
+# Requires undo scripts (U*__*.sql) alongside your versioned migrations.
+# Flyway undo is an Enterprise/Teams feature. By default it undoes the most
+# recently applied versioned migration. To undo down to a specific version,
+# set FLYWAY_TARGET (e.g. FLYWAY_TARGET: "3" undoes everything above V3).
+# Manual by design — undo is destructive and should be a deliberate action.
+.flyway_undo:
+  extends: .flyway_base
+  script:
+    - "echo '--- Pre-Undo Info ---'"
+    - flyway info
+    - "echo '--- Undo ---'"
+    - flyway undo
+    - "echo '--- Post-Undo Snapshot ---'"
+    - flyway snapshot -filename=snapshothistory:current
+    - "echo '--- Post-Undo Info ---'"
+    - flyway info
+  artifacts:
+    expose_as: "Flyway Reports"
+    paths:
+      - reports/
+    when: always
+    expire_in: 30 days
+  when: manual
+
 # Job template: Repair migration history
 .flyway_repair:
   extends: .flyway_base

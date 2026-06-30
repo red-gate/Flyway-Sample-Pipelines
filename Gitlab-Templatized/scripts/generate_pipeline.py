@@ -34,6 +34,9 @@ REGISTRY_DATABASE    Registry DB name              (default: flyway_registry)
 REGISTRY_PORT        SQL Server port               (default: 1433)
 JDBC_PORT            Port for target JDBC URLs     (default: 1433)
 FILTER_LOCATION      Region to deploy to           (default: all)
+PIPELINE_MODE        migrate | undo                (default: migrate)
+                       migrate → check + migrate job per target
+                       undo    → undo job per target (reverts last migration)
 INCLUDE_REPLICAS     Include replicated DBs         (default: false)
 FLYWAY_LOCATIONS     Migration file path           (default: filesystem:./migrations)
 TEMPLATE_PROJECT     Templates repo path for child pipeline include
@@ -100,6 +103,10 @@ REGISTRY = {
 
 JDBC_PORT        = os.environ.get("JDBC_PORT", "1433")
 FILTER_LOCATION  = os.environ.get("FILTER_LOCATION", "all")
+# Which kind of child pipeline to emit:
+#   "migrate" (default) — one check + one migrate job per target
+#   "undo"              — one undo job per target (reverts the last migration)
+PIPELINE_MODE    = os.environ.get("PIPELINE_MODE", "migrate").lower()
 INCLUDE_REPLICAS = os.environ.get("INCLUDE_REPLICAS", "false").lower() in ("true", "1", "yes")
 FLYWAY_LOCATIONS = os.environ.get("FLYWAY_LOCATIONS", "filesystem:./migrations")
 OUTPUT_FILE      = os.environ.get("OUTPUT_FILE", "dynamic-pipeline.yml")
@@ -247,9 +254,11 @@ def build_pipeline(targets):
     else:
         include_entry = {"local": "/.gitlab/ci/flyway.yml"}
 
+    stages = ["undo"] if PIPELINE_MODE == "undo" else ["check", "migrate"]
+
     pipeline = {
         "include": [include_entry],
-        "stages": ["check", "migrate"],
+        "stages": stages,
         "variables": {
             "FLYWAY_LOCATIONS": FLYWAY_LOCATIONS,
         },
@@ -257,7 +266,7 @@ def build_pipeline(targets):
 
     if not targets:
         pipeline["no-targets-found"] = {
-            "stage": "migrate",
+            "stage": stages[-1],
             "script": [
                 'echo "WARNING: No deployment targets found."',
                 'echo "Check FILTER_LOCATION and registry availability."',
@@ -278,6 +287,21 @@ def build_pipeline(targets):
             "FLYWAY_USER":     "${" + TARGET_USER_VAR + "}",
             "FLYWAY_PASSWORD": "${" + TARGET_PASSWORD_VAR + "}",
         }
+
+        if PIPELINE_MODE == "undo":
+            # --- undo job (reverts the last applied migration on this target) ---
+            undo_base = f"undo:{loc}:{name}:{db}"
+            undo_name = unique_job_name(undo_base, seen_names)
+            seen_names.add(undo_name)
+
+            pipeline[undo_name] = {
+                "extends": ".flyway_undo",
+                "stage": "undo",
+                "tags": [runner_tag_for(target["location"])],
+                "variables": shared_vars,
+                "environment": {"name": env_name},
+            }
+            continue
 
         # --- check job (runs first) ---
         check_base = f"check:{loc}:{name}:{db}"
@@ -353,6 +377,7 @@ def main():
     print("Flyway Pipeline Generator")
     print("=" * 60)
     print(f"Registry : {REGISTRY['server']}:{REGISTRY['port']}/{REGISTRY['database']}")
+    print(f"Mode     : {PIPELINE_MODE}")
     print(f"Location : {FILTER_LOCATION}")
     print(f"Replicas : {'included' if INCLUDE_REPLICAS else 'excluded'}")
     print(f"JDBC port: {JDBC_PORT}")
@@ -401,7 +426,10 @@ def main():
     with open(OUTPUT_FILE, "w") as f:
         yaml.dump(pipeline, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-    print(f"Wrote {OUTPUT_FILE} with {len(targets)} targets ({len(targets)} check + {len(targets)} migrate jobs)")
+    if PIPELINE_MODE == "undo":
+        print(f"Wrote {OUTPUT_FILE} with {len(targets)} targets ({len(targets)} undo jobs)")
+    else:
+        print(f"Wrote {OUTPUT_FILE} with {len(targets)} targets ({len(targets)} check + {len(targets)} migrate jobs)")
 
 
 if __name__ == "__main__":

@@ -187,6 +187,7 @@ migrate:dev:
 | `.flyway_info` | `flyway info` | Show migration status |
 | `.flyway_migrate` | `flyway migrate` | Apply pending migrations + take snapshot |
 | `.flyway_migrate_full` | `flyway check` + `flyway migrate` | Combined check → migrate in one job |
+| `.flyway_undo` | `flyway undo` | Revert the last applied migration (manual; needs `U*__*.sql` undo scripts) |
 | `.flyway_repair` | `flyway repair` | Fix schema history (manual) |
 | `.flyway_clean` | `flyway clean` | Wipe database (manual, dev only) |
 | `.flyway_baseline` | `flyway baseline` | Baseline existing DB (manual) |
@@ -255,6 +256,12 @@ variables:
 
 Or override at run time: **Build → Pipelines → Run pipeline** → add variable `FILTER_LOCATION` = `London`.
 
+### Undoing the Last Migration
+
+The same generator drives a dynamic **undo** pipeline. Set `PIPELINE_MODE: "undo"` on the generate job and it emits one `flyway undo` job per target (extending `.flyway_undo`) instead of check + migrate — region filtering via `FILTER_LOCATION` works identically. See [`usage-examples/undo-dynamic.gitlab-ci.yml`](usage-examples/undo-dynamic.gitlab-ci.yml) for a ready-to-copy pipeline with per-region and all-regions buttons.
+
+Requirements: undo scripts (`U*__*.sql`) must exist alongside your versioned migrations, and undo is a Flyway Enterprise/Teams feature. `flyway undo` reverts only the most recent applied migration on each target by default; set `FLYWAY_TARGET` to undo down to a specific version.
+
 ## Runner Tags
 
 Generated jobs get runner tags from the target's `location`. Override precedence:
@@ -303,6 +310,7 @@ See [`usage-examples/`](usage-examples/):
 |------|----------|
 | `schema-model-dynamic.gitlab-ci.yml` | Schema-model + registry-driven dynamic deploy (dev → main) |
 | `staging-and-production.gitlab-ci.yml` | Dev → QA → Prod with per-region manual deploy buttons |
+| `undo-dynamic.gitlab-ci.yml` | Registry-driven `flyway undo` with per-region + all-regions buttons |
 
 ## Further Reading
 
