@@ -1,0 +1,405 @@
+# =============================================================================
+# Dev → Integration → QA → Prod Pipeline with Schema Model + Per-Region Deploys
+# =============================================================================
+# Four-branch promotion workflow:
+#   dev → integration → qa → prod
+#
+# Flow:
+#   1. Dev pushes schema-model changes to the dev branch
+#   2. Pipeline auto-generates migration scripts (flyway diff)
+#   3. Reviewer clicks ▶ Play to commit scripts and open MR → qa
+#   4. Merge into qa triggers QA pipeline with per-region deploy buttons
+#   5. Merge into prod triggers Prod pipeline with per-region deploy buttons
+#
+# Guard rails (run in MR pipelines):
+#   - Merge direction:  only forward merges allowed (dev→integration→qa→prod)
+#   - Migration files:  blocked in MRs targeting dev or integration
+#
+# ┌─────────┐  MR  ┌─────────────┐  ▶  ┌─────────┐  MR  ┌──────────┐
+# │   dev   │─────▶│ integration │────▶│  commit │─────▶│   qa     │
+# │(validate│      │  (auto      │     │(manual) │      │ (manual  │
+# │ schema) │      │   generate) │     │ + MR    │      │  deploy) │
+# └─────────┘      └─────────────┘     └─────────┘      └──────────┘
+#                                                    MR
+#                                                   ────▶ ┌──────────┐
+#                                                         │   prod   │
+#                                                         │ (manual  │
+#                                                         │  deploy) │
+#                                                         └──────────┘
+#
+# CI/CD Variables required (Settings → CI/CD → Variables):
+#   TARGET_DATABASE_JDBC         JDBC URL of the Dev database (diff source)
+#   TARGET_DATABASE_USER         Login for Dev + target databases
+#   TARGET_DATABASE_PASSWORD     *** (Protected + Masked)
+#   SHADOW_DATABASE_JDBC         JDBC URL of a shadow/build database
+#   QA_REGISTRY_SERVER           SQL Server for QA registry
+#   QA_REGISTRY_USER             Login for the QA registry
+#   QA_REGISTRY_PASSWORD         *** (Protected + Masked)
+#   QA_TARGET_DATABASE_USER      Login for QA target databases
+#   QA_TARGET_DATABASE_PASSWORD  *** (Protected + Masked)
+#   PROD_REGISTRY_SERVER         SQL Server for Prod registry
+#   PROD_REGISTRY_USER           Login for the Prod registry
+#   PROD_REGISTRY_PASSWORD       *** (Protected + Masked)
+#   FLYWAY_EMAIL                 your@email.com
+#   FLYWAY_TOKEN                 *** (Protected + Masked)
+#
+# Optional CI/CD Variables (see .env.example for full reference):
+#   GITLAB_EXTERNAL_URL          Browser-reachable URL (e.g. http://localhost:8080)
+#   QA_REGISTRY_DATABASE         default: flyway_registry
+#   QA_REGISTRY_PORT             default: 1433
+#   PROD_REGISTRY_DATABASE       default: flyway_registry
+#   PROD_REGISTRY_PORT           default: 1433
+#   JDBC_PORT                    default: 1433
+#   INCLUDE_REPLICAS             default: false
+#   FLYWAY_LOCATIONS             default: filesystem:./migrations
+#   RUNNER_TAG_MAP               JSON: {"London":"tag1","New York":"tag2"}
+#   TEMPLATE_PROJECT             default: root/templatized-with-parser
+#   TEMPLATE_REF                 default: main
+# =============================================================================
+
+include:
+  - project: 'root/templatized-with-parser'
+    ref: 'main'
+    file:
+      - '/.gitlab/ci/flyway.yml'
+      - '/.gitlab/ci/generate-deployment-scripts.yml'
+      - '/.gitlab/ci/merge-guard.yml'
+
+workflow:
+  name: '$PIPELINE_LABEL'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        PIPELINE_LABEL: "MR Guard — $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME → $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        PIPELINE_LABEL: "DEV — Validate Schema Model"
+    - if: $CI_COMMIT_BRANCH == "integration"
+      variables:
+        PIPELINE_LABEL: "INTEGRATION — Generate Migrations"
+    - if: $CI_COMMIT_BRANCH == "qa"
+      variables:
+        PIPELINE_LABEL: "QA — Deploy to QA Targets"
+    - if: $CI_COMMIT_BRANCH == "prod"
+      variables:
+        PIPELINE_LABEL: "PROD — Deploy to Production"
+
+stages:
+  - guard             # MR pipelines: enforce merge direction + migration rules
+  - generate          # dev: validate schema-model / integration: generate migrations
+  - review            # integration: commit scripts to branch (manual)
+  - pipeline          # qa/prod: generate per-region child pipelines
+  - deploy            # qa/prod: manual per-region deploy buttons
+
+variables:
+  TEMPLATE_PROJECT: "root/templatized-with-parser"
+  TEMPLATE_REF: "main"
+
+
+# =============================================================================
+# MR PIPELINE — Guard rails (run automatically on every merge request)
+# =============================================================================
+
+# Block reverse merges (e.g. prod → qa, qa → dev).
+guard:merge-direction:
+  extends: .merge_direction_guard
+  variables:
+    PROMOTION_ORDER: "dev,integration,qa,prod"
+
+# Block migration file changes in MRs targeting dev or integration.
+guard:migration-files:
+  extends: .migration_guard
+  variables:
+    MIGRATION_PROTECTED_BRANCHES: "dev,integration"
+
+
+# =============================================================================
+# DEV BRANCH — Validate schema-model only (no migration scripts here)
+# =============================================================================
+
+validate:schema-model:
+  extends: .flyway_validate_schema_model
+  stage: generate
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+
+# =============================================================================
+# INTEGRATION BRANCH — Generate & commit migration scripts
+# =============================================================================
+
+# Auto-generate migration SQL from schema-model changes.
+generate:scripts:
+  extends: .flyway_generate_migrations
+  stage: generate
+  rules:
+    - if: $CI_COMMIT_BRANCH == "integration" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+
+# Commit generated migration scripts to integration and open MR to qa.
+# Click ▶ Play after reviewing the generated SQL in the artifacts.
+# The scripts will be visible in the MR diff for code review.
+commit:scripts:
+  extends: .flyway_commit_migrations
+  stage: review
+  variables:
+    MR_TARGET_BRANCH: "qa"
+  needs: ["generate:scripts"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "integration" && $CI_COMMIT_MESSAGE !~ /auto-generated migration/
+      when: manual
+
+
+# =============================================================================
+# Shared template for pipeline generation
+# =============================================================================
+
+.generate_base:
+  stage: pipeline
+  image: python:3.12-slim
+  script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - git clone --depth 1 --branch "$TEMPLATE_REF"
+        "http://gitlab-ci-token:${CI_JOB_TOKEN}@172.30.0.2/${TEMPLATE_PROJECT}.git"
+        /tmp/templates
+    - pip install --quiet -r /tmp/templates/scripts/requirements.txt
+    # Force registry variables — project-level REGISTRY_SERVER would
+    # otherwise override the job-level value due to GitLab precedence.
+    - export REGISTRY_SERVER="${OVERRIDE_REGISTRY_SERVER}"
+    - export REGISTRY_USER="${OVERRIDE_REGISTRY_USER}"
+    - export REGISTRY_PASSWORD="${OVERRIDE_REGISTRY_PASSWORD}"
+    - echo "Registry server=${REGISTRY_SERVER}"
+    - echo "Generating pipeline for ${FILTER_LOCATION} → ${OUTPUT_FILE}"
+    - python /tmp/templates/scripts/generate_pipeline.py
+    - cat "${OUTPUT_FILE}"
+
+
+# =============================================================================
+# QA BRANCH — Generate & deploy to QA targets
+# =============================================================================
+
+generate:qa:all:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
+    FILTER_LOCATION:   "all"
+    OUTPUT_FILE:       "dynamic-pipeline-qa-all.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-qa-all.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+
+generate:qa:london:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
+    FILTER_LOCATION:   "London"
+    OUTPUT_FILE:       "dynamic-pipeline-qa-london.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-qa-london.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+
+generate:qa:new-york:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
+    FILTER_LOCATION:   "New York"
+    OUTPUT_FILE:       "dynamic-pipeline-qa-new-york.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-qa-new-york.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+
+generate:qa:tokyo:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$QA_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$QA_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$QA_REGISTRY_PASSWORD"
+    TARGET_USER_VAR:     "QA_TARGET_DATABASE_USER"
+    TARGET_PASSWORD_VAR: "QA_TARGET_DATABASE_PASSWORD"
+    FILTER_LOCATION:   "Tokyo"
+    OUTPUT_FILE:       "dynamic-pipeline-qa-tokyo.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-qa-tokyo.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+
+# --- QA Deploy buttons (manual, per-region) ---
+
+deploy:qa:all:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-qa-all.yml
+        job: generate:qa:all
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+      when: manual
+      allow_failure: true
+
+deploy:qa:london:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-qa-london.yml
+        job: generate:qa:london
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+      when: manual
+      allow_failure: true
+
+deploy:qa:new-york:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-qa-new-york.yml
+        job: generate:qa:new-york
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+      when: manual
+      allow_failure: true
+
+deploy:qa:tokyo:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-qa-tokyo.yml
+        job: generate:qa:tokyo
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qa"
+      when: manual
+      allow_failure: true
+
+# After successful QA deploy, create an MR from qa → prod manually.
+
+
+# =============================================================================
+# PROD BRANCH — Generate & deploy to Production targets
+# =============================================================================
+
+generate:prod:all:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    FILTER_LOCATION:   "all"
+    OUTPUT_FILE:       "dynamic-pipeline-prod-all.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-prod-all.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+
+generate:prod:london:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    FILTER_LOCATION:   "London"
+    OUTPUT_FILE:       "dynamic-pipeline-prod-london.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-prod-london.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+
+generate:prod:new-york:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    FILTER_LOCATION:   "New York"
+    OUTPUT_FILE:       "dynamic-pipeline-prod-new-york.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-prod-new-york.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+
+generate:prod:tokyo:
+  extends: .generate_base
+  variables:
+    OVERRIDE_REGISTRY_SERVER:   "$PROD_REGISTRY_SERVER"
+    OVERRIDE_REGISTRY_USER:     "$PROD_REGISTRY_USER"
+    OVERRIDE_REGISTRY_PASSWORD: "$PROD_REGISTRY_PASSWORD"
+    FILTER_LOCATION:   "Tokyo"
+    OUTPUT_FILE:       "dynamic-pipeline-prod-tokyo.yml"
+  artifacts:
+    paths: ["dynamic-pipeline-prod-tokyo.yml"]
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+
+# --- Prod Deploy buttons (manual, per-region) ---
+
+deploy:prod:all:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-prod-all.yml
+        job: generate:prod:all
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+      allow_failure: true
+
+deploy:prod:london:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-prod-london.yml
+        job: generate:prod:london
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+      allow_failure: true
+
+deploy:prod:new-york:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-prod-new-york.yml
+        job: generate:prod:new-york
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+      allow_failure: true
+
+deploy:prod:tokyo:
+  stage: deploy
+  trigger:
+    include:
+      - artifact: dynamic-pipeline-prod-tokyo.yml
+        job: generate:prod:tokyo
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod"
+      when: manual
+      allow_failure: true

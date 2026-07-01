@@ -256,11 +256,139 @@ variables:
 
 Or override at run time: **Build → Pipelines → Run pipeline** → add variable `FILTER_LOCATION` = `London`.
 
-### Undoing the Last Migration
+## Undo Pipeline
 
-The same generator drives a dynamic **undo** pipeline. Set `PIPELINE_MODE: "undo"` on the generate job and it emits one `flyway undo` job per target (extending `.flyway_undo`) instead of check + migrate — region filtering via `FILTER_LOCATION` works identically. See [`usage-examples/undo-dynamic.gitlab-ci.yml`](usage-examples/undo-dynamic.gitlab-ci.yml) for a ready-to-copy pipeline with per-region and all-regions buttons.
+Undo reverts the most recently applied migration on your targets. It runs as a
+**separate pipeline** — never as part of the deploy pipeline — so it has its own
+run, its own approval gate, and its own audit trail. The deploy pipeline never
+shows undo jobs, and the undo pipeline never shows deploy jobs.
 
-Requirements: undo scripts (`U*__*.sql`) must exist alongside your versioned migrations, and undo is a Flyway Enterprise/Teams feature. `flyway undo` reverts only the most recent applied migration on each target by default; set `FLYWAY_TARGET` to undo down to a specific version.
+The same generator (`generate_pipeline.py`) powers it: set `PIPELINE_MODE: "undo"`
+and it emits one `flyway undo` job per target (extending `.flyway_undo`) instead
+of check + migrate. Region selection via `FILTER_LOCATION` works exactly as it
+does for deploys.
+
+### What lives where
+
+The undo pipeline is a collaboration between **this templates repo** (the reusable
+building blocks) and **your consumer project** (the control structure). Neither
+half is the whole pipeline on its own:
+
+| Piece | Lives in | What it provides |
+|-------|----------|------------------|
+| `.flyway_undo` job template | **templates repo** — [`.gitlab/ci/flyway.yml`](.gitlab/ci/flyway.yml) | Runs `flyway undo` (+ snapshot/info); manual by default |
+| `PIPELINE_MODE=undo` | **templates repo** — [`scripts/generate_pipeline.py`](scripts/generate_pipeline.py) | Emits one undo job per registry target |
+| `PIPELINE_TYPE` gating | **consumer project** — its `.gitlab-ci.yml` | Makes undo a *separate* pipeline from deploy |
+| `generate:undo:*` jobs | **consumer project** | Call the generator per region with `PIPELINE_MODE=undo` |
+| `approve:undo:*` gate | **consumer project** | The manual approval gate |
+| `undo:*` trigger buttons | **consumer project** | Per-region + all-regions undo, gated behind approval |
+
+In other words, the templates repo knows *how to undo one database*; the consumer
+project decides *when, where, and with what approvals*. The consumer-side half is
+illustrated fully in the sample consumer pipeline
+[`usage-examples/undo-dynamic.gitlab-ci.yml`](usage-examples/undo-dynamic.gitlab-ci.yml),
+and the key jobs are walked through under [Wiring it into a consumer pipeline](#wiring-it-into-a-consumer-pipeline) below.
+
+### Prerequisites
+
+- **Undo scripts** (`U*__*.sql`) must sit alongside your versioned migrations —
+  Flyway can only undo a version that ships an undo script.
+- Undo is a **Flyway Enterprise/Teams** feature (your `FLYWAY_TOKEN` must cover it).
+- By default `flyway undo` reverts only the **last** applied migration on each
+  target. To undo down to a specific version, set `FLYWAY_TARGET` (e.g.
+  `FLYWAY_TARGET: "3"` undoes everything applied above V3).
+
+### How to run it
+
+The undo pipeline is gated by a top-level `PIPELINE_TYPE` variable. Normal runs
+default to `deploy`; you launch undo on demand:
+
+1. **Build → Pipelines → Run pipeline**
+2. Pick the branch you want to undo on (e.g. `qa` or `prod`)
+3. Add a variable: **`PIPELINE_TYPE`** = **`undo`**
+4. **Run pipeline**
+
+You get a pipeline containing only the undo flow:
+
+```
+generate:undo:<region>   ← auto: queries the registry, builds the undo plan
+        │
+        ▼
+approve:undo:<env>       ← manual approval gate — blocks everything below
+        │
+        ▼
+undo:<region>            ← manual, per-region: all / london / new-york / tokyo
+                            each triggers a child pipeline of `flyway undo` jobs
+```
+
+Click the approval gate first, then the specific region button(s) you want to
+undo — or `undo:*:all` to undo every region.
+
+### Wiring it into a consumer pipeline
+
+Gate every existing (deploy-side) job with `$PIPELINE_TYPE != "undo"` so they sit
+out undo runs, and add the undo jobs gated on `$PIPELINE_TYPE == "undo"`. Set the
+default in your top-level `variables:`:
+
+```yaml
+variables:
+  PIPELINE_TYPE: "deploy"   # overridden to "undo" at run time
+
+# --- deploy-side job: excluded from undo runs ---
+generate:qa:all:
+  extends: .generate_base
+  variables:
+    FILTER_LOCATION: "all"
+    OUTPUT_FILE: "dynamic-pipeline-qa-all.yml"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "qa" && $PIPELINE_TYPE != "undo"'
+
+# --- undo plan generation: only in undo runs ---
+generate:undo:qa:all:
+  extends: .generate_base
+  variables:
+    PIPELINE_MODE: "undo"           # ← emit `flyway undo` jobs
+    FILTER_LOCATION: "all"
+    OUTPUT_FILE: "undo-pipeline-qa-all.yml"
+  artifacts:
+    paths: ["undo-pipeline-qa-all.yml"]
+  rules:
+    - if: '$PIPELINE_TYPE == "undo" && $CI_COMMIT_BRANCH == "qa"'
+
+# --- approval gate: blocks the undo buttons until played ---
+approve:undo:qa:
+  stage: approve
+  script: [ 'echo "QA undo approved by ${GITLAB_USER_LOGIN}"' ]
+  rules:
+    - if: '$PIPELINE_TYPE == "undo" && $CI_COMMIT_BRANCH == "qa"'
+      when: manual
+      allow_failure: false
+
+# --- per-region undo button (gated behind the approval) ---
+undo:qa:all:
+  stage: undo
+  needs: ["generate:undo:qa:all", "approve:undo:qa"]
+  trigger:
+    include:
+      - artifact: undo-pipeline-qa-all.yml
+        job: generate:undo:qa:all
+    strategy: depend
+  rules:
+    - if: '$PIPELINE_TYPE == "undo" && $CI_COMMIT_BRANCH == "qa"'
+      when: manual
+```
+
+Add `approve` and `undo` to your `stages:` list.
+
+**Two ways to keep undo separate** — pick whichever fits your repo:
+
+- **Variable-gated (shown above):** undo jobs live in the same `.gitlab-ci.yml`
+  as deploy but are gated by `PIPELINE_TYPE`, so only one set runs per pipeline.
+  Launch via *Run pipeline* + `PIPELINE_TYPE=undo`. Lowest friction.
+- **Standalone config:** undo lives in its own file that is *entirely* an undo
+  pipeline (no gating needed). Run it via a pipeline schedule or trigger. See
+  [`usage-examples/undo-dynamic.gitlab-ci.yml`](usage-examples/undo-dynamic.gitlab-ci.yml)
+  for a complete, ready-to-copy example with per-region and all-regions buttons.
 
 ## Runner Tags
 
