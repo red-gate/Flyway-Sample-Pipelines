@@ -258,3 +258,23 @@ deploy:tokyo:
     - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
       when: manual
       allow_failure: true
+# ---------------------------------------------------------------------------
+# 5. Deploy — single-job parallel runner
+#    Alternative to deploy:all that uses ONE GitLab job and runs Flyway
+#    against every filtered target concurrently via a Python thread pool
+#    (scripts/flyway_parallel_run.py).
+# ---------------------------------------------------------------------------
+deploy:all:parallel:
+  extends: .flyway_base
+  stage: deploy
+  variables:
+    FILTER_LOCATION: "all"
+    # Cap concurrent flyway invocations; tune for runner CPU/memory.
+    MAX_WORKERS: "8"
+  script:
+    - apk add --no-cache python3 py3-pip py3-pymssql py3-yaml > /dev/null
+    - python3 /tmp/templates/scripts/flyway_parallel_run.py
+  rules:
+    - if: $CI_COMMIT_BRANCH == $DEPLOY_BRANCH
+      when: manual
+      allow_failure: true
