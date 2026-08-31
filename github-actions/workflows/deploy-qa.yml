@@ -24,7 +24,7 @@ jobs:
         shell: cmd # Default shell. Use Windows Command Prompt
 
     steps: # Steps are the individual tasks that are executed in the job
-      - uses: actions/checkout@v4 # Check out the repository
+      - uses: actions/checkout@v5 # Check out the repository
         with: # Additional options for the action
           ref: "QA" # Branch to check out
 
