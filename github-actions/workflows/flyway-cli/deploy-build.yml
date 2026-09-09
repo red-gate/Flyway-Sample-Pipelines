@@ -44,21 +44,21 @@ jobs:
       # Runs the Flyway Clean command against the Build database.
       # -cleanDisabled=false is passed only on this step - clean stays disabled everywhere else.
       - name: Clean Build DB
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info clean info -cleanDisabled="false" -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" info clean info -cleanDisabled="false" -user="${{ env.DB_USER_BUILD }}" -password="${{ env.DB_USER_PW_BUILD }}" -url="${{ env.JDBC_BUILD }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       - name: Migrate Build # Applies all pending migrations from scratch
         # To use username and password instead of windows integrated security, ensure SQL Server is configured to allow SQL Server authentication. In SSMS check Server Properties > Security and select "SQL Server and Windows Authentication mode".
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" migrate -user="${{ env.DB_USER_BUILD }}" -password="${{ env.DB_USER_PW_BUILD }}" -url="${{ env.JDBC_BUILD }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       - name: Rollback Build # Validates the undo scripts by rolling back what we just deployed
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} undo -user=${{ env.DB_USER_BUILD }} -password=${{ env.DB_USER_PW_BUILD }} -url=${{ env.JDBC_BUILD }} -target=${{ env.FIRST_UNDO_SCRIPT }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" undo -user="${{ env.DB_USER_BUILD }}" -password="${{ env.DB_USER_PW_BUILD }}" -url="${{ env.JDBC_BUILD }}" -target="${{ env.FIRST_UNDO_SCRIPT }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       # Pre-deployment check report against QA, for review during the pull request.
       # -code    static code analysis      -changes  deployment changes vs build DB
       # -drift   schema drift vs snapshot  -dryrun   SQL that would run against QA
       # cleanDisabled is scoped to the throwaway check environment - QA is never clean-enabled.
       - name: Create QA Check Report
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -user=${{ env.DB_USER_QA }} -password=${{ env.DB_USER_PW_QA }} -url=${{ env.JDBC_QA }} -environments.check.user=${{ env.DB_USER_CHECK }} -environments.check.password=${{ env.DB_USER_PW_CHECK }} -environments.check.url="${{ env.JDBC_CHECK }}" -environments.check.flyway.cleanDisabled=false -check.buildEnvironment="check" -reportFilename="${{ github.workspace }}\reports\QA-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" check -code -changes -drift -dryrun -user="${{ env.DB_USER_QA }}" -password="${{ env.DB_USER_PW_QA }}" -url="${{ env.JDBC_QA }}" -environments.check.user="${{ env.DB_USER_CHECK }}" -environments.check.password="${{ env.DB_USER_PW_CHECK }}" -environments.check.url="${{ env.JDBC_CHECK }}" -environments.check.flyway.cleanDisabled=false -check.buildEnvironment="check" -reportFilename="${{ github.workspace }}/reports/QA-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       # The CLI does not upload reports automatically - publish them as a workflow artifact.
       # if: always() uploads the report even when the check step fails - that is

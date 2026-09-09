@@ -44,7 +44,7 @@ jobs:
       # -drift   schema drift vs snapshot  -dryrun   SQL that would run against PROD
       # cleanDisabled is scoped to the throwaway check environment - PROD is never clean-enabled.
       - name: Create Drift and Change Report
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} check -code -changes -drift -dryrun -user=${{ env.DB_USER_PROD2 }} -password=${{ env.DB_USER_PW_PROD2 }} -url=${{ env.JDBC_PROD2 }} -environments.check.user=${{ env.DB_USER_CHECK }} -environments.check.password=${{ env.DB_USER_PW_CHECK }} -environments.check.url="${{ env.JDBC_CHECK }}" -environments.check.flyway.cleanDisabled=false -check.buildEnvironment="check" -reportFilename="${{ github.workspace }}\reports\Prod-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" check -code -changes -drift -dryrun -user="${{ env.DB_USER_PROD2 }}" -password="${{ env.DB_USER_PW_PROD2 }}" -url="${{ env.JDBC_PROD2 }}" -environments.check.user="${{ env.DB_USER_CHECK }}" -environments.check.password="${{ env.DB_USER_PW_CHECK }}" -environments.check.url="${{ env.JDBC_CHECK }}" -environments.check.flyway.cleanDisabled=false -check.buildEnvironment="check" -reportFilename="${{ github.workspace }}/reports/Prod-Run-${{ github.run_id }}-Check-Report.html" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         continue-on-error: true # Report must never block the deploy jobs
 
       # The CLI does not upload reports automatically - publish them as a workflow artifact.
@@ -76,7 +76,7 @@ jobs:
 
       - name: Deploy Prod 1 # Applies pending migrations
         # To use username and password instead of windows integrated security, ensure SQL Server is configured to allow SQL Server authentication. In SSMS check Server Properties > Security and select "SQL Server and Windows Authentication mode".
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} migrate -user=${{ env.DB_USER_PROD1 }} -password=${{ env.DB_USER_PW_PROD1 }} -url=${{ env.JDBC_PROD1 }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" migrate -user="${{ env.DB_USER_PROD1 }}" -password="${{ env.DB_USER_PW_PROD1 }}" -url="${{ env.JDBC_PROD1 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
   flyway-deploy-prod-2:
     name: Flyway Deploy Production 2
@@ -91,7 +91,7 @@ jobs:
 
       # Multi-tenant deployment. PROD 2
       - name: Deploy Prod 2 # Applies pending migrations, with info before and after
-        run: flyway -email=${{ env.EMAIL }} -token=${{ env.TOKEN }} info migrate info -user=${{ env.DB_USER_PROD2 }} -password=${{ env.DB_USER_PW_PROD2 }} -url=${{ env.JDBC_PROD2 }} -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" info migrate info -user="${{ env.DB_USER_PROD2 }}" -password="${{ env.DB_USER_PW_PROD2 }}" -url="${{ env.JDBC_PROD2 }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
         # Multi-tenant deployment. Add further tenant deployments here
 
         # Sample for integrated security instead of user name and password
