@@ -1,0 +1,37 @@
+// Minimal Flyway Jenkinsfile for a self-hosted Windows agent.
+// One target database. Two commands: migrate, then undo a single cherry-picked version.
+// The Flyway command line must be installed on the agent and on the PATH.
+
+pipeline {
+   agent any
+
+   environment {
+      FLYWAY_LICENSE_KEY = "" // Your Flyway licence key
+
+      undoVersion = "002_345345434" // The migration version to undo - a matching U002__*.sql script must exist
+
+      flywayUrl       = "-url=jdbc:sqlserver://Localhost;databaseName=DatabaseName;encrypt=false"
+      flywayUser      = "-user=UserName"
+      flywayPassword  = "-password=SecurePasswordGoesHere" // For security, pull this from Jenkins credentials instead
+      flywayLocations = "-locations=filesystem:\"${env.WORKSPACE}\\migrations\""
+      flywayArgs      = "${env.flywayUrl} ${env.flywayUser} ${env.flywayPassword} ${env.flywayLocations} -cleanDisabled=true"
+   }
+
+   stages {
+      stage('Migrate') {
+         steps {
+            bat "flyway migrate ${env.flywayArgs}"
+         }
+      }
+
+      stage('Undo') {
+         input {
+            message "Undo version ${env.undoVersion}?"
+            ok "Undo" // Text on the approval button
+         }
+         steps {
+            bat "flyway undo ${env.flywayArgs} -cherryPick=\"${env.undoVersion}\""
+         }
+      }
+   }
+}
