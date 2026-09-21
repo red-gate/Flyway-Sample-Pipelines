@@ -1,0 +1,156 @@
+name: Flyway GitHub Actions Production Workflow # Workflow name
+# Uses the official Redgate actions (red-gate/setup-flyway + red-gate/flyway-actions).
+# No pre-installed Flyway CLI needed - setup-flyway downloads and licenses it per job.
+# For the equivalent pipeline calling a pre-installed Flyway CLI, see the flyway-cli folder.
+on:
+  push:
+    branches:
+      - Production
+    paths:
+      - "migrations/**"
+
+# Environment Variables
+env:
+  # Repository Variables - Create these in Settings > Secrets and variables > Actions > Variables
+  EMAIL: ${{ vars.USER_EMAIL }} # Email registered to your Flyway license
+  JDBC_PROD1: ${{ vars.JDBC_PROD1 }} # e.g. jdbc:sqlserver://<host>;databaseName=<Prod1DB>;trustServerCertificate=true
+  JDBC_PROD2: ${{ vars.JDBC_PROD2 }}
+  JDBC_CHECK: ${{ vars.JDBC_CHECK }} # Throwaway build DB used by the check report - wiped every run
+
+  # Repository Secrets - Create these in Settings > Secrets and variables > Actions > Secrets
+  TOKEN: ${{ secrets.FLYWAY_TOKEN }} # Flyway license token (PAT)
+  DB_USER_CHECK: ${{ secrets.DB_USER_CHECK }}
+  DB_USER_PW_CHECK: ${{ secrets.DB_USER_PW_CHECK }}
+  DB_USER_PROD1: ${{ secrets.DB_USER_PROD1 }}
+  DB_USER_PW_PROD1: ${{ secrets.DB_USER_PW_PROD1 }}
+  DB_USER_PROD2: ${{ secrets.DB_USER_PROD2 }}
+  DB_USER_PW_PROD2: ${{ secrets.DB_USER_PW_PROD2 }}
+  # End of Environment Secrets #
+
+# Required so the code review results can be uploaded to GitHub Code Scanning
+permissions:
+  contents: read
+  security-events: write
+
+# jobs are the steps executed in the workflow
+jobs:
+  flyway-report:
+    name: Generate Report
+    runs-on: self-hosted # Runner to execute the job
+
+    steps: # Steps run strictly in order and stop on the first failure
+      - uses: actions/checkout@v5 # Checks out the commit that triggered this run
+
+      # NOTE: Windows runners only - not required on Linux runners, where bash is native.
+      # Git for Windows' default install puts only Git\cmd on PATH (git.exe, no bash.exe),
+      # so `shell: bash` inside the Flyway actions resolves to WSL's bash, which cannot
+      # read the Windows script path. This puts Git Bash ahead of it.
+      - name: Add Git Bash to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "C:\Program Files\Git\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Program Files\Git\usr\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+
+      # Installs the Flyway CLI on the runner and adds it to PATH
+      - name: Setup Flyway
+        uses: red-gate/setup-flyway@v3
+        with:
+          version: "13.4.0" # Pin for reproducible runs - bump deliberately
+          edition: enterprise
+          i-agree-to-the-eula: true
+          email: ${{ env.EMAIL }}
+          token: ${{ env.TOKEN }}
+
+      # Code analysis, changes, drift and dry run all run by default - no flags needed.
+      # The report is uploaded as a workflow artifact automatically.
+      - name: Create Drift and Change Report
+        uses: red-gate/flyway-actions/migrations/checks@v2
+        with:
+          target-url: ${{ env.JDBC_PROD2 }}
+          target-user: ${{ env.DB_USER_PROD2 }}
+          target-password: ${{ env.DB_USER_PW_PROD2 }}
+          build-environment: check
+          build-url: ${{ env.JDBC_CHECK }}
+          build-user: ${{ env.DB_USER_CHECK }}
+          build-password: ${{ env.DB_USER_PW_CHECK }}
+          build-ok-to-erase: true # Check DB is a throwaway shadow, cleaned each run
+          fail-on-drift: false # Report only - never block the deploy jobs
+          fail-on-code-review: false # Report only - never block the deploy jobs
+          pre-deployment-report-name: flyway-prod-pre-deployment-report
+
+  # GitHub Actions can support manual approval steps like some other CI/CD tools (e.g., Azure DevOps or GitLab).
+  # You can achieve similar functionality using environments with required reviewers or by integrating external approval mechanisms.
+  # Alternatively maybe a Review Branch prior to pulling to Production or another downstream environment.
+
+  # Prod 1 and Prod 2 are separate simultaneous jobs; both wait for the report job.
+  # Drift check and snapshot are left at their defaults (enabled) on both deploy jobs.
+  # Drift is fatal on deploy - an out-of-band hotfix aborts the deployment rather than
+  # being silently absorbed into the snapshot baseline.
+  flyway-deploy-prod-1:
+    name: Flyway Deploy Production 1
+    runs-on: self-hosted # Runner to execute the job
+    needs: flyway-report # This job depends on the completion of the flyway-report job
+
+    steps: # Steps run strictly in order and stop on the first failure
+      - uses: actions/checkout@v5 # Checks out the commit that triggered this run
+
+      # NOTE: Windows runners only - see comment in the flyway-report job above.
+      - name: Add Git Bash to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "C:\Program Files\Git\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Program Files\Git\usr\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Setup Flyway
+        uses: red-gate/setup-flyway@v3
+        with:
+          version: "13.4.0" # Pin for reproducible runs - bump deliberately
+          edition: enterprise
+          i-agree-to-the-eula: true
+          email: ${{ env.EMAIL }}
+          token: ${{ env.TOKEN }}
+
+      - name: Deploy Prod 1 # Applies pending migrations
+        uses: red-gate/flyway-actions/migrations/deploy@v2
+        with:
+          target-url: ${{ env.JDBC_PROD1 }}
+          target-user: ${{ env.DB_USER_PROD1 }}
+          target-password: ${{ env.DB_USER_PW_PROD1 }}
+          deployment-report-name: flyway-prod1-deployment-report
+
+  flyway-deploy-prod-2:
+    name: Flyway Deploy Production 2
+    runs-on: self-hosted # Runner to execute the job
+    needs: flyway-report # This job depends on the completion of the flyway-report job
+
+    steps: # Steps run strictly in order and stop on the first failure
+      - uses: actions/checkout@v5 # Checks out the commit that triggered this run
+
+      # NOTE: Windows runners only - see comment in the flyway-report job above.
+      - name: Add Git Bash to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "C:\Program Files\Git\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Program Files\Git\usr\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Setup Flyway
+        uses: red-gate/setup-flyway@v3
+        with:
+          version: "13.4.0" # Pin for reproducible runs - bump deliberately
+          edition: enterprise
+          i-agree-to-the-eula: true
+          email: ${{ env.EMAIL }}
+          token: ${{ env.TOKEN }}
+
+      # Multi-tenant deployment. PROD 2
+      - name: Deploy Prod 2 # Applies pending migrations
+        uses: red-gate/flyway-actions/migrations/deploy@v2
+        with:
+          target-url: ${{ env.JDBC_PROD2 }}
+          target-user: ${{ env.DB_USER_PROD2 }}
+          target-password: ${{ env.DB_USER_PW_PROD2 }}
+          deployment-report-name: flyway-prod2-deployment-report
+        # Multi-tenant deployment. Add further tenant deployments here

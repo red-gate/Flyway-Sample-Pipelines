@@ -1,0 +1,109 @@
+# Clean -> Migrate -> Rollback the Build DB, then report on QA. See README.md.
+
+name: Flyway Azure DevOps Build Pipeline
+
+trigger:
+  branches:
+    include:
+      - development
+  paths:
+    include:
+      - migrations/*
+
+pool:
+  name: $(AGENT_POOL)
+
+# All values come from variable groups in Pipelines > Library.
+# See INSTRUCTIONS.md for the keys each group needs.
+variables:
+  - group: newworlddb_pipeline_vars # AGENT_POOL, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  - group: redgate_global_vars # FLYWAY_EMAIL, FLYWAY_TOKEN
+  - group: newworlddb_build_credentials # build_database_JDBC, build_userName, build_password
+  - group: newworlddb_qa_credentials # qa_database_JDBC, qa_userName, qa_password
+  - group: newworlddb_check_credentials # check_database_JDBC, check_userName, check_password
+
+  - name: FLYWAY
+    value: >-
+      flyway -email="$(FLYWAY_EMAIL)" -token="$(FLYWAY_TOKEN)"
+      -locations="filesystem:$(Build.SourcesDirectory)\migrations"
+      -configFiles="$(Build.SourcesDirectory)\flyway.toml"
+      -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)
+      -errorOverrides=S0001:0:I-
+
+  # Blank these out to use Windows integrated security instead - see README.md
+  - name: BUILD_LOGIN
+    value: -user="$(build_userName)" -password="$(build_password)"
+  - name: QA_LOGIN
+    value: -user="$(qa_userName)" -password="$(qa_password)"
+  - name: CHECK_LOGIN
+    value: -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)"
+
+stages:
+  - stage: Build
+    displayName: Build Database
+    jobs:
+      - job: BuildDatabase
+        displayName: Build Database
+        steps:
+          - checkout: self
+            clean: true
+
+          # Reset the Build DB to empty, so every run replays the full migration history
+          - script: $(FLYWAY) $(BUILD_LOGIN) info clean info -url="$(build_database_JDBC)"
+            displayName: Clean Build DB
+            env:
+              FLYWAY_CLEAN_DISABLED: false
+
+          # Fails if any versioned migration script is broken
+          - script: $(FLYWAY) $(BUILD_LOGIN) migrate info -url="$(build_database_JDBC)"
+            displayName: Migrate Build DB
+
+          # Fails if any undo script is broken
+          - script: $(FLYWAY) $(BUILD_LOGIN) undo info -url="$(build_database_JDBC)" -target="$(FIRST_UNDO_SCRIPT)"
+            displayName: Rollback Build DB
+
+  # Only runs if the Build stage passed, so a report existing proves the scripts
+  # migrate and roll back cleanly
+  - stage: Report
+    displayName: QA Check Report
+    dependsOn: Build
+    jobs:
+      - job: QaCheckReport
+        displayName: QA Check Report
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: >-
+              $(FLYWAY) $(QA_LOGIN) $(CHECK_LOGIN)
+              check -code -changes -drift -dryrun -url="$(qa_database_JDBC)"
+              -environments.check.url="$(check_database_JDBC)"
+              -environments.check.flyway.cleanDisabled=false
+              -check.buildEnvironment="check"
+              -reportFilename="$(System.ArtifactsDirectory)\QA-$(Build.BuildId)-Check-Report.html"
+            displayName: QA Check Report
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+              FLYWAY_ENV_NATIVE_SQLFLUFF: true
+
+          # =================================================================
+          # ON-PREM ONLY. PublishBuildArtifacts is required by Azure DevOps
+          # Server. On Azure DevOps Services (cloud), comment this task out and
+          # uncomment the PublishPipelineArtifact version below. Running
+          # PublishPipelineArtifact on-prem fails with "Pipeline Artifact Task
+          # is not supported in on-premises."
+          # =================================================================
+          - task: PublishBuildArtifacts@1
+            displayName: Publish QA Check Report
+            condition: always()
+            inputs:
+              ArtifactName: qa-check-report
+              PathtoPublish: $(System.ArtifactsDirectory)
+
+          # CLOUD (Azure DevOps Services) equivalent - unsupported on-prem:
+          # - task: PublishPipelineArtifact@1
+          #   displayName: Publish QA Check Report
+          #   condition: always()
+          #   inputs:
+          #     artifactName: qa-check-report
+          #     targetPath: $(System.ArtifactsDirectory)

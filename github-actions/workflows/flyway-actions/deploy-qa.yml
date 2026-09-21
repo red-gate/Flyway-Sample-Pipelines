@@ -1,0 +1,60 @@
+name: Flyway GitHub Actions QA Workflow
+# Uses the official Redgate actions (red-gate/setup-flyway + red-gate/flyway-actions).
+# No pre-installed Flyway CLI needed - setup-flyway downloads and licenses it per job.
+# For the equivalent pipeline calling a pre-installed Flyway CLI, see the flyway-cli folder.
+on:
+  push:
+    branches:
+      - QA
+    paths:
+      - "migrations/**"
+
+# Environment Variables
+env:
+  # Repository Variables - Create these in Settings > Secrets and variables > Actions > Variables
+  EMAIL: ${{ vars.USER_EMAIL }} # Email registered to your Flyway license
+  JDBC_QA: ${{ vars.JDBC_QA }} # e.g. jdbc:sqlserver://<host>;databaseName=<QADB>;trustServerCertificate=true
+
+  # Repository Secrets - Create these in Settings > Secrets and variables > Actions > Secrets
+  TOKEN: ${{ secrets.FLYWAY_TOKEN }} # Flyway license token (PAT)
+  DB_USER_QA: ${{ secrets.DB_USER_QA }}
+  DB_USER_PW_QA: ${{ secrets.DB_USER_PW_QA }}
+
+jobs:
+  flyway-deploy-qa:
+    runs-on: self-hosted # Runner to execute the job
+    # runs-on: ubuntu-latest
+
+    steps: # Steps run strictly in order and stop on the first failure
+      - uses: actions/checkout@v5 # Checks out the commit that triggered this run
+
+      # NOTE: Windows runners only - not required on Linux runners, where bash is native.
+      # Git for Windows' default install puts only Git\cmd on PATH (git.exe, no bash.exe),
+      # so `shell: bash` inside the Flyway actions resolves to WSL's bash, which cannot
+      # read the Windows script path. This puts Git Bash ahead of it.
+      - name: Add Git Bash to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "C:\Program Files\Git\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Program Files\Git\usr\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+
+      # Installs the Flyway CLI on the runner and adds it to PATH
+      - name: Setup Flyway
+        uses: red-gate/setup-flyway@v3
+        with:
+          version: "13.4.0" # Pin for reproducible runs - bump deliberately
+          edition: enterprise
+          i-agree-to-the-eula: true
+          email: ${{ env.EMAIL }}
+          token: ${{ env.TOKEN }}
+
+      # Drift check and snapshot are left at their defaults (enabled), so each QA
+      # deployment stores a snapshot - this is what makes drift detection meaningful.
+      - name: Deploy to QA
+        uses: red-gate/flyway-actions/migrations/deploy@v2
+        with:
+          target-url: ${{ env.JDBC_QA }}
+          target-user: ${{ env.DB_USER_QA }}
+          target-password: ${{ env.DB_USER_PW_QA }}
+          deployment-report-name: flyway-qa-deployment-report

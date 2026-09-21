@@ -1,0 +1,135 @@
+# Report on Production, pause for approval, then deploy to both tenants. See README.md.
+
+name: Flyway Azure DevOps Production Pipeline
+
+trigger:
+  branches:
+    include:
+      - prod
+  paths:
+    include:
+      - migrations/*
+
+pool:
+  name: $(AGENT_POOL)
+
+# All values come from variable groups in Pipelines > Library.
+# See INSTRUCTIONS.md for the keys each group needs.
+variables:
+  - group: newworlddb_pipeline_vars # AGENT_POOL, BASELINE_VERSION, FIRST_UNDO_SCRIPT
+  - group: redgate_global_vars # FLYWAY_EMAIL, FLYWAY_TOKEN
+  - group: newworlddb_prod_credentials # prod_database_JDBC, prod_userName, prod_password
+  - group: newworlddb_check_credentials # check_database_JDBC, check_userName, check_password
+
+  - name: FLYWAY
+    value: >-
+      flyway -email="$(FLYWAY_EMAIL)" -token="$(FLYWAY_TOKEN)"
+      -locations="filesystem:$(Build.SourcesDirectory)\migrations"
+      -configFiles="$(Build.SourcesDirectory)\flyway.toml"
+      -baselineOnMigrate=true -baselineVersion=$(BASELINE_VERSION)
+      -errorOverrides=S0001:0:I-
+
+  # Blank these out to use Windows integrated security instead - see README.md
+  - name: PROD_LOGIN
+    value: -user="$(prod_userName)" -password="$(prod_password)"
+  - name: CHECK_LOGIN
+    value: -environments.check.user="$(check_userName)" -environments.check.password="$(check_password)"
+
+  # --- SECOND PROD TENANT - comment out this block to deploy one tenant only -
+  - group: newworlddb_prod2_credentials # prod2_database_JDBC, prod2_userName, prod2_password
+
+  - name: PROD2_LOGIN
+    value: -user="$(prod2_userName)" -password="$(prod2_password)"
+  # --- END SECOND PROD TENANT ------------------------------------------------
+
+stages:
+  # Fresh report at deploy time, so the approver sees the current state of Production
+  - stage: Report
+    displayName: Production Check Report
+    jobs:
+      - job: ProductionReport
+        displayName: Production Check Report
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: >-
+              $(FLYWAY) $(PROD_LOGIN) $(CHECK_LOGIN)
+              check -code -changes -drift -dryrun -url="$(prod_database_JDBC)"
+              -environments.check.url="$(check_database_JDBC)"
+              -environments.check.flyway.cleanDisabled=false
+              -check.buildEnvironment="check"
+              -reportFilename="$(System.ArtifactsDirectory)\Prod-$(Build.BuildId)-Check-Report.html"
+            displayName: Production Check Report
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+              FLYWAY_ENV_NATIVE_SQLFLUFF: true
+
+          # =================================================================
+          # ON-PREM ONLY. PublishBuildArtifacts is required by Azure DevOps
+          # Server. On Azure DevOps Services (cloud), comment this task out and
+          # uncomment the PublishPipelineArtifact version below. Running
+          # PublishPipelineArtifact on-prem fails with "Pipeline Artifact Task
+          # is not supported in on-premises."
+          # =================================================================
+          - task: PublishBuildArtifacts@1
+            displayName: Publish Production Check Report
+            condition: always()
+            inputs:
+              ArtifactName: prod-check-report
+              PathtoPublish: $(System.ArtifactsDirectory)
+
+          # CLOUD (Azure DevOps Services) equivalent - unsupported on-prem:
+          # - task: PublishPipelineArtifact@1
+          #   displayName: Publish Production Check Report
+          #   condition: always()
+          #   inputs:
+          #     artifactName: prod-check-report
+          #     targetPath: $(System.ArtifactsDirectory)
+
+  - stage: Approval
+    displayName: Approve Production Release
+    dependsOn: Report
+    jobs:
+      # Agentless job - holds the run open until someone approves. No agent is used.
+      - job: Approval
+        displayName: Approve Production Release
+        pool: server
+        steps:
+          - task: ManualValidation@0
+            displayName: Review Before Releasing To Production
+            timeoutInMinutes: 1440
+            inputs:
+              instructions: 'Review the prod-check-report artifact from this run, then approve to deploy to Production.'
+
+  - stage: DeployProd
+    displayName: Deploy Prod
+    dependsOn: Approval
+    jobs:
+      - job: DeployProd
+        displayName: Deploy Prod
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: $(FLYWAY) $(PROD_LOGIN) info migrate info -url="$(prod_database_JDBC)"
+            displayName: Deploy Prod
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+
+  # --- SECOND PROD TENANT - comment out this block to deploy one tenant only -
+  - stage: DeployProd2
+    displayName: Deploy Prod2
+    dependsOn: DeployProd
+    jobs:
+      - job: DeployProd2
+        displayName: Deploy Prod2
+        steps:
+          - checkout: self
+            clean: true
+
+          - script: $(FLYWAY) $(PROD2_LOGIN) info migrate info -url="$(prod2_database_JDBC)"
+            displayName: Deploy Prod2
+            env:
+              FLYWAY_CLEAN_DISABLED: true
+  # --- END SECOND PROD TENANT ------------------------------------------------
