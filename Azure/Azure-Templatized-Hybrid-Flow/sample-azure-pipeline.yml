@@ -1,0 +1,122 @@
+parameters:
+  - name: longLivedBranch
+    displayName: "Long-lived branch (generation is locked to this branch)"
+    type: string
+    default: master
+
+  - name: skipGenerate
+    displayName: "Skip migration generation (promote existing migrations only)"
+    type: boolean
+    default: false
+
+  # Default must not be empty: ADO marks an empty-default string parameter
+  # Required and greys out the Run button.
+  - name: descriptionOverride
+    displayName: "Migration description, or 'auto' to derive it from the merge commit"
+    type: string
+    default: auto
+
+# Literal branch name required. A ${{ }} expression here fails to compile.
+# Keep in sync with the longLivedBranch parameter.
+trigger:
+  branches:
+    include:
+      - master
+
+# No `pr:` trigger: ADO ignores it for Azure Repos Git. PR validation comes
+# from a Build Validation branch policy on the long-lived branch.
+
+# Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
+# They can be included in the same repository if preferred: flyway-templates-hybrid/stage-deploy.yml would work for the files below
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: flyway-templates-hybrid                           # Use OtherProject/flyway-templates-hybrid if the repo lives in a different ADO project
+      # ref: refs/heads/main                                  # Optional - pin to a branch or tag so template changes roll out deliberately
+
+pool:
+  name: "VirtualMachinePool"
+
+variables:
+  - group: distro_pipeline_vars
+
+  - name: LongLivedBranch
+    value: ${{ parameters.longLivedBranch }}
+
+  - name: DryRunDir
+    value: $(Build.ArtifactStagingDirectory)\dry-run
+
+  - name: PreviewDir
+    value: $(Build.ArtifactStagingDirectory)\preview
+
+stages:
+  - template: stage-pr-review.yml@templates                   # flyway-templates-hybrid/stage-pr-review.yml if kept in same repository
+    parameters:
+      credentialsGroup: distro_build_credentials
+
+  - template: stage-generate.yml@templates                    # flyway-templates-hybrid/stage-generate.yml if kept in same repository
+    parameters:
+      credentialsGroup: distro_build_credentials
+      longLivedBranch: ${{ parameters.longLivedBranch }}
+      skipGenerate: ${{ parameters.skipGenerate }}
+      descriptionOverride: ${{ parameters.descriptionOverride }}
+
+  - stage: DryRun
+    displayName: "Dry run: SQL each environment will get"
+    dependsOn: GenerateMigration
+    condition: >-
+      and(
+        ne(variables['Build.Reason'], 'PullRequest'),
+        in(dependencies.GenerateMigration.result, 'Succeeded', 'Skipped', 'SucceededWithIssues')
+      )
+    jobs:
+      - template: job-dry-run.yml@templates                   # flyway-templates-hybrid/job-dry-run.yml if kept in same repository
+        parameters:
+          jobName: DryRunTest1
+          displayName: "Dry run: test1"
+          credentialsGroup: distro_test1_credentials
+
+      - template: job-dry-run.yml@templates
+        parameters:
+          jobName: DryRunUat
+          displayName: "Dry run: uat"
+          credentialsGroup: distro_uat_credentials
+
+      - template: job-dry-run.yml@templates
+        parameters:
+          jobName: DryRunProd
+          displayName: "Dry run: prod"
+          credentialsGroup: distro_prod_credentials
+
+  - template: stage-deploy.yml@templates                      # flyway-templates-hybrid/stage-deploy.yml if kept in same repository
+    parameters:
+      stageName: DeployTest1
+      jobName: MigrateTest1
+      displayName: "Deploy to test1"
+      dependsOn: DryRun
+      adoEnvironment: DistroTest1
+      credentialsGroup: distro_test1_credentials
+      condition: >-
+        and(
+          ne(variables['Build.Reason'], 'PullRequest'),
+          in(dependencies.DryRun.result, 'Succeeded', 'SucceededWithIssues')
+        )
+
+  - template: stage-deploy.yml@templates
+    parameters:
+      stageName: DeployUat
+      jobName: MigrateUat
+      displayName: "Deploy to UAT"
+      dependsOn: DeployTest1
+      adoEnvironment: DistroUat
+      credentialsGroup: distro_uat_credentials
+
+  - template: stage-deploy.yml@templates
+    parameters:
+      stageName: DeployProd
+      jobName: MigrateProd
+      displayName: "Deploy to Prod"
+      dependsOn: DeployUat
+      adoEnvironment: DistroProd
+      credentialsGroup: distro_prod_credentials
