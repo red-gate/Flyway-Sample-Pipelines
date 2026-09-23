@@ -8,6 +8,7 @@ pipeline {
    environment {
       FLYWAY_LICENSE_KEY = "" // Your Flyway licence key
 
+      // CHANGE THIS VALUE 
       undoVersion = "002_345345434" // The migration version to undo - a matching U002__*.sql script must exist
 
       flywayUrl       = "-url=jdbc:sqlserver://Localhost;databaseName=DatabaseName;encrypt=false"
