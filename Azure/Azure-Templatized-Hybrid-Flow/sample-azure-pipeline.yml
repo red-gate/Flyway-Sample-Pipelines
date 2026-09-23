@@ -1,4 +1,24 @@
+# NOTE: This pipeline depends on the following variable groups, created under Pipelines > Library.
+# Replace <project> with your project name - the samples below use "distro".
+
+# Name of variable group                  Keys inside variable group
+# ----------------------                  --------------------------
+# <project>_pipeline_vars                 BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
+# <project>_build_credentials             target_database_JDBC, databaseName, userName, password   (points at the shadow database)
+# <project>_test1_credentials             target_database_JDBC, databaseName, userName, password
+# <project>_uat_credentials               target_database_JDBC, databaseName, userName, password
+# <project>_prod_credentials              target_database_JDBC, databaseName, userName, password
+# <project>_test2_credentials             target_database_JDBC, databaseName, userName, password   (only if you wire up a test2 environment)
+
+# Every target database needs its own credentials group, named in the credentialsGroup parameter of each stage below.
+# Leave userName and password empty in a group to fall back to integrated security from the JDBC url.
+
 parameters:
+  - name: agentPool
+    displayName: "Agent pool the pipeline runs on"
+    type: string
+    default: default
+
   - name: longLivedBranch
     displayName: "Long-lived branch (generation is locked to this branch)"
     type: string
@@ -36,7 +56,7 @@ resources:
       # ref: refs/heads/main                                  # Optional - pin to a branch or tag so template changes roll out deliberately
 
 pool:
-  name: "VirtualMachinePool"
+  name: ${{ parameters.agentPool }}
 
 variables:
   - group: distro_pipeline_vars
