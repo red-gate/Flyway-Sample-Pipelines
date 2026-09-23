@@ -1,0 +1,20 @@
+parameters:
+  - name: environmentName
+    type: string
+
+  - name: outputVariable
+    type: string
+
+# Emits an EMPTY variable when userName is blank, not an empty -user= flag.
+# An empty user breaks integrated security. Runtime rather than a ${{ if }}
+# because variable groups do not exist at compile time.
+steps:
+  - powershell: |
+      if ([string]::IsNullOrWhiteSpace("$(userName)")) {
+        Write-Host "No userName in the variable group, using integrated security from the url."
+        Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }}]"
+      } else {
+        Write-Host "Using SQL login $(userName)."
+        Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }};issecret=true]-environments.${{ parameters.environmentName }}.user=""$(userName)"" -environments.${{ parameters.environmentName }}.password=""$(password)"""
+      }
+    displayName: "Resolve ${{ parameters.environmentName }} authentication"

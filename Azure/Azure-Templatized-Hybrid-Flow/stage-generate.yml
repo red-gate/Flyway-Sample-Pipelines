@@ -1,0 +1,160 @@
+parameters:
+  - name: stageName
+    type: string
+    default: GenerateMigration
+
+  - name: displayName
+    type: string
+    default: "Generate and commit migration"
+
+  - name: credentialsGroup
+    type: string
+
+  # Passed in from the root pipeline. A template cannot read the root
+  # pipeline's parameters, and both of these are needed at compile time.
+  - name: longLivedBranch
+    type: string
+
+  - name: skipGenerate
+    type: boolean
+    default: false
+
+  - name: descriptionOverride
+    type: string
+    default: auto
+
+  - name: commitEmail
+    type: string
+    default: azuredevops-build@noreply.local
+
+  - name: commitName
+    type: string
+    default: Azure DevOps Build
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: []
+    condition: >-
+      and(
+        ne(variables['Build.Reason'], 'PullRequest'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/${{ parameters.longLivedBranch }}'),
+        ${{ eq(parameters.skipGenerate, false) }}
+      )
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+    jobs:
+      - job: Generate
+        steps:
+          - checkout: self
+            clean: true
+            persistCredentials: true # required for the push back
+
+          # ADO checks out a detached commit, and commit/push need a real branch.
+          - powershell: |
+              $branch = "$(LongLivedBranch)"
+
+              git config user.email "${{ parameters.commitEmail }}"
+              git config user.name "${{ parameters.commitName }}"
+
+              git fetch origin $branch
+              git checkout -B $branch --track origin/$branch
+
+              $override = "${{ parameters.descriptionOverride }}"
+              if ($override -and $override -ne "auto") {
+                $raw = $override
+              } else {
+                # Subject line only. The PR description follows on later
+                # lines and would otherwise end up in the filename.
+                $raw = ("$env:BUILD_SOURCEVERSIONMESSAGE" -split "`n")[0].Trim()
+                if ($raw -match '^Merged PR \d+:\s*(.+)$') { $raw = $Matches[1] }
+              }
+
+              $desc = ($raw -replace '[^A-Za-z0-9]+', '_').Trim('_')
+              if ($desc.Length -gt 60) { $desc = $desc.Substring(0, 60).Trim('_') }
+              if (-not $desc) { $desc = "SchemaModelUpdate" }
+
+              Write-Host "Migration description: $desc"
+              Write-Host "##vso[task.setvariable variable=MigrationDescription]$desc"
+            displayName: "Attach to $(LongLivedBranch), derive description"
+
+          - template: steps-resolve-auth.yml
+            parameters:
+              environmentName: shadow
+              outputVariable: ShadowAuth
+
+          - script: |
+              flyway -configFiles=flyway.toml $(ShadowAuth) ^
+                diff generate ^
+                -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
+                -generate.types=versioned ^
+                -generate.description="$(MigrationDescription)"
+            displayName: "Diff schema model against shadow, generate migration"
+            env:
+              environments_shadow_url: $(target_database_JDBC)
+
+          - powershell: |
+              if (-not (Test-Path migrations)) {
+                Write-Host "No migrations folder, nothing was generated."
+                exit 0
+              }
+              Get-ChildItem migrations -Filter "V*.sql" |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 3 |
+                ForEach-Object {
+                  Write-Host "--- $($_.Name) ---"
+                  Get-Content $_.FullName | Write-Host
+                  Write-Host ""
+                }
+            displayName: "Show generated SQL in the log"
+
+          - powershell: |
+              $branch = "$(LongLivedBranch)"
+
+              function Set-NotGenerated {
+                Write-Host "##vso[task.setvariable variable=MigrationGenerated]false"
+              }
+
+              if (-not (Test-Path migrations)) {
+                Write-Host "No migrations folder, so nothing was generated. Nothing to commit."
+                Set-NotGenerated
+                exit 0
+              }
+
+              # -f because Desktop's .gitignore can exclude this path.
+              git add -f migrations
+              $changes = git status --porcelain -- migrations
+              if (-not $changes) {
+                Write-Host "No schema model changes to generate a migration for. Nothing to commit."
+                Set-NotGenerated
+                exit 0
+              }
+              Write-Host "Committing generated migration:"
+              Write-Host $changes
+
+              # ***NO_CI*** stops this push retriggering the pipeline.
+              git commit -m "Add generated migration: $(MigrationDescription) ***NO_CI***"
+
+              # Rebase rather than force, so a run that started earlier cannot
+              # clobber something pushed since.
+              git fetch origin $branch
+              git rebase origin/$branch
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Rebase onto origin/$branch failed. Resolve manually, nothing has been pushed."
+                exit 1
+              }
+
+              git push origin HEAD:$branch
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Push to $branch was rejected. Check the build service identity has Contribute permission and is exempt from branch policies on $branch."
+                exit 1
+              }
+
+              Write-Host "##vso[task.setvariable variable=MigrationGenerated]true"
+            displayName: "Commit and push generated migration"
+
+          # Conditional because publish hard-fails on a missing path.
+          - publish: migrations
+            artifact: generated-migration
+            displayName: "Publish migrations folder for the audit trail"
+            condition: eq(variables['MigrationGenerated'], 'true')

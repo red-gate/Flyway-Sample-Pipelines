@@ -1,0 +1,58 @@
+parameters:
+  - name: jobName
+    type: string
+
+  - name: displayName
+    type: string
+
+  - name: credentialsGroup
+    type: string
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: ${{ parameters.displayName }}
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+    steps:
+      - checkout: self
+        clean: true
+        persistCredentials: true
+
+      - script: |
+          git fetch origin $(LongLivedBranch)
+          git checkout FETCH_HEAD
+        displayName: "Check out latest tip of $(LongLivedBranch)"
+
+      - powershell: |
+          New-Item -ItemType Directory -Force -Path "$(DryRunDir)" | Out-Null
+        displayName: "Create the dry run output folder"
+
+      - template: steps-resolve-auth.yml
+        parameters:
+          environmentName: target
+          outputVariable: TargetAuth
+
+      - script: |
+          flyway -configFiles=flyway.toml $(TargetAuth) -environment=target migrate -dryRunOutput="$(DryRunDir)\$(databaseName).sql"
+        displayName: "Dry run against $(databaseName)"
+        env:
+          environments_target_url: $(target_database_JDBC)
+
+      # Also guarantees a non-empty folder: publish hard-fails on an empty one.
+      - powershell: |
+          $f = Get-Item -Path "$(DryRunDir)\$(databaseName).sql" -ErrorAction SilentlyContinue
+          if (-not $f -or $f.Length -eq 0) {
+            Set-Content -Path "$(DryRunDir)\nothing-pending.txt" -Value "Nothing was pending on $(databaseName)."
+            Write-Host "Nothing pending on $(databaseName), so no dry run SQL was produced."
+            exit 0
+          }
+          Write-Host "$(databaseName) will receive:"
+          Write-Host ""
+          Get-Content $f.FullName | Select-Object -First 200
+          Write-Host ""
+          Write-Host "Truncated to 200 lines. The full script is in the artifact."
+        displayName: "Show the dry run SQL in the log"
+
+      - publish: $(DryRunDir)
+        artifact: dry-run-$(databaseName)
+        displayName: "Publish the dry run script"

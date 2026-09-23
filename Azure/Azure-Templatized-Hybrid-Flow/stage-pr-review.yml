@@ -1,0 +1,75 @@
+parameters:
+  - name: stageName
+    type: string
+    default: PRReview
+
+  - name: displayName
+    type: string
+    default: "PR review reports"
+
+  - name: credentialsGroup
+    type: string
+
+  - name: previewDir
+    type: string
+    default: $(Build.ArtifactStagingDirectory)\preview
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+    jobs:
+      - job: SchemaModelDiff
+        steps:
+          - checkout: self
+
+          - powershell: |
+              New-Item -ItemType Directory -Force -Path "${{ parameters.previewDir }}" | Out-Null
+            displayName: "Create the preview output folder"
+
+          - template: steps-resolve-auth.yml
+            parameters:
+              environmentName: shadow
+              outputVariable: ShadowAuth
+
+          # generate.location keeps the preview out of the working tree, so it
+          # can be read in the PR but never committed.
+          - script: |
+              flyway -configFiles=flyway.toml $(ShadowAuth) ^
+                diff generate ^
+                -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
+                -diff.artifactFilename=$(Build.ArtifactStagingDirectory)\flyway.diff ^
+                -generate.types=versioned ^
+                -generate.location=${{ parameters.previewDir }} ^
+                -generate.description=PR$(System.PullRequest.PullRequestId)_preview
+            displayName: "Diff schema model and generate the prospective migration"
+            env:
+              environments_shadow_url: $(target_database_JDBC)
+
+          - powershell: |
+              $files = Get-ChildItem -Path "${{ parameters.previewDir }}" -Filter "*.sql" -ErrorAction SilentlyContinue
+
+              if (-not $files) {
+                Set-Content -Path "${{ parameters.previewDir }}\no-migration-generated.txt" `
+                  -Value "This PR changes no schema model objects, so no migration would be generated on merge."
+                Write-Host "No schema model changes in this PR. Nothing would be generated on merge."
+                exit 0
+              }
+
+              Write-Host "On merge to $(LongLivedBranch), this PR will generate:"
+              Write-Host ""
+              foreach ($f in $files) {
+                Write-Host "===================================================="
+                Write-Host "$($f.Name)"
+                Write-Host "===================================================="
+                Get-Content $f.FullName | Write-Host
+                Write-Host ""
+              }
+              Write-Host "The committed filename will differ: the real migration is named from the merge commit, not from the PR id."
+            displayName: "Show the prospective migration SQL in the log"
+
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: pr-review-reports
+            displayName: "Publish the prospective migration for the reviewer"

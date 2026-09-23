@@ -1,0 +1,65 @@
+parameters:
+  - name: stageName
+    type: string
+
+  - name: jobName
+    type: string
+
+  - name: displayName
+    type: string
+
+  - name: dependsOn
+    type: string
+
+  - name: adoEnvironment
+    type: string
+
+  - name: credentialsGroup
+    type: string
+
+  - name: condition
+    type: string
+    default: succeeded()
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+    jobs:
+      - deployment: ${{ parameters.jobName }}
+        environment: ${{ parameters.adoEnvironment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+                  persistCredentials: true
+
+                - script: |
+                    git fetch origin $(LongLivedBranch)
+                    git checkout FETCH_HEAD
+                  displayName: "Check out latest tip of $(LongLivedBranch)"
+
+                - template: steps-resolve-auth.yml
+                  parameters:
+                    environmentName: target
+                    outputVariable: TargetAuth
+
+                # Without *:pending, validate fails on every not-yet-applied
+                # migration, so the gate would only pass with nothing to do.
+                # Out-of-order migrations are state ignored, so still caught.
+                - script: |
+                    flyway -configFiles=flyway.toml $(TargetAuth) -environment=target validate -ignoreMigrationPatterns="*:pending"
+                  displayName: "Pre-flight validate: $(databaseName)"
+                  env:
+                    environments_target_url: $(target_database_JDBC)
+
+                - script: |
+                    flyway -configFiles=flyway.toml $(TargetAuth) -environment=target migrate -baselineVersion=$(BASELINE_VERSION)
+                  displayName: "Flyway migrate: $(databaseName)"
+                  env:
+                    environments_target_url: $(target_database_JDBC)
