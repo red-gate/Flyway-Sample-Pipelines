@@ -44,7 +44,7 @@ jobs:
       # Runs the Flyway Clean command against the Build database.
       # -cleanDisabled=false is passed only on this step - clean stays disabled everywhere else.
       - name: Clean Build DB
-        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" info clean info -cleanDisabled="false" -user="${{ env.DB_USER_BUILD }}" -password="${{ env.DB_USER_PW_BUILD }}" -url="${{ env.JDBC_BUILD }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
+        run: flyway -email="${{ env.EMAIL }}" -token="${{ env.TOKEN }}" clean -cleanDisabled="false" -user="${{ env.DB_USER_BUILD }}" -password="${{ env.DB_USER_PW_BUILD }}" -url="${{ env.JDBC_BUILD }}" -IAgreeToTheEula -locations="filesystem:${{ github.workspace }}/migrations" -configFiles="${{ github.workspace }}/flyway.toml" -baselineOnMigrate=true -errorOverrides=S0001:0:I-
 
       - name: Migrate Build # Applies all pending migrations from scratch
         # To use username and password instead of windows integrated security, ensure SQL Server is configured to allow SQL Server authentication. In SSMS check Server Properties > Security and select "SQL Server and Windows Authentication mode".
