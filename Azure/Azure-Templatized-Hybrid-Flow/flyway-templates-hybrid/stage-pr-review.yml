@@ -70,6 +70,10 @@ stages:
               Write-Host "The committed filename will differ: the real migration is named from the merge commit, not from the PR id."
             displayName: "Show the prospective migration SQL in the log"
 
-          - publish: $(Build.ArtifactStagingDirectory)
-            artifact: pr-review-reports
+          # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
+          - task: PublishBuildArtifacts@1
             displayName: "Publish the prospective migration for the reviewer"
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              ArtifactName: pr-review-reports
+              publishLocation: Container

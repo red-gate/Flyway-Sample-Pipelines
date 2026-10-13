@@ -1,0 +1,24 @@
+parameters:
+  # Commit to check out. Pass a SHA or a $(Variable) holding one. Every stage of a run uses
+  # the same pinned commit, so the check report, the test1 deploy and the promotion all refer
+  # to exactly the same code, even if the branch moves on mid-run.
+  - name: commit
+    type: string
+
+# Expects `checkout: self` to have run with persistCredentials: true.
+steps:
+  - powershell: |
+      $commit = "$env:PINNED_COMMIT".Trim()
+      if (-not $commit -or $commit -notmatch '^[0-9a-fA-F]{40}$') {
+        Write-Error "No usable commit to check out (got '$commit'). The pinned commit from an earlier stage did not resolve."
+        exit 1
+      }
+      git fetch origin --quiet --prune
+      if ($LASTEXITCODE -ne 0) { Write-Error "git fetch failed"; exit 1 }
+      git checkout --force --quiet $commit
+      if ($LASTEXITCODE -ne 0) { Write-Error "Commit $commit is not reachable from origin"; exit 1 }
+      Write-Host "Checked out pinned commit:"
+      git log -1 --format="  %H%n  %s"
+    displayName: "Check out pinned commit"
+    env:
+      PINNED_COMMIT: ${{ parameters.commit }}

@@ -111,8 +111,11 @@ stages:
           - powershell: |
               $branch = "$(LongLivedBranch)"
 
+              # ValidatedSha is the commit every later stage of this run pins to: the pushed
+              # migration commit, or the triggering commit when nothing was generated.
               function Set-NotGenerated {
                 Write-Host "##vso[task.setvariable variable=MigrationGenerated]false"
+                Write-Host "##vso[task.setvariable variable=ValidatedSha;isOutput=true]$(Build.SourceVersion)"
               }
 
               if (-not (Test-Path migrations)) {
@@ -146,15 +149,23 @@ stages:
 
               git push origin HEAD:$branch
               if ($LASTEXITCODE -ne 0) {
-                Write-Error "Push to $branch was rejected. Check the build service identity has Contribute permission and is exempt from branch policies on $branch."
+                Write-Error "Push to $branch was rejected. Check the build service identity has Contribute permission on $branch (and, if $branch has branch policies, Bypass policies when pushing on that branch only)."
                 exit 1
               }
 
+              $sha = (git rev-parse HEAD).Trim()
+              Write-Host "Pushed $sha to $branch."
               Write-Host "##vso[task.setvariable variable=MigrationGenerated]true"
+              Write-Host "##vso[task.setvariable variable=ValidatedSha;isOutput=true]$sha"
+            name: Push
             displayName: "Commit and push generated migration"
 
           # Conditional because publish hard-fails on a missing path.
-          - publish: migrations
-            artifact: generated-migration
+          # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
+          - task: PublishBuildArtifacts@1
             displayName: "Publish migrations folder for the audit trail"
             condition: eq(variables['MigrationGenerated'], 'true')
+            inputs:
+              PathtoPublish: migrations
+              ArtifactName: generated-migration
+              publishLocation: Container

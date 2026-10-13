@@ -8,20 +8,26 @@ parameters:
   - name: credentialsGroup
     type: string
 
+  # Commit to dry-run. Defaults to the commit that triggered the run.
+  - name: commit
+    type: string
+    default: $(Build.SourceVersion)
+
 jobs:
   - job: ${{ parameters.jobName }}
     displayName: ${{ parameters.displayName }}
     variables:
       - group: ${{ parameters.credentialsGroup }}
+      - name: PinnedCommit
+        value: ${{ parameters.commit }}
     steps:
       - checkout: self
         clean: true
         persistCredentials: true
 
-      - script: |
-          git fetch origin $(LongLivedBranch)
-          git checkout FETCH_HEAD
-        displayName: "Check out latest tip of $(LongLivedBranch)"
+      - template: steps-checkout-commit.yml
+        parameters:
+          commit: $(PinnedCommit)
 
       - powershell: |
           New-Item -ItemType Directory -Force -Path "$(DryRunDir)" | Out-Null
@@ -53,6 +59,10 @@ jobs:
           Write-Host "Truncated to 200 lines. The full script is in the artifact."
         displayName: "Show the dry run SQL in the log"
 
-      - publish: $(DryRunDir)
-        artifact: dry-run-$(databaseName)
+      # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
+      - task: PublishBuildArtifacts@1
         displayName: "Publish the dry run script"
+        inputs:
+          PathtoPublish: $(DryRunDir)
+          ArtifactName: dry-run-$(databaseName)
+          publishLocation: Container

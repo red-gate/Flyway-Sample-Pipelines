@@ -8,22 +8,29 @@
 # <project>_test1_credentials             target_database_JDBC, databaseName, userName, password
 # <project>_uat_credentials               target_database_JDBC, databaseName, userName, password
 # <project>_prod_credentials              target_database_JDBC, databaseName, userName, password
-# <project>_test2_credentials             target_database_JDBC, databaseName, userName, password   (only if you wire up a test2 environment)
 
 # Every target database needs its own credentials group, named in the credentialsGroup parameter of each stage below.
 # Leave userName and password empty in a group to fall back to integrated security from the JDBC url.
 
+# Flow
+# ----
+#   push to dev       Generate migration -> Flyway check report (test1) -> Deploy test1
+#                     -> Manual intervention -> open/refresh PR dev -> release, auto-complete
+#   PR approved       auto-complete merges into release -> Dry run UAT + Prod -> Deploy UAT -> Deploy Prod
+#   pull request      PR review reports only (needs a Build Validation branch policy)
+#
+# Every stage of a dev run pins to one commit (the one Generate ends on), so the report, the test1
+# deploy and the PR all refer to the same code. Release runs deploy the merge commit that triggered them.
+#
+# Server-side guards (configure these outside this file):
+#   - release: Minimum reviewers policy, and a required "flyway/validated" status that resets on push
+#   - DistroUat, DistroProd, distro_uat_credentials, distro_prod_credentials: Branch control check,
+#     allowed refs/heads/release with branch protection, so only release runs can reach UAT and Prod
+#
+# The branch names are literals on purpose. Runtime parameters would let anyone queueing a run
+# point the release stages at dev.
+
 parameters:
-  - name: agentPool
-    displayName: "Agent pool the pipeline runs on"
-    type: string
-    default: default
-
-  - name: longLivedBranch
-    displayName: "Long-lived branch (generation is locked to this branch)"
-    type: string
-    default: master
-
   - name: skipGenerate
     displayName: "Skip migration generation (promote existing migrations only)"
     type: boolean
@@ -36,15 +43,14 @@ parameters:
     type: string
     default: auto
 
-# Literal branch name required. A ${{ }} expression here fails to compile.
-# Keep in sync with the longLivedBranch parameter.
 trigger:
   branches:
     include:
-      - master
+      - dev
+      - release
 
 # No `pr:` trigger: ADO ignores it for Azure Repos Git. PR validation comes
-# from a Build Validation branch policy on the long-lived branch.
+# from a Build Validation branch policy.
 
 # Move the templates to their own repository for greater control and lack of repitition across projects (DRY)
 # They can be included in the same repository if preferred: flyway-templates-hybrid/stage-deploy.yml would work for the files below
@@ -56,13 +62,13 @@ resources:
       # ref: refs/heads/main                                  # Optional - pin to a branch or tag so template changes roll out deliberately
 
 pool:
-  name: ${{ parameters.agentPool }}
+  name: Default                                              # local server pool; template expressions are not allowed here
 
 variables:
   - group: distro_pipeline_vars
 
   - name: LongLivedBranch
-    value: ${{ parameters.longLivedBranch }}
+    value: dev
 
   - name: DryRunDir
     value: $(Build.ArtifactStagingDirectory)\dry-run
@@ -75,28 +81,73 @@ stages:
     parameters:
       credentialsGroup: distro_build_credentials
 
-  - template: stage-generate.yml@templates                    # flyway-templates-hybrid/stage-generate.yml if kept in same repository
+  # ---------------------------------------------------------------- dev ----
+
+  - template: stage-generate.yml@templates
     parameters:
       credentialsGroup: distro_build_credentials
-      longLivedBranch: ${{ parameters.longLivedBranch }}
+      longLivedBranch: dev
       skipGenerate: ${{ parameters.skipGenerate }}
       descriptionOverride: ${{ parameters.descriptionOverride }}
 
-  - stage: DryRun
-    displayName: "Dry run: SQL each environment will get"
-    dependsOn: GenerateMigration
+  - template: stage-check-report.yml@templates
+    parameters:
+      stageName: CheckTest1
+      displayName: "Flyway check report: test1"
+      dependsOn: GenerateMigration
+      credentialsGroup: distro_test1_credentials
+      environmentLabel: test1
+      # The commit Generate pushed, or the triggering commit when nothing was generated or Generate was skipped.
+      commit: $[ coalesce(stageDependencies.GenerateMigration.Generate.outputs['Push.ValidatedSha'], variables['Build.SourceVersion']) ]
+      condition: >-
+        and(
+          ne(variables['Build.Reason'], 'PullRequest'),
+          eq(variables['Build.SourceBranch'], 'refs/heads/dev'),
+          in(dependencies.GenerateMigration.result, 'Succeeded', 'Skipped', 'SucceededWithIssues')
+        )
+
+  - template: stage-deploy.yml@templates
+    parameters:
+      stageName: DeployTest1
+      jobName: MigrateTest1
+      displayName: "Deploy to test1"
+      dependsOn: CheckTest1
+      adoEnvironment: DistroTest1
+      credentialsGroup: distro_test1_credentials
+      commit: $[ stageDependencies.CheckTest1.Check.outputs['Pin.Sha'] ]
+      condition: >-
+        and(
+          succeeded(),
+          eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+        )
+
+  - template: stage-promote.yml@templates
+    parameters:
+      stageName: PromoteToRelease
+      dependsOn: [CheckTest1, DeployTest1]
+      sourceBranch: dev
+      targetBranch: release
+      commit: $[ stageDependencies.CheckTest1.Check.outputs['Pin.Sha'] ]
+      reportArtifact: check-report-test1
+      notifyUsers: '[Distro]\Distro Team'                    # who is notified about the manual intervention
+      condition: >-
+        and(
+          succeeded(),
+          eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+        )
+
+  # ------------------------------------------------------------ release ----
+  # These stages deploy $(Build.SourceVersion), the merge commit that triggered the run.
+
+  - stage: DryRunRelease
+    displayName: "Dry run: SQL UAT and Prod will get"
+    dependsOn: []
     condition: >-
       and(
         ne(variables['Build.Reason'], 'PullRequest'),
-        in(dependencies.GenerateMigration.result, 'Succeeded', 'Skipped', 'SucceededWithIssues')
+        eq(variables['Build.SourceBranch'], 'refs/heads/release')
       )
     jobs:
-      - template: job-dry-run.yml@templates                   # flyway-templates-hybrid/job-dry-run.yml if kept in same repository
-        parameters:
-          jobName: DryRunTest1
-          displayName: "Dry run: test1"
-          credentialsGroup: distro_test1_credentials
-
       - template: job-dry-run.yml@templates
         parameters:
           jobName: DryRunUat
@@ -109,28 +160,19 @@ stages:
           displayName: "Dry run: prod"
           credentialsGroup: distro_prod_credentials
 
-  - template: stage-deploy.yml@templates                      # flyway-templates-hybrid/stage-deploy.yml if kept in same repository
-    parameters:
-      stageName: DeployTest1
-      jobName: MigrateTest1
-      displayName: "Deploy to test1"
-      dependsOn: DryRun
-      adoEnvironment: DistroTest1
-      credentialsGroup: distro_test1_credentials
-      condition: >-
-        and(
-          ne(variables['Build.Reason'], 'PullRequest'),
-          in(dependencies.DryRun.result, 'Succeeded', 'SucceededWithIssues')
-        )
-
   - template: stage-deploy.yml@templates
     parameters:
       stageName: DeployUat
       jobName: MigrateUat
       displayName: "Deploy to UAT"
-      dependsOn: DeployTest1
+      dependsOn: DryRunRelease
       adoEnvironment: DistroUat
       credentialsGroup: distro_uat_credentials
+      condition: >-
+        and(
+          succeeded(),
+          eq(variables['Build.SourceBranch'], 'refs/heads/release')
+        )
 
   - template: stage-deploy.yml@templates
     parameters:
@@ -140,3 +182,8 @@ stages:
       dependsOn: DeployUat
       adoEnvironment: DistroProd
       credentialsGroup: distro_prod_credentials
+      condition: >-
+        and(
+          succeeded(),
+          eq(variables['Build.SourceBranch'], 'refs/heads/release')
+        )
