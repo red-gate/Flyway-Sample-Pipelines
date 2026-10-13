@@ -1,0 +1,166 @@
+parameters:
+  - name: stageName
+    type: string
+    default: CheckReport
+
+  - name: displayName
+    type: string
+    default: "Flyway check report"
+
+  - name: dependsOn
+    type: object
+    default: []
+
+  - name: condition
+    type: string
+    default: succeeded()
+
+  # Variable group holding target_database_JDBC, databaseName, userName, password for the
+  # database the report is run against.
+  - name: credentialsGroup
+    type: string
+
+  # Short label used in the artifact name and report headings, e.g. test1.
+  - name: environmentLabel
+    type: string
+
+  # Commit to check. Dev runs pass the commit Generate ended on, as a runtime expression such as
+  # $[ coalesce(stageDependencies.GenerateMigration.Generate.outputs['Push.ValidatedSha'], variables['Build.SourceVersion']) ].
+  # This stage re-publishes it as the output Pin.Sha, which later stages pin to.
+  - name: commit
+    type: string
+    default: $(Build.SourceVersion)
+
+  # Set true to fail the stage on error-level code analysis violations. Default is
+  # report only, because the manual review that follows is the gate.
+  - name: failOnCodeError
+    type: boolean
+    default: false
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+      - name: CheckDir
+        value: $(Build.ArtifactStagingDirectory)\check-${{ parameters.environmentLabel }}
+    jobs:
+      - job: Check
+        displayName: "check -dryrun -code against ${{ parameters.environmentLabel }}"
+        variables:
+          - name: PinnedCommit
+            value: ${{ parameters.commit }}
+        steps:
+          - checkout: self
+            clean: true
+            persistCredentials: true
+
+          - template: steps-checkout-commit.yml
+            parameters:
+              commit: $(PinnedCommit)
+
+          - powershell: |
+              Write-Host "##vso[task.setvariable variable=Sha;isOutput=true]$env:PINNED_COMMIT"
+              New-Item -ItemType Directory -Force -Path "$(CheckDir)" | Out-Null
+            name: Pin
+            displayName: "Publish the pinned commit for later stages"
+            env:
+              PINNED_COMMIT: $(PinnedCommit)
+
+          - template: steps-resolve-auth.yml
+            parameters:
+              environmentName: target
+              outputVariable: TargetAuth
+
+          # -dryrun: the SQL the next deployment to this database would run.
+          # -code:   static code analysis of the migrations that are pending on it.
+          # Writes <name>.html, <name>.json and <name>-code-review.sarif.
+          - script: |
+              flyway -configFiles=flyway.toml $(TargetAuth) -environment=target ^
+                check -dryrun -code ^
+                -check.code.failOnError=${{ lower(parameters.failOnCodeError) }} ^
+                -reportFilename="$(CheckDir)\${{ parameters.environmentLabel }}-check.html"
+            displayName: "flyway check -dryrun -code: $(databaseName)"
+            env:
+              environments_target_url: $(target_database_JDBC)
+
+          # Turns the JSON report into Markdown on the run's summary page, so a reviewer can
+          # read it without downloading the artifact. Also echoes it to the log. Runs even when
+          # the check step fails, which is when the report matters most.
+          - powershell: |
+              $label = "${{ parameters.environmentLabel }}"
+              $json  = Join-Path "$(CheckDir)" "$label-check.json"
+              $md    = Join-Path "$(CheckDir)" "$label-check-summary.md"
+              if (-not (Test-Path $json)) { Write-Error "No JSON report at $json"; exit 1 }
+
+              function Cell($s) { ("$s" -replace '\|', '\|') -replace '\r?\n', ' ' }
+              function ExText($e) {
+                if ($null -eq $e) { return $null }
+                if ($e -is [string]) { return $e }
+                if ($e.message) { return $e.message }
+                return ($e | ConvertTo-Json -Depth 5 -Compress)
+              }
+
+              $report  = Get-Content -Raw $json | ConvertFrom-Json
+              $dryrun  = $report.individualResults | Where-Object operation -eq 'dryrun' | Select-Object -First 1
+              $code    = $report.individualResults | Where-Object operation -eq 'code'   | Select-Object -First 1
+              $scripts = @($dryrun.scripts | Where-Object { $_ })
+              $viol    = @($code.results | Where-Object { $_ } | ForEach-Object {
+                $file = Split-Path $_.filepath -Leaf
+                $_.violations | Where-Object { $_ } | ForEach-Object { $_ | Add-Member -NotePropertyName file -NotePropertyValue $file -PassThru -Force }
+              })
+              $errors   = @($viol | Where-Object { -not $_.warning }).Count
+              $warnings = @($viol | Where-Object { $_.warning }).Count
+              $commit   = "$env:PINNED_COMMIT"
+
+              $lines = New-Object System.Collections.Generic.List[string]
+              $lines.Add("## Flyway check: $label ($(databaseName))")
+              $lines.Add("")
+              $lines.Add("Commit ``$($commit.Substring(0, [Math]::Min(10, $commit.Length)))``, run $(Build.BuildNumber). Full HTML report: artifact **check-report-$label**.")
+              $lines.Add("")
+              $lines.Add("### Dry run: pending migrations")
+              $lines.Add("")
+              if (-not $dryrun) { $lines.Add("No dry run result in the report.") }
+              elseif ($scripts.Count -eq 0) { $lines.Add("Nothing pending. $label is up to date.") }
+              else {
+                $lines.Add("| # | Version | Description | Type |")
+                $lines.Add("|---|---|---|---|")
+                foreach ($s in $scripts) { $lines.Add("| $($s.order) | $(Cell $s.version) | $(Cell $s.description) | $(Cell $s.type) |") }
+              }
+              $dx = ExText $dryrun.exception
+              if ($dx) { $lines.Add(""); $lines.Add("Dry run reported an error:"); $lines.Add(""); $lines.Add('```'); $lines.Add($dx); $lines.Add('```') }
+              $lines.Add("")
+              $lines.Add("### Code analysis: $errors error(s), $warnings warning(s)")
+              $lines.Add("")
+              if ($viol.Count -gt 0) {
+                $lines.Add("| Severity | Rule | Description | File | Line |")
+                $lines.Add("|---|---|---|---|---|")
+                foreach ($v in $viol) {
+                  $sev  = if ($v.warning) { 'Warning' } else { 'Error' }
+                  $rule = if ($v.help) { "[$(Cell $v.code)]($($v.help))" } else { Cell $v.code }
+                  $lines.Add("| $sev | $rule | $(Cell $v.description) | $(Cell $v.file) | $($v.line_no) |")
+                }
+              } elseif (-not $code) { $lines.Add("No code analysis result in the report.") }
+              else { $lines.Add("No violations in the pending migrations.") }
+              $cx = ExText $code.exception
+              if ($cx) { $lines.Add(""); $lines.Add("Code analysis reported an error:"); $lines.Add(""); $lines.Add('```'); $lines.Add($cx); $lines.Add('```') }
+              $lines.Add("")
+              [System.IO.File]::WriteAllLines($md, $lines, (New-Object System.Text.UTF8Encoding $false))
+
+              Get-Content $md | Write-Host
+              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Flyway check report - $label;]$md"
+            displayName: "Show the report on the run summary"
+            condition: succeededOrFailed()
+            env:
+              PINNED_COMMIT: $(PinnedCommit)
+
+          # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish the check report"
+            condition: succeededOrFailed()
+            inputs:
+              PathtoPublish: $(CheckDir)
+              ArtifactName: check-report-${{ parameters.environmentLabel }}
+              publishLocation: Container

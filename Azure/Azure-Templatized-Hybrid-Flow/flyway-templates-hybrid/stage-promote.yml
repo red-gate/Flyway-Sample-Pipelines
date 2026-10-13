@@ -1,0 +1,234 @@
+parameters:
+  - name: stageName
+    type: string
+    default: Promote
+
+  - name: displayName
+    type: string
+    default: "Manual review, then open the release pull request"
+
+  - name: dependsOn
+    type: object
+    default: []
+
+  - name: condition
+    type: string
+    default: succeeded()
+
+  - name: sourceBranch
+    type: string
+
+  - name: targetBranch
+    type: string
+
+  # The commit this run checked and deployed to test1, as a runtime expression such as
+  # $[ stageDependencies.CheckTest1.Check.outputs['Pin.Sha'] ]. The PR may only complete
+  # while the source branch is at this commit (see statusGenre/statusName).
+  - name: commit
+    type: string
+
+  # Artifact published by stage-check-report.yml. Its Markdown summary goes into the PR description.
+  - name: reportArtifact
+    type: string
+    default: ''
+
+  # Who is notified about the manual intervention, and who may resume it. Comma-separated
+  # emails or group names, e.g. [Distro]\Distro Team. Empty approvers = anyone with queue rights.
+  - name: notifyUsers
+    type: string
+
+  - name: approvers
+    type: string
+    default: ''
+
+  - name: reviewTimeoutMinutes
+    type: number
+    default: 1440
+
+  # Must be longer than reviewTimeoutMinutes, so the task's onTimeout: reject ends an
+  # unanswered review rather than the job timing out.
+  - name: jobTimeoutMinutes
+    type: number
+    default: 1500
+
+  # PR status this stage posts for the validated commit. A Status policy on the target branch
+  # requires it and resets it on every new push, so approving the PR can only merge the exact
+  # commit that was checked and deployed to test1.
+  - name: statusGenre
+    type: string
+    default: flyway
+
+  - name: statusName
+    type: string
+    default: validated
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      # Agentless: the run waits here without holding an agent. The job timeout is longer
+      # than the task's, so the task's onTimeout: reject is what ends an unanswered review.
+      - job: ManualReview
+        displayName: "Manual intervention: review the check report"
+        pool: server
+        timeoutInMinutes: ${{ parameters.jobTimeoutMinutes }}
+        steps:
+          - task: ManualValidation@1
+            displayName: "Approve to open ${{ parameters.sourceBranch }} -> ${{ parameters.targetBranch }} PR"
+            timeoutInMinutes: ${{ parameters.reviewTimeoutMinutes }}
+            inputs:
+              notifyUsers: ${{ parameters.notifyUsers }}
+              approvers: ${{ parameters.approvers }}
+              allowApproversToApproveTheirOwnRuns: true
+              onTimeout: reject
+              instructions: >-
+                Review the Flyway check report on this run's Summary tab (and the
+                ${{ parameters.reportArtifact }} artifact), and check the deployed test
+                database. Resume to open or update the pull request from
+                ${{ parameters.sourceBranch }} to ${{ parameters.targetBranch }} for exactly
+                this commit. Approving that PR deploys to UAT, then Prod. Reject to stop here.
+
+      - job: OpenPullRequest
+        displayName: "Open ${{ parameters.sourceBranch }} -> ${{ parameters.targetBranch }} PR"
+        dependsOn: ManualReview
+        variables:
+          - name: PinnedCommit
+            value: ${{ parameters.commit }}
+        steps:
+          # checkout: self keeps the self repo in the job token's scope, and the history is
+          # needed to work out what the PR brings to the target branch.
+          - checkout: self
+            clean: true
+            persistCredentials: true
+
+          # Build Artifacts download: Pipeline Artifacts are not supported on Azure DevOps Server.
+          - ${{ if ne(parameters.reportArtifact, '') }}:
+            - task: DownloadBuildArtifacts@1
+              displayName: "Download ${{ parameters.reportArtifact }}"
+              continueOnError: true
+              inputs:
+                buildType: current
+                downloadType: single
+                artifactName: ${{ parameters.reportArtifact }}
+                downloadPath: $(Pipeline.Workspace)\report
+
+          # Uses the build service identity. It needs Contribute and Contribute to pull requests
+          # on the repo. Auto-complete is set, so the PR merges itself once the required reviewer
+          # approves AND the validated status is present for the PR's current commit. That merge
+          # triggers the deployment run on the target branch.
+          - powershell: |
+              $ErrorActionPreference = 'Stop'
+              $source = "${{ parameters.sourceBranch }}"
+              $target = "${{ parameters.targetBranch }}"
+              $sha    = "$env:PINNED_COMMIT".Trim()
+              if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Pinned commit did not resolve (got '$sha')." }
+              $coll   = "$(System.CollectionUri)".TrimEnd('/')
+              $proj   = "$coll/$(System.TeamProject)"
+              $repo   = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $h      = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
+              function Api($method, $url, $body) {
+                $p = @{ Method = $method; Uri = $url; Headers = $h; ContentType = 'application/json' }
+                if ($null -ne $body) { $p.Body = ($body | ConvertTo-Json -Depth 10) }
+                Invoke-RestMethod @p
+              }
+
+              # 1. Refuse to set auto-complete unless the target branch requires a reviewer.
+              #    Filter on each policy's own scope: some servers ignore the query's repo/ref filters.
+              $repoId = "$(Build.Repository.ID)"
+              $policies = (Api GET "$proj/_apis/policy/configurations?repositoryId=$repoId&refName=refs/heads/$target&api-version=7.1").value
+              $reviewer = $policies | Where-Object {
+                $_.type.id -eq 'fa4e907d-c16b-4a4c-9dfa-4906e5d171dd' -and $_.isEnabled -and $_.isBlocking -and $_.settings.minimumApproverCount -ge 1 -and
+                ($_.settings.scope | Where-Object { ($_.repositoryId -eq $repoId -or -not $_.repositoryId) -and (
+                    ($_.matchKind -eq 'Exact'  -and $_.refName -eq "refs/heads/$target") -or
+                    ($_.matchKind -eq 'Prefix' -and "refs/heads/$target".StartsWith($_.refName)) -or
+                    (-not $_.refName) ) })
+              }
+              if (-not $reviewer) { throw "refs/heads/$target has no enabled, blocking 'Minimum number of reviewers' policy. Not opening an auto-completing PR." }
+
+              # 2. What does this commit bring to the target branch?
+              git fetch origin --quiet --prune
+              $ahead = [int](git rev-list --count "origin/$target..$sha")
+              if ($ahead -eq 0) {
+                Write-Host "$target already contains $sha. No pull request needed."
+                exit 0
+              }
+              $migrations = @(git diff --name-status "origin/$target...$sha" -- migrations)
+              $tip = (git rev-parse "origin/$source").Trim()
+              Write-Host "$sha is $ahead commit(s) ahead of $target. $source is at $tip."
+
+              # 3. Description: what release gets, plus the check report summary.
+              $runUrl = "$proj/_build/results?buildId=$(Build.BuildId)"
+              $summary = ''
+              $md = Get-ChildItem "$(Pipeline.Workspace)\report" -Recurse -Filter '*-check-summary.md' -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($md) { $summary = Get-Content -Raw $md.FullName }
+              $migList = if ($migrations.Count) { ($migrations | ForEach-Object { "    $_" }) -join "`n" } else { "    (no migration files)" }
+              $desc = "Promotes $source to $target at commit ``$($sha.Substring(0,10))``, validated by run [$(Build.BuildNumber)]($runUrl) after manual review.`n`nApproving this PR completes it automatically, which deploys to UAT and then Prod. It can only complete while $source is still at the validated commit.`n`n### Migrations this brings to $target`n`n$migList`n`n$summary"
+              if ($desc.Length -gt 3900) { $desc = $desc.Substring(0, 3900) + "`n`n(truncated, see the run summary)" }
+
+              # 4. Open the PR, or refresh the existing one.
+              $existing = (Api GET "$repo/pullrequests?searchCriteria.status=active&searchCriteria.sourceRefName=refs/heads/$source&searchCriteria.targetRefName=refs/heads/$target&api-version=7.1").value | Select-Object -First 1
+              if ($existing) {
+                $pr = Api PATCH "$repo/pullrequests/$($existing.pullRequestId)?api-version=7.1" @{ description = $desc }
+                Write-Host "Updated pull request $($pr.pullRequestId)."
+              } else {
+                $pr = Api POST "$repo/pullrequests?api-version=7.1" @{
+                  sourceRefName = "refs/heads/$source"
+                  targetRefName = "refs/heads/$target"
+                  title         = "Release: promote $source to $target"
+                  description   = $desc
+                }
+                Write-Host "Opened pull request $($pr.pullRequestId)."
+              }
+              $prId = $pr.pullRequestId
+
+              # 5. Auto-complete as this job's identity. Never delete the long-lived source branch.
+              $me = (Api GET "$coll/_apis/connectionData").authenticatedUser.id
+              Api PATCH "$repo/pullrequests/${prId}?api-version=7.1" @{
+                autoCompleteSetBy = @{ id = $me }
+                completionOptions = @{
+                  mergeStrategy      = 'noFastForward'
+                  deleteSourceBranch = $false
+                  mergeCommitMessage = "Merged PR ${prId}: promote $source to $target"
+                }
+              } | Out-Null
+
+              # 6. Mark the validated commit. Only the PR iteration whose source commit is exactly
+              #    $sha gets the status; any later push to $source resets it (policy setting).
+              $iteration = $null
+              for ($i = 0; $i -lt 12 -and -not $iteration; $i++) {
+                $its = (Api GET "$repo/pullRequests/$prId/iterations?api-version=7.1").value
+                $iteration = $its | Where-Object { $_.sourceRefCommit.commitId -eq $sha } | Sort-Object id -Descending | Select-Object -First 1
+                if (-not $iteration) { Start-Sleep -Seconds 5 }
+              }
+              $latest = ($its | Sort-Object id -Descending | Select-Object -First 1)
+              $prUrl = "$proj/_git/$(Build.Repository.Name)/pullrequest/$prId"
+              if ($iteration -and $latest.id -eq $iteration.id) {
+                Api POST "$repo/pullRequests/$prId/statuses?api-version=7.1-preview.1" @{
+                  state       = 'succeeded'
+                  description = "Flyway check reviewed and deployed to test1 (run $(Build.BuildNumber))"
+                  context     = @{ genre = "${{ parameters.statusGenre }}"; name = "${{ parameters.statusName }}" }
+                  targetUrl   = $runUrl
+                  iterationId = $iteration.id
+                } | Out-Null
+                $note = "Validated status posted for iteration $($iteration.id). Approving it deploys to UAT, then Prod."
+              } else {
+                $note = "$source has moved past $sha, so this run did not mark the PR as validated. The run for the newer commit has to pass its own review first."
+                Write-Warning $note
+              }
+              Write-Host $note
+
+              # 7. Make the PR easy to reach from the run: highlighted log line (clickable), the run
+              #    name and a tag in the runs list, and a titled section on the Summary tab.
+              Write-Host "##[section]Release pull request ${prId}: $prUrl"
+              Write-Host "##vso[build.addbuildtag]PR-$prId"
+              Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - PR $prId"
+              $prMd = Join-Path "$(Agent.TempDirectory)" 'release-pull-request.md'
+              $md = "### [Open PR ${prId}: $source to $target]($prUrl)`n`n$prUrl`n`n$note`n"
+              [System.IO.File]::WriteAllText($prMd, $md, (New-Object System.Text.UTF8Encoding $false))
+              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Release pull request;]$prMd"
+            displayName: "Open the pull request, mark the validated commit, set auto-complete"
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              PINNED_COMMIT: $(PinnedCommit)
