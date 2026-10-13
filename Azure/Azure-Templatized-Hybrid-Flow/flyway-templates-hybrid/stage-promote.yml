@@ -135,8 +135,16 @@ stages:
               }
 
               # 1. Refuse to set auto-complete unless the target branch requires a reviewer.
-              $policies = (Api GET "$proj/_apis/policy/configurations?repositoryId=$(Build.Repository.ID)&refName=refs/heads/$target&api-version=7.1").value
-              $reviewer = $policies | Where-Object { $_.type.id -eq 'fa4e907d-c16b-4a4c-9dfa-4906e5d171dd' -and $_.isEnabled -and $_.isBlocking -and $_.settings.minimumApproverCount -ge 1 }
+              #    Filter on each policy's own scope: some servers ignore the query's repo/ref filters.
+              $repoId = "$(Build.Repository.ID)"
+              $policies = (Api GET "$proj/_apis/policy/configurations?repositoryId=$repoId&refName=refs/heads/$target&api-version=7.1").value
+              $reviewer = $policies | Where-Object {
+                $_.type.id -eq 'fa4e907d-c16b-4a4c-9dfa-4906e5d171dd' -and $_.isEnabled -and $_.isBlocking -and $_.settings.minimumApproverCount -ge 1 -and
+                ($_.settings.scope | Where-Object { ($_.repositoryId -eq $repoId -or -not $_.repositoryId) -and (
+                    ($_.matchKind -eq 'Exact'  -and $_.refName -eq "refs/heads/$target") -or
+                    ($_.matchKind -eq 'Prefix' -and "refs/heads/$target".StartsWith($_.refName)) -or
+                    (-not $_.refName) ) })
+              }
               if (-not $reviewer) { throw "refs/heads/$target has no enabled, blocking 'Minimum number of reviewers' policy. Not opening an auto-completing PR." }
 
               # 2. What does this commit bring to the target branch?
@@ -209,11 +217,17 @@ stages:
                 $note = "$source has moved past $sha, so this run did not mark the PR as validated. The run for the newer commit has to pass its own review first."
                 Write-Warning $note
               }
-              Write-Host "$note PR: $prUrl"
+              Write-Host $note
 
-              $prMd = Join-Path "$(Agent.TempDirectory)" 'pull-request.md'
-              [System.IO.File]::WriteAllText($prMd, "## Release pull request`n`n[PR ${prId}: $source to $target]($prUrl)`n`n$note`n", (New-Object System.Text.UTF8Encoding $false))
-              Write-Host "##vso[task.uploadsummary]$prMd"
+              # 7. Make the PR easy to reach from the run: highlighted log line (clickable), the run
+              #    name and a tag in the runs list, and a titled section on the Summary tab.
+              Write-Host "##[section]Release pull request ${prId}: $prUrl"
+              Write-Host "##vso[build.addbuildtag]PR-$prId"
+              Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - PR $prId"
+              $prMd = Join-Path "$(Agent.TempDirectory)" 'release-pull-request.md'
+              $md = "### [Open PR ${prId}: $source to $target]($prUrl)`n`n$prUrl`n`n$note`n"
+              [System.IO.File]::WriteAllText($prMd, $md, (New-Object System.Text.UTF8Encoding $false))
+              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Release pull request;]$prMd"
             displayName: "Open the pull request, mark the validated commit, set auto-complete"
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)

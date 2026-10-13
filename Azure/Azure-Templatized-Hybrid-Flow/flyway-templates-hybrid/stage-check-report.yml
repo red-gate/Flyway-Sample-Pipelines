@@ -150,7 +150,7 @@ stages:
               [System.IO.File]::WriteAllLines($md, $lines, (New-Object System.Text.UTF8Encoding $false))
 
               Get-Content $md | Write-Host
-              Write-Host "##vso[task.uploadsummary]$md"
+              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Flyway check report - $label;]$md"
             displayName: "Show the report on the run summary"
             condition: succeededOrFailed()
             env:
