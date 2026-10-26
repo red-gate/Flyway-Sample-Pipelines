@@ -14,12 +14,22 @@ parameters:
     type: string
     default: $(Build.ArtifactStagingDirectory)\preview
 
+  # Also preview the undo script (U<version>__<description>.sql) for the prospective migration.
+  - name: undoScripts
+    type: boolean
+    default: true
+
 stages:
   - stage: ${{ parameters.stageName }}
     displayName: ${{ parameters.displayName }}
     condition: eq(variables['Build.Reason'], 'PullRequest')
     variables:
       - group: ${{ parameters.credentialsGroup }}
+      - name: GenerateTypes
+        ${{ if eq(parameters.undoScripts, true) }}:
+          value: versioned,undo
+        ${{ if ne(parameters.undoScripts, true) }}:
+          value: versioned
     jobs:
       - job: SchemaModelDiff
         steps:
@@ -41,7 +51,7 @@ stages:
                 diff generate ^
                 -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
                 -diff.artifactFilename=$(Build.ArtifactStagingDirectory)\flyway.diff ^
-                -generate.types=versioned ^
+                -generate.types=$(GenerateTypes) ^
                 -generate.location=${{ parameters.previewDir }} ^
                 -generate.description=PR$(System.PullRequest.PullRequestId)_preview
             displayName: "Diff schema model and generate the prospective migration"

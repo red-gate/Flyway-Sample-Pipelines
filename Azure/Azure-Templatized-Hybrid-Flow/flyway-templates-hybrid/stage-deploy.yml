@@ -28,6 +28,35 @@ parameters:
     type: string
     default: succeeded()
 
+  # Pre-deployment reports (see steps-deploy-checks.yml): flyway check -drift -code -changes
+  # -dryrun plus a flyway info migrations report, as HTML and JSON in the artifact
+  # check-report-<reportLabel>, a summary on the run and warnings for drift and code findings.
+  - name: checkReport
+    type: boolean
+    default: false
+
+  # Short name for the report files and artifact, e.g. test or prod. Required with checkReport.
+  - name: reportLabel
+    type: string
+    default: ''
+
+  # Variable group for the BUILD database the drift and change reports are worked out in
+  # (build_database_JDBC, build_databaseName, build_userName, build_password). Flyway cleans it,
+  # so it must never be a real environment. Required with checkReport.
+  - name: buildCredentialsGroup
+    type: string
+    default: ''
+
+  # Report-only by default: drift and code analysis findings are flagged as warnings and the
+  # deployment carries on. Set true to stop the deployment on drift / error-level findings.
+  - name: failOnDrift
+    type: boolean
+    default: false
+
+  - name: failOnCodeError
+    type: boolean
+    default: false
+
 stages:
   - stage: ${{ parameters.stageName }}
     displayName: ${{ parameters.displayName }}
@@ -35,6 +64,10 @@ stages:
     condition: ${{ parameters.condition }}
     variables:
       - group: ${{ parameters.credentialsGroup }}
+      - ${{ if eq(parameters.checkReport, true) }}:
+        - group: ${{ parameters.buildCredentialsGroup }}
+        - name: CheckDir
+          value: $(Build.ArtifactStagingDirectory)\check-${{ parameters.reportLabel }}
     jobs:
       - deployment: ${{ parameters.jobName }}
         environment: ${{ parameters.adoEnvironment }}
@@ -57,6 +90,15 @@ stages:
                   parameters:
                     environmentName: target
                     outputVariable: TargetAuth
+
+                # Before deploying: drift, changes, code analysis, dry run and migrations reports.
+                - ${{ if eq(parameters.checkReport, true) }}:
+                  - template: steps-deploy-checks.yml
+                    parameters:
+                      label: ${{ parameters.reportLabel }}
+                      reportDir: $(CheckDir)
+                      failOnDrift: ${{ parameters.failOnDrift }}
+                      failOnCodeError: ${{ parameters.failOnCodeError }}
 
                 # Without *:pending, validate fails on every not-yet-applied migration, so the gate
                 # would only pass with nothing to do. It still catches checksum mismatches and

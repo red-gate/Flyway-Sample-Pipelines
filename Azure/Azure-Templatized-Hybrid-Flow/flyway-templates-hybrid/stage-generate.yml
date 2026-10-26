@@ -23,6 +23,11 @@ parameters:
     type: string
     default: auto
 
+  # Also generate an undo script (U<version>__<description>.sql) for every versioned script.
+  - name: undoScripts
+    type: boolean
+    default: true
+
   - name: commitEmail
     type: string
     default: azuredevops-build@noreply.local
@@ -43,6 +48,11 @@ stages:
       )
     variables:
       - group: ${{ parameters.credentialsGroup }}
+      - name: GenerateTypes
+        ${{ if eq(parameters.undoScripts, true) }}:
+          value: versioned,undo
+        ${{ if ne(parameters.undoScripts, true) }}:
+          value: versioned
     jobs:
       - job: Generate
         steps:
@@ -87,7 +97,7 @@ stages:
               flyway -configFiles=flyway.toml $(ShadowAuth) ^
                 diff generate ^
                 -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
-                -generate.types=versioned ^
+                -generate.types=$(GenerateTypes) ^
                 -generate.description="$(MigrationDescription)"
             displayName: "Diff schema model against shadow, generate migration"
             env:

@@ -1,0 +1,217 @@
+# Turns a Flyway check JSON report (<label>-check.json, and <label>-migrations.json from
+# `flyway info` when present) into:
+#   - a Markdown summary on the run's Summary tab ("Flyway check report - <label>"), also echoed
+#     to the log and saved as <label>-check-summary.md next to the report
+#   - warnings on the run for code analysis findings and for drift, so they're visible without
+#     opening the report. Warnings never change the result.
+#
+# Each section is only rendered when the report contains it: drift (-drift), changes (-changes),
+# dry run (-dryrun), code analysis (-code), migrations (flyway info).
+# Runs even when the check step fails, which is when the report matters most.
+
+parameters:
+  - name: label
+    type: string
+
+  # Folder holding <label>-check.json (and optionally <label>-migrations.json).
+  - name: reportDir
+    type: string
+
+  # Name of the build artifact the full report is published as, for the text.
+  - name: artifactName
+    type: string
+
+  # Only used for the wording: whether these findings stop the deployment.
+  - name: failOnCodeError
+    type: boolean
+    default: false
+
+  - name: failOnDrift
+    type: boolean
+    default: false
+
+  # Most findings / drifted objects raised as individual warnings; the rest are summed up.
+  - name: maxCodeWarnings
+    type: number
+    default: 25
+
+  - name: maxDriftWarnings
+    type: number
+    default: 25
+
+steps:
+  - powershell: |
+      $label = "${{ parameters.label }}"
+      $dir   = "${{ parameters.reportDir }}"
+      $json  = Join-Path $dir "$label-check.json"
+      $mjson = Join-Path $dir "$label-migrations.json"
+      $md    = Join-Path $dir "$label-check-summary.md"
+      if (-not (Test-Path $json)) { Write-Error "No JSON report at $json"; exit 1 }
+
+      function Cell($s) { ("$s" -replace '\|', '\|') -replace '\r?\n', ' ' }
+      function ExText($e) {
+        if ($null -eq $e) { return $null }
+        if ($e -is [string]) { return $e }
+        if ($e.message) { return $e.message }
+        return ($e | ConvertTo-Json -Depth 5 -Compress)
+      }
+      # Drift and changes list objects with a definition before and/or after:
+      # both = modified, after only = added, before only = removed.
+      function ObjectChanges($r) {
+        @(@($r.differences) + @($r.onlyInSource) + @($r.onlyInTarget) | Where-Object { $_ } | ForEach-Object {
+          $kind = if ($_.definitionBefore -and $_.definitionAfter) { 'Modified' } elseif ($_.definitionAfter) { 'Added' } else { 'Removed' }
+          $name = if ($_.schema) { "$($_.schema).$($_.name)" } else { "$($_.name)" }
+          [pscustomobject]@{ Kind = $kind; Type = $_.objectType; Name = $name }
+        })
+      }
+      function AddError($lines, $title, $text) {
+        if ($text) { $lines.Add(""); $lines.Add("$title reported an error:"); $lines.Add(""); $lines.Add('```'); $lines.Add($text); $lines.Add('```') }
+      }
+
+      $report  = Get-Content -Raw $json | ConvertFrom-Json
+      function Op($name) { $report.individualResults | Where-Object operation -eq $name | Select-Object -First 1 }
+      $drift   = Op 'drift'
+      $changes = Op 'changes'
+      $dryrun  = Op 'dryrun'
+      $code    = Op 'code'
+      $commit  = "$env:PINNED_COMMIT"
+
+      $lines = New-Object System.Collections.Generic.List[string]
+      $lines.Add("## Flyway check: $label ($(databaseName))")
+      $lines.Add("")
+      $lines.Add("Commit ``$($commit.Substring(0, [Math]::Min(10, $commit.Length)))``, run $(Build.BuildNumber). Full HTML and JSON reports: artifact **${{ parameters.artifactName }}**.")
+      $lines.Add("")
+
+      # --- drift ---------------------------------------------------------------------------
+      $driftObjects = @()
+      if ($drift) {
+        $driftObjects = ObjectChanges $drift
+        $lines.Add("### Drift")
+        $lines.Add("")
+        if ($drift.driftCheckSkipped) { $lines.Add("Drift check skipped.") }
+        elseif ($drift.driftDetected) {
+          $how = if ("${{ parameters.failOnDrift }}" -eq 'True') { 'This fails the check and stops the deployment.' } else { '**Not blocking:** flagged as a warning on the run, and the deployment carries on.' }
+          $lines.Add("**Drift detected:** $($driftObjects.Count) object(s) on $label differ from what its applied migrations produce. $how")
+          $lines.Add("Scripts to revert the drift, or to keep it as a migration, are in the artifact's ``drift-resolution`` folder.")
+          $lines.Add("")
+          $lines.Add("| Change outside the pipeline | Type | Object |")
+          $lines.Add("|---|---|---|")
+          foreach ($o in $driftObjects) { $lines.Add("| $($o.Kind) | $(Cell $o.Type) | $(Cell $o.Name) |") }
+        } else { $lines.Add("No drift: $label matches its applied migrations.") }
+        AddError $lines 'The drift check' (ExText $drift.exception)
+        $lines.Add("")
+      }
+
+      # --- changes -------------------------------------------------------------------------
+      if ($changes) {
+        $chg = ObjectChanges $changes
+        $pending = @($changes.pendingMigrations | Where-Object { $_ })
+        $lines.Add("### Changes this deployment makes")
+        $lines.Add("")
+        if ($changes.skipped) { $lines.Add("Change report skipped.") }
+        elseif ($pending.Count -eq 0 -and $chg.Count -eq 0) { $lines.Add("No changes: nothing is pending on $label.") }
+        else {
+          $lines.Add("From $($pending.Count) pending migration(s): " + (($pending | ForEach-Object { "$($_.version) $($_.description)" }) -join '; ') + ".")
+          $lines.Add("")
+          $lines.Add("| Change | Type | Object |")
+          $lines.Add("|---|---|---|")
+          foreach ($o in $chg) { $lines.Add("| $($o.Kind) | $(Cell $o.Type) | $(Cell $o.Name) |") }
+        }
+        AddError $lines 'The change report' (ExText $changes.exception)
+        $lines.Add("")
+      }
+
+      # --- dry run -------------------------------------------------------------------------
+      if ($dryrun) {
+        $scripts = @($dryrun.scripts | Where-Object { $_ })
+        $lines.Add("### Dry run: pending migrations")
+        $lines.Add("")
+        if ($scripts.Count -eq 0) { $lines.Add("Nothing pending. $label is up to date.") }
+        else {
+          $lines.Add("| # | Version | Description | Type |")
+          $lines.Add("|---|---|---|---|")
+          foreach ($s in $scripts) { $lines.Add("| $($s.order) | $(Cell $s.version) | $(Cell $s.description) | $(Cell $s.type) |") }
+        }
+        AddError $lines 'The dry run' (ExText $dryrun.exception)
+        $lines.Add("")
+      }
+
+      # --- code analysis -------------------------------------------------------------------
+      $viol = @(); $errors = 0; $warnings = 0
+      $blocking = "${{ parameters.failOnCodeError }}" -eq 'True'
+      if ($code) {
+        $root = "$(Build.SourcesDirectory)".TrimEnd('\') + '\'
+        $viol = @($code.results | Where-Object { $_ } | ForEach-Object {
+          $file = Split-Path $_.filepath -Leaf
+          # Repo-relative path, so a warning on the run can point at the file.
+          $rel  = if ($_.filepath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { $_.filepath.Substring($root.Length) -replace '\\', '/' } else { $file }
+          $_.violations | Where-Object { $_ } | ForEach-Object {
+            $_ | Add-Member -NotePropertyName file -NotePropertyValue $file -PassThru -Force |
+                 Add-Member -NotePropertyName path -NotePropertyValue $rel -PassThru -Force
+          }
+        })
+        $errors   = @($viol | Where-Object { -not $_.warning }).Count
+        $warnings = @($viol | Where-Object { $_.warning }).Count
+        $lines.Add("### Code analysis: $errors error(s), $warnings warning(s)")
+        $lines.Add("")
+        if ($viol.Count -gt 0) {
+          if ($blocking) { $lines.Add("Error-level findings fail this check and stop the deployment.") }
+          else { $lines.Add("**Not blocking:** each finding is flagged as a warning on the run, and the deployment carries on.") }
+          $lines.Add("")
+          $lines.Add("| Severity | Rule | Description | File | Line |")
+          $lines.Add("|---|---|---|---|---|")
+          foreach ($v in $viol) {
+            $sev  = if ($v.warning) { 'Warning' } else { 'Error' }
+            $rule = if ($v.help) { "[$(Cell $v.code)]($($v.help))" } else { Cell $v.code }
+            $lines.Add("| $sev | $rule | $(Cell $v.description) | $(Cell $v.file) | $($v.line_no) |")
+          }
+        } else { $lines.Add("No violations in the pending migrations.") }
+        AddError $lines 'Code analysis' (ExText $code.exception)
+        $lines.Add("")
+      }
+
+      # --- migrations (flyway info) --------------------------------------------------------
+      if (Test-Path $mjson) {
+        $info = Get-Content -Raw $mjson | ConvertFrom-Json
+        $migs = @($info.migrations | Where-Object { $_ })
+        $byState = $migs | Group-Object state | ForEach-Object { "$($_.Count) $($_.Name.ToLower())" }
+        $lines.Add("### Migrations on $label")
+        $lines.Add("")
+        $lines.Add("Schema version $($info.schemaVersion). " + ($byState -join ', ') + ". Full list: ``$label-migrations.html`` in the artifact.")
+        $lines.Add("")
+        $lines.Add("| Version | Description | State | Undo script | Installed on |")
+        $lines.Add("|---|---|---|---|---|")
+        foreach ($m in ($migs | Select-Object -Last 15)) { $lines.Add("| $(Cell $m.version) | $(Cell $m.description) | $(Cell $m.state) | $(Cell $m.undoable) | $(Cell $m.installedOnUTC) |") }
+        if ($migs.Count -gt 15) { $lines.Add(""); $lines.Add("Showing the latest 15 of $($migs.Count).") }
+        AddError $lines 'flyway info' (ExText $info.exception)
+        $lines.Add("")
+      }
+
+      [System.IO.File]::WriteAllLines($md, $lines, (New-Object System.Text.UTF8Encoding $false))
+      Get-Content $md | Write-Host
+      Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Flyway check report - $label;]$md"
+
+      # --- warnings on the run -------------------------------------------------------------
+      function Esc($s) { (("$s" -replace '%', '%AZP25') -replace '\r', '%0D') -replace '\n', '%0A' }
+      function Prop($s) { ((Esc $s) -replace ';', '%3B') -replace '\]', '%5D' }
+      if ($drift -and $drift.driftDetected) {
+        $how = if ("${{ parameters.failOnDrift }}" -eq 'True') { 'This stops the deployment.' } else { 'Not blocking: the deployment carries on.' }
+        Write-Host "##vso[task.logissue type=warning]$(Esc "Drift on ${label}: $($driftObjects.Count) object(s) changed outside the pipeline. $how Revert or keep scripts are in the ${{ parameters.artifactName }} artifact (drift-resolution).")"
+        $maxD = ${{ parameters.maxDriftWarnings }}
+        foreach ($o in ($driftObjects | Select-Object -First $maxD)) { Write-Host "##vso[task.logissue type=warning]$(Esc "Drift on ${label}: $($o.Type) $($o.Name) $($o.Kind.ToLower()) outside the pipeline.")" }
+        if ($driftObjects.Count -gt $maxD) { Write-Host "##vso[task.logissue type=warning]$(Esc "Drift on ${label}: $($driftObjects.Count - $maxD) more object(s) not listed here. See the Flyway check report.")" }
+      }
+      if ($viol.Count -gt 0) {
+        $how = if ($blocking) { 'Error-level findings fail this check.' } else { 'Not blocking: the deployment carries on.' }
+        Write-Host "##vso[task.logissue type=warning]$(Esc "Code analysis: $($viol.Count) finding(s) in the migrations pending on $label ($errors error-level, $warnings warning-level). $how Details in the Flyway check report (artifact ${{ parameters.artifactName }}).")"
+        $max = ${{ parameters.maxCodeWarnings }}
+        foreach ($v in ($viol | Select-Object -First $max)) {
+          $level = if ($v.warning) { 'warning-level' } else { 'error-level' }
+          Write-Host "##vso[task.logissue type=warning;sourcepath=$(Prop $v.path);linenumber=$($v.line_no);columnnumber=$($v.line_pos);code=$(Prop $v.code)]$(Esc "Code analysis $($v.code) ($level): $($v.description) [$($v.file) line $($v.line_no)]")"
+        }
+        if ($viol.Count -gt $max) { Write-Host "##vso[task.logissue type=warning]$(Esc "Code analysis: $($viol.Count - $max) more finding(s) not listed here. See the Flyway check report.")" }
+      }
+    displayName: "Show the report on the run summary"
+    condition: succeededOrFailed()
+    env:
+      PINNED_COMMIT: $(PinnedCommit)
