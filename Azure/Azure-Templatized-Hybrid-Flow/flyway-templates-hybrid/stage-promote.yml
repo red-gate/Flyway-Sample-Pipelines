@@ -247,10 +247,11 @@ stages:
                 $note  = "$source has moved past $sha, so this run did not mark PR $prId as validated. The run for the newer commit validates it. $prUrl"
               }
 
-              # 7. Run title, a warning on the run summary, a highlighted log line, a tag and a
-              #    Summary section; the link step after this one shows the PR link on its own.
-              Write-Host "##[section]$note"
+              # 7. Run title, a warning on the run summary (with the link on a plain line under it,
+              #    because URLs inside a ##[warning] line aren't clickable), a tag and a Summary
+              #    section; the link step after this one shows the PR link on its own too.
               Write-Host "##vso[task.logissue type=warning]$note"
+              Write-Host $prUrl
               Write-Host "##vso[build.addbuildtag]PR-$prId"
               Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $title"
               $verb = if ($existing) { 'Updated' } else { 'Opened' }

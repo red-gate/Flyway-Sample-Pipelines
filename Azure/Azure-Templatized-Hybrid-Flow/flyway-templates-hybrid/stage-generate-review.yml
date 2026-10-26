@@ -287,8 +287,9 @@ stages:
               Write-Host "##vso[task.setvariable variable=State;isOutput=true]$state"
               Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $title"
               if ($msg) {
-                Write-Host "##[section]$msg"
                 Write-Host "##vso[task.logissue type=warning]$msg"
+                # URLs inside a ##[warning] line aren't clickable, so the link goes on its own line.
+                if ($url) { Write-Host $url }
                 Write-Host "##vso[build.addbuildtag]review-PR-$id"
                 $md = Join-Path "$(Agent.TempDirectory)" 'review-pr.md'
                 [System.IO.File]::WriteAllText($md, "### [Review PR $id]($url)`n`n$url`n`n$(PrNote)`n", (New-Object System.Text.UTF8Encoding $false))
