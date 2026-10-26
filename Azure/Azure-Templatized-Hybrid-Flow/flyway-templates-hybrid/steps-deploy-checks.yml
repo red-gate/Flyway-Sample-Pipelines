@@ -1,0 +1,146 @@
+# Pre-deployment reports for a target database, written to <reportDir> and published as the build
+# artifact check-report-<label>:
+#
+#   <label>-check.html / .json        flyway check -drift -code -changes -dryrun
+#                                       drift:   has the target changed outside the pipeline?
+#                                       changes: which objects this deployment adds, modifies, removes
+#                                       code:    code analysis of the pending migrations
+#                                       dryrun:  the SQL this deployment runs
+#   drift-resolution/                 scripts to revert drift or keep it (only when drift is found)
+#   <label>-migrations.html / .json   flyway info: every migration and its state on the target
+#   <label>-check-summary.md          the summary shown on the run's Summary tab
+#
+# Drift and changes are worked out by building the migrations into a separate BUILD database,
+# which Flyway CLEANS every time. It comes from its own variable group (build_database_JDBC,
+# build_databaseName, build_userName, build_password) and must never be the target: the first
+# step refuses to go on if it is. Clean stays disabled for every other environment.
+#
+# Expects the target's credentials group (target_database_JDBC, databaseName, ...), the build
+# group, $(TargetAuth) from steps-resolve-auth.yml and $(PinnedCommit).
+
+parameters:
+  - name: label
+    type: string
+
+  - name: reportDir
+    type: string
+
+  # false (default): drift and code analysis findings are flagged as warnings and the deployment
+  # carries on. true: drift / error-level code findings fail the check and stop the deployment.
+  - name: failOnDrift
+    type: boolean
+    default: false
+
+  - name: failOnCodeError
+    type: boolean
+    default: false
+
+  - name: maxCodeWarnings
+    type: number
+    default: 25
+
+  - name: maxDriftWarnings
+    type: number
+    default: 25
+
+steps:
+  - powershell: |
+      $target = "$env:TARGET_DB"; $targetUrl = "$env:TARGET_URL"
+      $build  = "$env:BUILD_DB";  $buildUrl  = "$env:BUILD_URL"
+      if (-not $build -or -not $buildUrl -or $buildUrl -like '$(*') {
+        Write-Error "No build database configured (build_database_JDBC / build_databaseName). Drift and change reports need one."
+        exit 1
+      }
+      if ($build -ieq $target -or $buildUrl -ieq $targetUrl -or $buildUrl -imatch "databaseName=$([regex]::Escape($target))(;|$)") {
+        Write-Error "Refusing to run: the build database ($build) is the target ($target). Flyway cleans the build database."
+        exit 1
+      }
+      Write-Host "Target: $target. Build database (cleaned by Flyway): $build."
+      New-Item -ItemType Directory -Force -Path "${{ parameters.reportDir }}" | Out-Null
+    displayName: "Check the build database is not the target"
+    env:
+      TARGET_DB: $(databaseName)
+      TARGET_URL: $(target_database_JDBC)
+      BUILD_DB: $(build_databaseName)
+      BUILD_URL: $(build_database_JDBC)
+
+  - template: steps-resolve-auth.yml
+    parameters:
+      environmentName: build
+      outputVariable: BuildAuth
+      userVariable: build_userName
+      passwordVariable: build_password
+
+  - script: |
+      flyway -configFiles=flyway.toml $(TargetAuth) $(BuildAuth) -environment=target ^
+        "-environments.build.url=$(build_database_JDBC)" ^
+        -environments.build.provisioner=clean -environments.build.flyway.cleanDisabled=false ^
+        check -drift -code -changes -dryrun ^
+        -check.buildEnvironment=build ^
+        -check.failOnDrift=${{ lower(parameters.failOnDrift) }} ^
+        -check.code.failOnError=${{ lower(parameters.failOnCodeError) }} ^
+        "-check.driftResolutionFolder=${{ parameters.reportDir }}\drift-resolution" ^
+        "-reportFilename=${{ parameters.reportDir }}\${{ parameters.label }}-check.html"
+    displayName: "flyway check -drift -code -changes -dryrun: $(databaseName)"
+    env:
+      environments_target_url: $(target_database_JDBC)
+
+  - script: |
+      flyway -configFiles=flyway.toml $(TargetAuth) -environment=target info -outputType=json > "${{ parameters.reportDir }}\${{ parameters.label }}-migrations.json"
+    displayName: "flyway info: migrations on $(databaseName)"
+    condition: succeededOrFailed()
+    env:
+      environments_target_url: $(target_database_JDBC)
+
+  - powershell: |
+      $label = "${{ parameters.label }}"
+      $src = Join-Path "${{ parameters.reportDir }}" "$label-migrations.json"
+      $dst = Join-Path "${{ parameters.reportDir }}" "$label-migrations.html"
+      if (-not (Test-Path $src)) { Write-Warning "No migrations JSON at $src."; exit 0 }
+      $info = Get-Content -Raw $src | ConvertFrom-Json
+      function HtmlEnc($s) { [System.Net.WebUtility]::HtmlEncode("$s") }  # not "H": that is the alias of Get-History
+      $rows = foreach ($m in @($info.migrations | Where-Object { $_ })) {
+        $cls = switch -Regex ($m.state) { '^Success' { 'ok' } '^Pending' { 'pending' } 'Fail|Missing|Future|Ignored|Outdated' { 'bad' } default { '' } }
+        "<tr class='$cls'><td>$(HtmlEnc $m.category)</td><td>$(HtmlEnc $m.version)</td><td>$(HtmlEnc $m.description)</td><td>$(HtmlEnc $m.type)</td><td>$(HtmlEnc $m.state)</td><td>$(HtmlEnc $m.undoable)</td><td>$(HtmlEnc $m.installedOnUTC)</td><td>$(HtmlEnc $m.installedBy)</td><td>$(HtmlEnc $m.executionTime)</td></tr>"
+      }
+      $html = @"
+      <!doctype html>
+      <html lang="en"><head><meta charset="utf-8"><title>Migrations: $(HtmlEnc $info.database)</title>
+      <style>
+        body { font: 14px/1.4 Segoe UI, Arial, sans-serif; margin: 24px; color: #222; }
+        h1 { font-size: 20px; margin: 0 0 4px; } p { margin: 0 0 16px; color: #555; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #ddd; vertical-align: top; }
+        th { background: #f4f4f4; }
+        tr.pending td { background: #fff7e0; } tr.bad td { background: #fde8e8; } tr.ok td:nth-child(5) { color: #1a7f37; }
+      </style></head><body>
+      <h1>Migrations on $(HtmlEnc $info.database)</h1>
+      <p>Schema version $(HtmlEnc $info.schemaVersion) &middot; Flyway $(HtmlEnc $info.flywayVersion) &middot; $(HtmlEnc $info.timestamp) &middot; run $(HtmlEnc "$(Build.BuildNumber)")</p>
+      <table><thead><tr><th>Category</th><th>Version</th><th>Description</th><th>Type</th><th>State</th><th>Undo script</th><th>Installed on (UTC)</th><th>Installed by</th><th>Time (ms)</th></tr></thead>
+      <tbody>
+      $($rows -join "`n")
+      </tbody></table></body></html>
+      "@
+      [System.IO.File]::WriteAllText($dst, $html, (New-Object System.Text.UTF8Encoding $false))
+      Write-Host "Wrote $dst ($(@($info.migrations).Count) migrations, schema version $($info.schemaVersion))."
+    displayName: "Write the migrations report (HTML)"
+    condition: succeededOrFailed()
+
+  - template: steps-check-summary.yml
+    parameters:
+      label: ${{ parameters.label }}
+      reportDir: ${{ parameters.reportDir }}
+      artifactName: check-report-${{ parameters.label }}
+      failOnCodeError: ${{ parameters.failOnCodeError }}
+      failOnDrift: ${{ parameters.failOnDrift }}
+      maxCodeWarnings: ${{ parameters.maxCodeWarnings }}
+      maxDriftWarnings: ${{ parameters.maxDriftWarnings }}
+
+  # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish the check reports"
+    condition: succeededOrFailed()
+    inputs:
+      PathtoPublish: ${{ parameters.reportDir }}
+      ArtifactName: check-report-${{ parameters.label }}
+      publishLocation: Container

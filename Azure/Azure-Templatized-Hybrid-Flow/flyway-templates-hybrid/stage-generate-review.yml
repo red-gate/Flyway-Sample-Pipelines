@@ -1,0 +1,299 @@
+# Generate migration scripts from the schema model and put them up for review, instead of
+# committing them straight to the dev branch (compare stage-generate.yml).
+#
+# Run this on schema model changes only (path trigger: schema-model, flyway.toml, Filter.scpf).
+# Each run ends in one of these states:
+#   ReviewOpened   the schema model was ahead of the migrations: the generated versioned script (and
+#                  its undo script) was pushed to <reviewBranchPrefix>/<run>-<description> and a PR
+#                  into dev was opened with auto-complete. Reviewers can edit the scripts on that
+#                  branch; approving the PR merges it.
+#   ReviewUpdated  a review PR was already open: dev was merged into its branch and the scripts for
+#                  the new changes were added to that same PR, so one approval covers everything.
+#   ReviewPending  a review PR is open and already covers the schema model. Nothing to add.
+#   ReviewConflict dev can't be merged into the open review PR's branch. Fix that branch first.
+#   InSync         schema model and migrations match. Nothing to do.
+#
+# Straight after the PR step, "➜ Link to the review PR" has the PR link in its log. The run title,
+# a warning on the run summary and a Summary section say what to do next. No step is ever skipped.
+#
+# The build service needs: Contribute on the repo, Create branch + Force push (to delete the
+# review branch on completion) under <reviewBranchPrefix>/, and Contribute to pull requests.
+# Give dev a "Minimum number of reviewers" policy that resets votes on new pushes, otherwise
+# auto-complete merges the review PR (or scripts added to it later) without anyone approving it.
+
+parameters:
+  - name: stageName
+    type: string
+    default: GenerateMigration
+
+  - name: displayName
+    type: string
+    default: "Generate scripts, open review PR"
+
+  - name: credentialsGroup
+    type: string
+
+  # Passed in from the root pipeline. A template cannot read the root
+  # pipeline's parameters, and both of these are needed at compile time.
+  - name: devBranch
+    type: string
+
+  - name: skipGenerate
+    type: boolean
+    default: false
+
+  - name: descriptionOverride
+    type: string
+    default: auto
+
+  # Also generate an undo script (U<version>__<description>.sql) for every versioned script.
+  - name: undoScripts
+    type: boolean
+    default: true
+
+  - name: reviewBranchPrefix
+    type: string
+    default: migrations
+
+  - name: commitEmail
+    type: string
+    default: azuredevops-build@noreply.local
+
+  - name: commitName
+    type: string
+    default: Azure DevOps Build
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.displayName }}
+    dependsOn: []
+    condition: >-
+      and(
+        ne(variables['Build.Reason'], 'PullRequest'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/${{ parameters.devBranch }}'),
+        ${{ eq(parameters.skipGenerate, false) }}
+      )
+    variables:
+      - group: ${{ parameters.credentialsGroup }}
+      - name: GenerateTypes
+        ${{ if eq(parameters.undoScripts, true) }}:
+          value: versioned,undo
+        ${{ if ne(parameters.undoScripts, true) }}:
+          value: versioned
+      # Declared up front so $(...) always resolves: an undefined macro would be left in the
+      # PowerShell scripts as $(Name), which PowerShell runs as a command.
+      - name: GenState
+        value: ''
+      - name: ReviewBranch
+        value: ''
+      - name: PrId
+        value: ''
+      - name: PrUrl
+        value: ''
+      - name: PrNote
+        value: ''
+    jobs:
+      - job: Generate
+        steps:
+          - checkout: self
+            clean: true
+            persistCredentials: true
+
+          # Generate from the tip of dev, not the triggering commit, so a run never generates
+          # something a newer push already contains.
+          - powershell: |
+              $branch = "${{ parameters.devBranch }}"
+              git config user.email "${{ parameters.commitEmail }}"
+              git config user.name "${{ parameters.commitName }}"
+              git fetch origin $branch
+              git checkout -B $branch --track origin/$branch
+              $sha = (git rev-parse HEAD).Trim()
+
+              $override = "${{ parameters.descriptionOverride }}"
+              if ($override -and $override -ne "auto") {
+                $raw = $override
+              } else {
+                # Subject line only. "Merged PR 12: Add foo" becomes "Add foo".
+                $raw = ("$env:BUILD_SOURCEVERSIONMESSAGE" -split "`n")[0].Trim()
+                if ($raw -match '^Merged PR \d+:\s*(.+)$') { $raw = $Matches[1] }
+              }
+              $desc = ($raw -replace '[^A-Za-z0-9]+', '_').Trim('_')
+              if ($desc.Length -gt 60) { $desc = $desc.Substring(0, 60).Trim('_') }
+              if (-not $desc) { $desc = "SchemaModelUpdate" }
+
+              Write-Host "Generating from $branch at $sha. Migration description: $desc"
+              Write-Host "##vso[task.setvariable variable=DevSha]$sha"
+              Write-Host "##vso[task.setvariable variable=MigrationDescription]$desc"
+            displayName: "Attach to ${{ parameters.devBranch }}, derive description"
+
+          # If a review PR is already open, generate on its branch (with dev merged in), so the new
+          # scripts are added to that PR and only the difference gets generated.
+          - powershell: |
+              $dev    = "${{ parameters.devBranch }}"
+              $prefix = "refs/heads/${{ parameters.reviewBranchPrefix }}/"
+              $proj   = "$(System.CollectionUri)".TrimEnd('/') + "/$(System.TeamProject)"
+              $repo   = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $h      = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
+              $open   = (Invoke-RestMethod -ErrorAction Stop -Headers $h -Uri "$repo/pullrequests?searchCriteria.status=active&searchCriteria.targetRefName=refs/heads/$dev&api-version=7.1").value |
+                Where-Object { $_.sourceRefName.StartsWith($prefix) -and $_.targetRefName -eq "refs/heads/$dev" } | Select-Object -First 1
+              if (-not $open) { Write-Host "No open review PR. Generating from $dev."; exit 0 }
+
+              $id     = $open.pullRequestId
+              $branch = $open.sourceRefName.Substring('refs/heads/'.Length)
+              Write-Host "##vso[task.setvariable variable=PrId]$id"
+              Write-Host "##vso[task.setvariable variable=PrUrl]$proj/_git/$(Build.Repository.Name)/pullrequest/$id"
+              Write-Host "##vso[task.setvariable variable=ReviewBranch]$branch"
+
+              git fetch origin $branch
+              git checkout -q -B $branch "origin/$branch"
+              git merge --no-edit "origin/$dev"
+              if ($LASTEXITCODE -ne 0) {
+                git merge --abort
+                Write-Host "##vso[task.setvariable variable=GenState]ReviewConflict"
+                Write-Host "##vso[task.setvariable variable=PrNote]Review PR $id is open but $dev can't be merged into its branch ($branch). Resolve that on the branch, then run this pipeline again."
+                Write-Warning "$dev conflicts with $branch. Nothing generated."
+                exit 0
+              }
+              Write-Host "##vso[task.setvariable variable=GenState]ReviewOpen"
+              Write-Host "Review PR $id is open. Merged $dev into ${branch}: new scripts will be added to that PR."
+            displayName: "Attach to the open review PR, if there is one"
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+          - template: steps-resolve-auth.yml
+            parameters:
+              environmentName: shadow
+              outputVariable: ShadowAuth
+
+          # Runs every time (never shown as skipped); does nothing only when the review branch conflicts.
+          - script: |
+              if "$(GenState)"=="ReviewConflict" (
+                echo Not generating: $(PrNote)
+                exit /b 0
+              )
+              flyway -configFiles=flyway.toml $(ShadowAuth) ^
+                diff generate ^
+                -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
+                -generate.types=$(GenerateTypes) ^
+                -generate.description="$(MigrationDescription)"
+            displayName: "Diff schema model against migrations, generate scripts"
+            env:
+              environments_shadow_url: $(target_database_JDBC)
+
+          - powershell: |
+              # git writes progress to stderr, so failures are checked by exit code rather than
+              # $ErrorActionPreference = 'Stop' (which turns that output into errors in PowerShell 5.1).
+              $state  = "$(GenState)"
+              if ($state -eq 'ReviewConflict') { Write-Host "Not generating: $(PrNote)"; exit 0 }
+              $dev    = "${{ parameters.devBranch }}"
+              $desc   = "$(MigrationDescription)"
+              $devSha = "$(DevSha)"
+              $id     = "$(PrId)"
+
+              $changes = @()
+              if (Test-Path migrations) {
+                git add -f migrations
+                $changes = @(git status --porcelain -- migrations)
+              }
+              if (-not $changes) {
+                if ($state -eq 'ReviewOpen') {
+                  Write-Host "Review PR $id already covers the schema model. Nothing to add."
+                  Write-Host "##vso[task.setvariable variable=GenState]ReviewPending"
+                  Write-Host "##vso[task.setvariable variable=PrNote]Review PR $id is still open and already covers the schema model. Approve it."
+                } else {
+                  Write-Host "Schema model and migrations are in sync at $devSha. Nothing to review."
+                  Write-Host "##vso[task.setvariable variable=GenState]InSync"
+                  Write-Host "##vso[task.setvariable variable=PrNote]No review PR needed: the schema model and the migrations are in sync."
+                }
+                exit 0
+              }
+              Write-Host "Generated:"; $changes | ForEach-Object { Write-Host "  $_" }
+
+              $coll = "$(System.CollectionUri)".TrimEnd('/'); $proj = "$coll/$(System.TeamProject)"
+              $repo = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $h = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
+              function Api($m, $u, $b) { $p = @{ Method = $m; Uri = $u; Headers = $h; ContentType = 'application/json'; ErrorAction = 'Stop' }; if ($null -ne $b) { $p.Body = (ConvertTo-Json -InputObject $b -Depth 10) }; Invoke-RestMethod @p }
+
+              # 1. Commit the scripts to the review branch: the open PR's, or a new one.
+              if ($state -eq 'ReviewOpen') { $branch = "$(ReviewBranch)" }
+              else {
+                $name = "$(Build.BuildId)-$desc"; if ($name.Length -gt 60) { $name = $name.Substring(0, 60).Trim('_') }
+                $branch = "${{ parameters.reviewBranchPrefix }}/$name"
+                git checkout -q -b $branch
+              }
+              git commit -q -m "Generated migration: $desc"
+              if ($LASTEXITCODE -ne 0) { throw "git commit failed." }
+              git push origin "HEAD:refs/heads/$branch"
+              if ($LASTEXITCODE -ne 0) { throw "Push to $branch was rejected. The build service needs Contribute, and Create branch under ${{ parameters.reviewBranchPrefix }}/." }
+              Write-Host "Pushed the generated scripts to $branch."
+              Write-Host "##vso[artifact.upload containerfolder=generated-migration;artifactname=generated-migration]$((Resolve-Path migrations).Path)"
+
+              # 2. PR description: every script the PR adds to dev, with a preview of each.
+              git fetch -q origin $dev
+              $files = @(git diff --name-only "origin/$dev...HEAD" -- migrations)
+              $preview = ($files | ForEach-Object { "#### $_`n`n``````sql`n" + ((Get-Content $_ -TotalCount 60) -join "`n") + "`n```````n" }) -join "`n"
+              $runUrl = "$proj/_build/results?buildId=$(Build.BuildId)"
+              $kinds = if ("$(GenerateTypes)" -like '*undo*') { 'versioned scripts and their undo scripts (U...)' } else { 'versioned scripts' }
+              $body = "Generated by run [$(Build.BuildNumber)]($runUrl) from the schema model on $dev at ``$($devSha.Substring(0,10))``: $kinds.`n`n" +
+                      "**Review the scripts below. To change one, edit the file on branch ``$branch`` (in the browser or locally) and push.** " +
+                      "Approving this PR merges it into $dev, which deploys to integration, runs the Flyway check report and opens the PR to the release branch.`n`n" +
+                      "Keep the end result equal to the schema model: if an edit changes the final schema, change the schema model too, or the next run generates the difference.`n`n$preview"
+              if ($body.Length -gt 3900) { $body = $body.Substring(0, 3900) + "`n`n(truncated, see the files tab)" }
+
+              # 3. Update the open PR, or open a new one with auto-complete.
+              if ($state -eq 'ReviewOpen') {
+                Api PATCH "$repo/pullrequests/${id}?api-version=7.1" @{ description = $body } | Out-Null
+                Write-Host "Added the scripts to review PR $id."
+                Write-Host "##vso[task.setvariable variable=GenState]ReviewUpdated"
+                Write-Host "##vso[task.setvariable variable=PrNote]Added the scripts for '$($desc -replace '_', ' ')' to open review PR $id, so one approval covers everything. Edit the scripts on its branch if needed, then approve it."
+              } else {
+                $pr = Api POST "$repo/pullrequests?api-version=7.1" @{
+                  sourceRefName = "refs/heads/$branch"; targetRefName = "refs/heads/$dev"
+                  title = "Review migration: $($desc -replace '_', ' ')"; description = $body
+                }
+                $me = (Api GET "$coll/_apis/connectionData").authenticatedUser.id
+                Api PATCH "$repo/pullrequests/$($pr.pullRequestId)?api-version=7.1" @{
+                  autoCompleteSetBy = @{ id = $me }
+                  completionOptions = @{ mergeStrategy = 'squash'; deleteSourceBranch = $true; mergeCommitMessage = "Merged PR $($pr.pullRequestId): Review migration: $($desc -replace '_', ' ')" }
+                } | Out-Null
+                $prUrl = "$proj/_git/$(Build.Repository.Name)/pullrequest/$($pr.pullRequestId)"
+                Write-Host "Opened review PR $($pr.pullRequestId): $prUrl"
+                Write-Host "##vso[task.setvariable variable=GenState]ReviewOpened"
+                Write-Host "##vso[task.setvariable variable=PrId]$($pr.pullRequestId)"
+                Write-Host "##vso[task.setvariable variable=PrUrl]$prUrl"
+                Write-Host "##vso[task.setvariable variable=PrNote]Opened review PR $($pr.pullRequestId) for the generated scripts. Edit them on its branch if needed, then approve it."
+              }
+            displayName: "Open or update the review PR"
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+          # Straight after the PR step: a step whose log is just the link to the PR.
+          - template: steps-pr-link.yml
+            parameters:
+              what: review PR
+
+          # Run title, a warning on the run summary and a Summary section with the link.
+          - powershell: |
+              $state = "$(GenState)"; $id = "$(PrId)"; $url = "$(PrUrl)"
+              switch ($state) {
+                'ReviewOpened'   { $title = "approve review PR $id"; $msg = "ACTION NEEDED: review and approve PR $id (generated scripts). Edit them on its branch first if needed. Approving it merges into ${{ parameters.devBranch }} and deploys to integration. $url" }
+                'ReviewUpdated'  { $title = "approve review PR $id"; $msg = "ACTION NEEDED: new scripts were added to review PR $id. Review and approve it. $url" }
+                'ReviewPending'  { $title = "approve review PR $id"; $msg = "ACTION NEEDED: review PR $id is still open and already covers the schema model. Approve it. $url" }
+                'ReviewConflict' { $title = "review PR $id conflicts with ${{ parameters.devBranch }}"; $msg = "ACTION NEEDED: $(PrNote) $url" }
+                'InSync'         { $title = "nothing to review"; $msg = '' }
+                default { Write-Error "No generation state was set."; exit 1 }
+              }
+              Write-Host "Result: $state"
+              Write-Host "##vso[task.setvariable variable=State;isOutput=true]$state"
+              Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $title"
+              if ($msg) {
+                Write-Host "##vso[task.logissue type=warning]$msg"
+                # URLs inside a ##[warning] line aren't clickable, so the link goes on its own line.
+                if ($url) { Write-Host $url }
+                Write-Host "##vso[build.addbuildtag]review-PR-$id"
+                $md = Join-Path "$(Agent.TempDirectory)" 'review-pr.md'
+                [System.IO.File]::WriteAllText($md, "### [Review PR $id]($url)`n`n$url`n`n$(PrNote)`n", (New-Object System.Text.UTF8Encoding $false))
+                Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Review PR;]$md"
+              }
+            name: Result
+            displayName: "Publish the result"

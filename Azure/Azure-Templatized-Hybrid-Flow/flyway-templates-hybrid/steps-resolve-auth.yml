@@ -5,16 +5,26 @@ parameters:
   - name: outputVariable
     type: string
 
-# Emits an EMPTY variable when userName is blank, not an empty -user= flag.
+  # Names of the variables holding the login. The defaults match the credentials groups
+  # (userName / password); the build database for drift and change reports uses its own.
+  - name: userVariable
+    type: string
+    default: userName
+
+  - name: passwordVariable
+    type: string
+    default: password
+
+# Emits an EMPTY variable when the user name is blank, not an empty -user= flag.
 # An empty user breaks integrated security. Runtime rather than a ${{ if }}
 # because variable groups do not exist at compile time.
 steps:
   - powershell: |
-      if ([string]::IsNullOrWhiteSpace("$(userName)")) {
-        Write-Host "No userName in the variable group, using integrated security from the url."
+      if ([string]::IsNullOrWhiteSpace("$(${{ parameters.userVariable }})")) {
+        Write-Host "No ${{ parameters.userVariable }} in the variable group, using integrated security from the url."
         Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }}]"
       } else {
-        Write-Host "Using SQL login $(userName)."
-        Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }};issecret=true]-environments.${{ parameters.environmentName }}.user=""$(userName)"" -environments.${{ parameters.environmentName }}.password=""$(password)"""
+        Write-Host "Using SQL login $(${{ parameters.userVariable }})."
+        Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }};issecret=true]-environments.${{ parameters.environmentName }}.user=""$(${{ parameters.userVariable }})"" -environments.${{ parameters.environmentName }}.password=""$(${{ parameters.passwordVariable }})"""
       }
     displayName: "Resolve ${{ parameters.environmentName }} authentication"

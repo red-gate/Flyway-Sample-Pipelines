@@ -1,0 +1,77 @@
+# 2. INTEGRATION: runs on every change to dev except schema-model-only changes (those go to
+# 1. GENERATE first). That covers new migrations from a merged review PR, and pipeline or config
+# changes, so the PR to main always validates the latest dev.
+#
+#   Flyway check report (-dryrun -code) vs integration  ->  Deploy integration  ->  Open PR dev -> main
+#
+# Approving the dev -> main PR merges it, which triggers 3. RELEASE (sample-release-pipeline.yml):
+# deploy test, then prod.
+#
+# Every stage pins to the commit that triggered the run, so the check report, the integration
+# deploy and the PR all refer to the same code. The PR to main can only complete at that commit:
+# the run posts a "flyway/validated" status for it, which a main branch policy requires and resets
+# on every push.
+#
+# Straight after the PR step, "➜ Link to the pull request" has the link in its log. The run title
+# and a warning on the run summary say what to do next.
+#
+# Variable groups (Pipelines > Library):
+#   distro_pipeline_vars             BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
+#   distro_integration_credentials   target_database_JDBC, databaseName, userName, password
+
+# Exclude-only path filter: any push to dev runs this, unless every changed file is in schema-model/.
+trigger:
+  branches:
+    include:
+      - dev
+  paths:
+    exclude:
+      - schema-model
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: flyway-templates-hybrid
+
+pool:
+  name: Default
+
+variables:
+  - group: distro_pipeline_vars
+
+stages:
+  - template: stage-check-report.yml@templates
+    parameters:
+      stageName: CheckIntegration
+      displayName: "Flyway check report: integration"
+      credentialsGroup: distro_integration_credentials
+      environmentLabel: integration
+      # Code analysis findings are flagged as warnings on the run and listed in the report
+      # (HTML + JSON artifact, run summary, PR description). They never stop the deployment.
+      # Set to true to fail the check, and stop the deployment, on error-level findings.
+      failOnCodeError: false
+      condition: eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+
+  - template: stage-deploy.yml@templates
+    parameters:
+      stageName: DeployIntegration
+      jobName: MigrateIntegration
+      displayName: "Deploy to integration"
+      dependsOn: CheckIntegration
+      adoEnvironment: DistroIntegration
+      credentialsGroup: distro_integration_credentials
+      commit: $[ stageDependencies.CheckIntegration.Check.outputs['Pin.Sha'] ]
+
+  - template: stage-promote.yml@templates
+    parameters:
+      stageName: PromoteToMain
+      displayName: "Open PR dev -> main"
+      dependsOn: [CheckIntegration, DeployIntegration]
+      sourceBranch: dev
+      targetBranch: main
+      commit: $[ stageDependencies.CheckIntegration.Check.outputs['Pin.Sha'] ]
+      reportArtifact: check-report-integration
+      manualReview: false
+      environmentLabel: integration
+      deploysTo: "test and then prod"

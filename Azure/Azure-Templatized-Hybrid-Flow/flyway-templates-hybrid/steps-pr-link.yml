@@ -1,0 +1,33 @@
+# A step whose log is just the link to the PR the previous step opened (or found), so every
+# automatically created PR is one click away in the run view:
+#
+#   ➜ Link to the review PR
+#       Opened review PR 13 for the generated script. ...
+#       http://server/Collection/Project/_git/Repo/pullrequest/13      <- clickable in the log
+#
+# Put it straight after the step that opens the PR. That step sets the job variables PrUrl (empty
+# when no PR was needed) and PrNote (what happened). Declare both with an empty default so they
+# always resolve.
+
+parameters:
+  # Used in the step name: "➜ Link to the <what>".
+  - name: what
+    type: string
+    default: pull request
+
+steps:
+  - powershell: |
+      $note = "$env:PR_NOTE"; $url = "$env:PR_URL"
+      if ($url) {
+        Write-Host "##[section]$note"
+        Write-Host ""
+        Write-Host "    $url"
+      } elseif ($note) {
+        Write-Host $note
+      } else {
+        Write-Host "No ${{ parameters.what }} was opened by this run."
+      }
+    displayName: "➜ Link to the ${{ parameters.what }}"
+    env:
+      PR_NOTE: $(PrNote)
+      PR_URL: $(PrUrl)

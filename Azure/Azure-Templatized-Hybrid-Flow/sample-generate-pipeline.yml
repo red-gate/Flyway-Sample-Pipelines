@@ -1,0 +1,66 @@
+# 1. GENERATE: runs when the schema model or the comparison settings (flyway.toml, Filter.scpf)
+# change on dev. Not on migration changes: merging a review PR only starts 2. INTEGRATION.
+#
+#   Schema model ahead of migrations  ->  generate the versioned + undo scripts, open a review PR
+#                                         into dev (edit the scripts on its branch, then approve)
+#   Review PR already open            ->  add the new scripts to that PR (dev is merged into its
+#                                         branch first, so only the difference is generated)
+#   In sync                           ->  nothing to do
+#
+# Approving the review PR merges the scripts into dev, which triggers 2. INTEGRATION
+# (sample-integration-pipeline.yml).
+#
+# Straight after the PR step, "➜ Link to the review PR" has the link in its log. The run title and
+# a warning on the run summary say what to do next.
+#
+# Variable groups (Pipelines > Library):
+#   distro_pipeline_vars       BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
+#   distro_build_credentials   target_database_JDBC, databaseName, userName, password  (shadow/build database)
+
+parameters:
+  # Default must not be empty: ADO marks an empty-default string parameter
+  # Required and greys out the Run button.
+  - name: descriptionOverride
+    displayName: "Migration description, or 'auto' to derive it from the merge commit"
+    type: string
+    default: auto
+
+trigger:
+  branches:
+    include:
+      - dev
+  paths:
+    include:
+      - schema-model
+      - flyway.toml
+      - Filter.scpf
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: flyway-templates-hybrid
+
+pool:
+  name: Default
+
+variables:
+  - group: distro_pipeline_vars
+
+  - name: LongLivedBranch
+    value: dev
+
+# Stages are chosen at compile time, so a run only ever shows the stages it actually runs.
+stages:
+  # PR builds (Build Validation policy on dev): preview the migration this PR would generate.
+  - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    - template: stage-pr-review.yml@templates
+      parameters:
+        credentialsGroup: distro_build_credentials
+
+  - ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+    - template: stage-generate-review.yml@templates
+      parameters:
+        credentialsGroup: distro_build_credentials
+        devBranch: dev
+        descriptionOverride: ${{ parameters.descriptionOverride }}

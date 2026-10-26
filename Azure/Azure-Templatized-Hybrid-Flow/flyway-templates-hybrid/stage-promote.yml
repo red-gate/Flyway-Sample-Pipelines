@@ -21,7 +21,7 @@ parameters:
   - name: targetBranch
     type: string
 
-  # The commit this run checked and deployed to test1, as a runtime expression such as
+  # The commit this run checked and deployed, as a runtime expression such as
   # $[ stageDependencies.CheckTest1.Check.outputs['Pin.Sha'] ]. The PR may only complete
   # while the source branch is at this commit (see statusGenre/statusName).
   - name: commit
@@ -32,10 +32,27 @@ parameters:
     type: string
     default: ''
 
-  # Who is notified about the manual intervention, and who may resume it. Comma-separated
-  # emails or group names, e.g. [Distro]\Distro Team. Empty approvers = anyone with queue rights.
+  # true: wait for a manual intervention (ManualValidation) before opening the PR.
+  # false: open the PR straight after the deploy; approving the PR is then the only gate.
+  - name: manualReview
+    type: boolean
+    default: true
+
+  # Label of the environment this run checked and deployed to, used in the PR text and status.
+  - name: environmentLabel
+    type: string
+    default: test
+
+  # What approving the PR leads to, used in the PR text.
+  - name: deploysTo
+    type: string
+    default: "UAT and then Prod"
+
+  # Manual intervention only: who is notified, and who may resume it. Comma-separated emails or
+  # group names, e.g. [Distro]\Distro Team. Empty approvers = anyone with queue rights.
   - name: notifyUsers
     type: string
+    default: ''
 
   - name: approvers
     type: string
@@ -53,7 +70,7 @@ parameters:
 
   # PR status this stage posts for the validated commit. A Status policy on the target branch
   # requires it and resets it on every new push, so approving the PR can only merge the exact
-  # commit that was checked and deployed to test1.
+  # commit that was checked and deployed.
   - name: statusGenre
     type: string
     default: flyway
@@ -70,32 +87,40 @@ stages:
     jobs:
       # Agentless: the run waits here without holding an agent. The job timeout is longer
       # than the task's, so the task's onTimeout: reject is what ends an unanswered review.
-      - job: ManualReview
-        displayName: "Manual intervention: review the check report"
-        pool: server
-        timeoutInMinutes: ${{ parameters.jobTimeoutMinutes }}
-        steps:
-          - task: ManualValidation@1
-            displayName: "Approve to open ${{ parameters.sourceBranch }} -> ${{ parameters.targetBranch }} PR"
-            timeoutInMinutes: ${{ parameters.reviewTimeoutMinutes }}
-            inputs:
-              notifyUsers: ${{ parameters.notifyUsers }}
-              approvers: ${{ parameters.approvers }}
-              allowApproversToApproveTheirOwnRuns: true
-              onTimeout: reject
-              instructions: >-
-                Review the Flyway check report on this run's Summary tab (and the
-                ${{ parameters.reportArtifact }} artifact), and check the deployed test
-                database. Resume to open or update the pull request from
-                ${{ parameters.sourceBranch }} to ${{ parameters.targetBranch }} for exactly
-                this commit. Approving that PR deploys to UAT, then Prod. Reject to stop here.
+      - ${{ if eq(parameters.manualReview, true) }}:
+        - job: ManualReview
+          displayName: "Manual intervention: review the check report"
+          pool: server
+          timeoutInMinutes: ${{ parameters.jobTimeoutMinutes }}
+          steps:
+            - task: ManualValidation@1
+              displayName: "Approve to open ${{ parameters.sourceBranch }} -> ${{ parameters.targetBranch }} PR"
+              timeoutInMinutes: ${{ parameters.reviewTimeoutMinutes }}
+              inputs:
+                notifyUsers: ${{ parameters.notifyUsers }}
+                approvers: ${{ parameters.approvers }}
+                allowApproversToApproveTheirOwnRuns: true
+                onTimeout: reject
+                instructions: >-
+                  Review the Flyway check report on this run's Summary tab (and the
+                  ${{ parameters.reportArtifact }} artifact), and check the
+                  ${{ parameters.environmentLabel }} database. Resume to open or update the pull
+                  request from ${{ parameters.sourceBranch }} to ${{ parameters.targetBranch }} for
+                  exactly this commit. Approving that PR deploys to ${{ parameters.deploysTo }}.
+                  Reject to stop here.
 
       - job: OpenPullRequest
         displayName: "Open ${{ parameters.sourceBranch }} -> ${{ parameters.targetBranch }} PR"
-        dependsOn: ManualReview
+        ${{ if eq(parameters.manualReview, true) }}:
+          dependsOn: ManualReview
         variables:
           - name: PinnedCommit
             value: ${{ parameters.commit }}
+          # Set by the Open step, shown by the link step after it.
+          - name: PrUrl
+            value: ''
+          - name: PrNote
+            value: ''
         steps:
           # checkout: self keeps the self repo in the job token's scope, and the history is
           # needed to work out what the PR brings to the target branch.
@@ -152,6 +177,8 @@ stages:
               $ahead = [int](git rev-list --count "origin/$target..$sha")
               if ($ahead -eq 0) {
                 Write-Host "$target already contains $sha. No pull request needed."
+                Write-Host "##vso[task.setvariable variable=PrNote]No pull request needed: $target already has this commit."
+                Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - nothing to promote"
                 exit 0
               }
               $migrations = @(git diff --name-status "origin/$target...$sha" -- migrations)
@@ -164,7 +191,8 @@ stages:
               $md = Get-ChildItem "$(Pipeline.Workspace)\report" -Recurse -Filter '*-check-summary.md' -ErrorAction SilentlyContinue | Select-Object -First 1
               if ($md) { $summary = Get-Content -Raw $md.FullName }
               $migList = if ($migrations.Count) { ($migrations | ForEach-Object { "    $_" }) -join "`n" } else { "    (no migration files)" }
-              $desc = "Promotes $source to $target at commit ``$($sha.Substring(0,10))``, validated by run [$(Build.BuildNumber)]($runUrl) after manual review.`n`nApproving this PR completes it automatically, which deploys to UAT and then Prod. It can only complete while $source is still at the validated commit.`n`n### Migrations this brings to $target`n`n$migList`n`n$summary"
+              $how = if ("${{ parameters.manualReview }}" -eq 'True') { ' after manual review' } else { '' }
+              $desc = "Promotes $source to $target at commit ``$($sha.Substring(0,10))``, checked and deployed to ${{ parameters.environmentLabel }} by run [$(Build.BuildNumber)]($runUrl)$how.`n`nApproving this PR completes it automatically, which deploys to ${{ parameters.deploysTo }}. It can only complete while $source is still at the validated commit.`n`n### Migrations this brings to $target`n`n$migList`n`n$summary"
               if ($desc.Length -gt 3900) { $desc = $desc.Substring(0, 3900) + "`n`n(truncated, see the run summary)" }
 
               # 4. Open the PR, or refresh the existing one.
@@ -207,28 +235,39 @@ stages:
               if ($iteration -and $latest.id -eq $iteration.id) {
                 Api POST "$repo/pullRequests/$prId/statuses?api-version=7.1-preview.1" @{
                   state       = 'succeeded'
-                  description = "Flyway check reviewed and deployed to test1 (run $(Build.BuildNumber))"
+                  description = "Flyway check run and deployed to ${{ parameters.environmentLabel }} (run $(Build.BuildNumber))"
                   context     = @{ genre = "${{ parameters.statusGenre }}"; name = "${{ parameters.statusName }}" }
                   targetUrl   = $runUrl
                   iterationId = $iteration.id
                 } | Out-Null
-                $note = "Validated status posted for iteration $($iteration.id). Approving it deploys to UAT, then Prod."
+                $title = "approve PR $prId"
+                $note  = "ACTION NEEDED: approve PR $prId ($source to $target). Approving it deploys to ${{ parameters.deploysTo }}. $prUrl"
               } else {
-                $note = "$source has moved past $sha, so this run did not mark the PR as validated. The run for the newer commit has to pass its own review first."
-                Write-Warning $note
+                $title = "superseded, see the newer run"
+                $note  = "$source has moved past $sha, so this run did not mark PR $prId as validated. The run for the newer commit validates it. $prUrl"
               }
-              Write-Host $note
 
-              # 7. Make the PR easy to reach from the run: highlighted log line (clickable), the run
-              #    name and a tag in the runs list, and a titled section on the Summary tab.
-              Write-Host "##[section]Release pull request ${prId}: $prUrl"
+              # 7. Run title, a warning on the run summary (with the link on a plain line under it,
+              #    because URLs inside a ##[warning] line aren't clickable), a tag and a Summary
+              #    section; the link step after this one shows the PR link on its own too.
+              Write-Host "##vso[task.logissue type=warning]$note"
+              Write-Host $prUrl
               Write-Host "##vso[build.addbuildtag]PR-$prId"
-              Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - PR $prId"
+              Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $title"
+              $verb = if ($existing) { 'Updated' } else { 'Opened' }
+              Write-Host "##vso[task.setvariable variable=PrUrl]$prUrl"
+              Write-Host "##vso[task.setvariable variable=PrNote]$verb pull request $prId ($source to $target). Approving it deploys to ${{ parameters.deploysTo }}."
               $prMd = Join-Path "$(Agent.TempDirectory)" 'release-pull-request.md'
-              $md = "### [Open PR ${prId}: $source to $target]($prUrl)`n`n$prUrl`n`n$note`n"
+              $md = "### [Pull request ${prId}: $source to $target]($prUrl)`n`n$prUrl`n`n$note`n"
               [System.IO.File]::WriteAllText($prMd, $md, (New-Object System.Text.UTF8Encoding $false))
-              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Release pull request;]$prMd"
+              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Pull request;]$prMd"
+            name: Open
             displayName: "Open the pull request, mark the validated commit, set auto-complete"
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
               PINNED_COMMIT: $(PinnedCommit)
+
+          # Straight after the PR is opened: a step whose log is just the link to it.
+          - template: steps-pr-link.yml
+            parameters:
+              what: pull request

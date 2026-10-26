@@ -31,11 +31,18 @@ parameters:
     type: string
     default: $(Build.SourceVersion)
 
-  # Set true to fail the stage on error-level code analysis violations. Default is
-  # report only, because the manual review that follows is the gate.
+  # false (default): code analysis findings are flagged as warnings on the run and listed in the
+  #                  report, and the deployment carries on.
+  # true:            error-level findings also fail this stage, which stops the deployment.
   - name: failOnCodeError
     type: boolean
     default: false
+
+  # Most findings raised as individual warnings on the run; the rest are summed up in one more
+  # warning. All of them are always in the report.
+  - name: maxCodeWarnings
+    type: number
+    default: 25
 
 stages:
   - stage: ${{ parameters.stageName }}
@@ -86,75 +93,14 @@ stages:
             env:
               environments_target_url: $(target_database_JDBC)
 
-          # Turns the JSON report into Markdown on the run's summary page, so a reviewer can
-          # read it without downloading the artifact. Also echoes it to the log. Runs even when
-          # the check step fails, which is when the report matters most.
-          - powershell: |
-              $label = "${{ parameters.environmentLabel }}"
-              $json  = Join-Path "$(CheckDir)" "$label-check.json"
-              $md    = Join-Path "$(CheckDir)" "$label-check-summary.md"
-              if (-not (Test-Path $json)) { Write-Error "No JSON report at $json"; exit 1 }
-
-              function Cell($s) { ("$s" -replace '\|', '\|') -replace '\r?\n', ' ' }
-              function ExText($e) {
-                if ($null -eq $e) { return $null }
-                if ($e -is [string]) { return $e }
-                if ($e.message) { return $e.message }
-                return ($e | ConvertTo-Json -Depth 5 -Compress)
-              }
-
-              $report  = Get-Content -Raw $json | ConvertFrom-Json
-              $dryrun  = $report.individualResults | Where-Object operation -eq 'dryrun' | Select-Object -First 1
-              $code    = $report.individualResults | Where-Object operation -eq 'code'   | Select-Object -First 1
-              $scripts = @($dryrun.scripts | Where-Object { $_ })
-              $viol    = @($code.results | Where-Object { $_ } | ForEach-Object {
-                $file = Split-Path $_.filepath -Leaf
-                $_.violations | Where-Object { $_ } | ForEach-Object { $_ | Add-Member -NotePropertyName file -NotePropertyValue $file -PassThru -Force }
-              })
-              $errors   = @($viol | Where-Object { -not $_.warning }).Count
-              $warnings = @($viol | Where-Object { $_.warning }).Count
-              $commit   = "$env:PINNED_COMMIT"
-
-              $lines = New-Object System.Collections.Generic.List[string]
-              $lines.Add("## Flyway check: $label ($(databaseName))")
-              $lines.Add("")
-              $lines.Add("Commit ``$($commit.Substring(0, [Math]::Min(10, $commit.Length)))``, run $(Build.BuildNumber). Full HTML report: artifact **check-report-$label**.")
-              $lines.Add("")
-              $lines.Add("### Dry run: pending migrations")
-              $lines.Add("")
-              if (-not $dryrun) { $lines.Add("No dry run result in the report.") }
-              elseif ($scripts.Count -eq 0) { $lines.Add("Nothing pending. $label is up to date.") }
-              else {
-                $lines.Add("| # | Version | Description | Type |")
-                $lines.Add("|---|---|---|---|")
-                foreach ($s in $scripts) { $lines.Add("| $($s.order) | $(Cell $s.version) | $(Cell $s.description) | $(Cell $s.type) |") }
-              }
-              $dx = ExText $dryrun.exception
-              if ($dx) { $lines.Add(""); $lines.Add("Dry run reported an error:"); $lines.Add(""); $lines.Add('```'); $lines.Add($dx); $lines.Add('```') }
-              $lines.Add("")
-              $lines.Add("### Code analysis: $errors error(s), $warnings warning(s)")
-              $lines.Add("")
-              if ($viol.Count -gt 0) {
-                $lines.Add("| Severity | Rule | Description | File | Line |")
-                $lines.Add("|---|---|---|---|---|")
-                foreach ($v in $viol) {
-                  $sev  = if ($v.warning) { 'Warning' } else { 'Error' }
-                  $rule = if ($v.help) { "[$(Cell $v.code)]($($v.help))" } else { Cell $v.code }
-                  $lines.Add("| $sev | $rule | $(Cell $v.description) | $(Cell $v.file) | $($v.line_no) |")
-                }
-              } elseif (-not $code) { $lines.Add("No code analysis result in the report.") }
-              else { $lines.Add("No violations in the pending migrations.") }
-              $cx = ExText $code.exception
-              if ($cx) { $lines.Add(""); $lines.Add("Code analysis reported an error:"); $lines.Add(""); $lines.Add('```'); $lines.Add($cx); $lines.Add('```') }
-              $lines.Add("")
-              [System.IO.File]::WriteAllLines($md, $lines, (New-Object System.Text.UTF8Encoding $false))
-
-              Get-Content $md | Write-Host
-              Write-Host "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Flyway check report - $label;]$md"
-            displayName: "Show the report on the run summary"
-            condition: succeededOrFailed()
-            env:
-              PINNED_COMMIT: $(PinnedCommit)
+          # Markdown summary on the run's Summary tab, plus warnings for code analysis findings.
+          - template: steps-check-summary.yml
+            parameters:
+              label: ${{ parameters.environmentLabel }}
+              reportDir: $(CheckDir)
+              artifactName: check-report-${{ parameters.environmentLabel }}
+              failOnCodeError: ${{ parameters.failOnCodeError }}
+              maxCodeWarnings: ${{ parameters.maxCodeWarnings }}
 
           # Build Artifacts, not the `publish:` shortcut: Pipeline Artifacts are not supported on Azure DevOps Server.
           - task: PublishBuildArtifacts@1

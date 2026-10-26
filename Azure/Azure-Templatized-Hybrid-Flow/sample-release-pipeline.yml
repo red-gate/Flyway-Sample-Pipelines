@@ -1,26 +1,37 @@
-# RELEASE pipeline: runs when a PR from dev is merged into release.
+# 3. RELEASE: runs when the PR from dev is merged into main.
 #
-#   Dry run UAT + Prod -> Deploy UAT -> Deploy Prod
+#   Deploy test  ->  Deploy prod
 #
-# The BUILD pipeline (sample-build-pipeline.yml) opens that PR after the check report and the
-# manual intervention, and the PR can only complete at the commit that run validated. Approving
-# the PR is the only gate: this pipeline deploys straight through.
+# Each deploy stage first reports on its database, as HTML + JSON in the artifact
+# check-report-<test|prod>, with a summary on the run:
+#   flyway check -drift -code -changes -dryrun   drift since the last deployment, the objects this
+#                                                deployment changes, code analysis, the SQL it runs
+#   flyway info                                  every migration and its state (<label>-migrations.*)
+# Report only: drift and code analysis findings are flagged as warnings and the deployment carries
+# on. Set failOnDrift / failOnCodeError to true on a stage to stop it instead.
+#
+# 2. INTEGRATION (sample-integration-pipeline.yml) opens that PR after the Flyway check report and
+# the integration deploy. The PR can only complete at the commit that run validated. Approving the
+# PR is the only gate: this pipeline deploys straight through.
 #
 # Every stage deploys $(Build.SourceVersion), the merge commit that triggered the run.
 #
-# Server-side guard: the DistroUat and DistroProd environments and the uat/prod credential groups
-# have a Branch control check (protected release branch only), so only this pipeline, running on
-# release, can reach them.
+# Server-side guard: the DistroTest and DistroProd environments and the test/prod credential groups
+# have a Branch control check (protected main only), so only this pipeline, running on main, can
+# reach them.
 #
 # Variable groups (Pipelines > Library):
 #   distro_pipeline_vars      BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_uat_credentials    target_database_JDBC, databaseName, userName, password
+#   distro_test_credentials   target_database_JDBC, databaseName, userName, password
 #   distro_prod_credentials   target_database_JDBC, databaseName, userName, password
+#   distro_release_build_credentials   build_database_JDBC, build_databaseName, build_userName, build_password
+#                             (a scratch BUILD database for the drift and change reports; Flyway
+#                             cleans it, so never point it at a real environment)
 
 trigger:
   branches:
     include:
-      - release
+      - main
 
 pr: none
 
@@ -36,40 +47,28 @@ pool:
 variables:
   - group: distro_pipeline_vars
 
-  - name: DryRunDir
-    value: $(Build.ArtifactStagingDirectory)\dry-run
-
 stages:
-  - stage: DryRun
-    displayName: "Dry run: SQL UAT and Prod will get"
-    condition: eq(variables['Build.SourceBranch'], 'refs/heads/release')
-    jobs:
-      - template: job-dry-run.yml@templates
-        parameters:
-          jobName: DryRunUat
-          displayName: "Dry run: uat"
-          credentialsGroup: distro_uat_credentials
-
-      - template: job-dry-run.yml@templates
-        parameters:
-          jobName: DryRunProd
-          displayName: "Dry run: prod"
-          credentialsGroup: distro_prod_credentials
-
   - template: stage-deploy.yml@templates
     parameters:
-      stageName: DeployUat
-      jobName: MigrateUat
-      displayName: "Deploy to UAT"
-      dependsOn: DryRun
-      adoEnvironment: DistroUat
-      credentialsGroup: distro_uat_credentials
+      stageName: DeployTest
+      jobName: MigrateTest
+      displayName: "Deploy to test"
+      dependsOn: []
+      adoEnvironment: DistroTest
+      credentialsGroup: distro_test_credentials
+      condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      checkReport: true
+      reportLabel: test
+      buildCredentialsGroup: distro_release_build_credentials
 
   - template: stage-deploy.yml@templates
     parameters:
       stageName: DeployProd
       jobName: MigrateProd
-      displayName: "Deploy to Prod"
-      dependsOn: DeployUat
+      displayName: "Deploy to prod"
+      dependsOn: DeployTest
       adoEnvironment: DistroProd
       credentialsGroup: distro_prod_credentials
+      checkReport: true
+      reportLabel: prod
+      buildCredentialsGroup: distro_release_build_credentials
