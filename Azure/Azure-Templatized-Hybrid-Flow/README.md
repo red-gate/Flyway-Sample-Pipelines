@@ -46,9 +46,13 @@ To keep everything in one repo instead, put the templates in a `flyway-templates
 
 ## In Azure DevOps
 
+To build all of this on one machine, including the databases and a pipelines agent, run the scripts in [setup/](setup/README.md). They create everything below, with the `northwind-hybrid` names the sample pipelines use.
+
+To set it up by hand:
+
 1. **Pipelines:** create three pipelines from the same project repo, one for each YAML file. Name them in order, for example `1 Generate`, `2 Integration` and `3 Release`, so they sort in flow order.
-2. **Variable groups:** under Pipelines > Library, create `<project>_pipeline_vars`, `<project>_build_credentials`, `<project>_integration_credentials`, `<project>_test_credentials` and `<project>_prod_credentials`, plus `<project>_release_build_credentials` (build_database_JDBC, build_databaseName, build_userName, build_password) for a scratch build database the release reports can clean. The header of each YAML file lists their keys.
-3. **Environments:** create `<Project>Integration`, `<Project>Test` and `<Project>Prod`.
+2. **Variable groups:** under Pipelines > Library, create `northwind-hybrid-pipeline-vars`, `northwind-hybrid-shadow-credentials`, `northwind-hybrid-integration-credentials`, `northwind-hybrid-test-credentials`, `northwind-hybrid-prod-credentials` and `northwind-hybrid-check-credentials`. The shadow and check groups point at empty build databases that Flyway cleans. The header of each YAML file lists their keys.
+3. **Environments:** create `northwind-hybrid-integration`, `northwind-hybrid-test` and `northwind-hybrid-prod`.
 4. **Branches:** create `dev` and `main`.
 5. **Policy on `dev`:** require at least one reviewer, so review PRs need an approval before they auto-complete. If people commit straight to `dev`, give them "Bypass policies when pushing" on `dev`.
 6. **Policy on `main`:** require at least one reviewer, and require the status `flyway/validated`, reset on every push. Integration posts that status only for the exact commit it checked and deployed.

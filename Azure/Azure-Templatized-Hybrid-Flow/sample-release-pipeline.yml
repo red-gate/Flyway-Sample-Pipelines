@@ -16,15 +16,15 @@
 #
 # Every stage deploys $(Build.SourceVersion), the merge commit that triggered the run.
 #
-# Server-side guard: the DistroTest and DistroProd environments and the test/prod credential groups
+# Server-side guard: the northwind-hybrid-test and northwind-hybrid-prod environments and the test/prod credential groups
 # have a Branch control check (protected main only), so only this pipeline, running on main, can
 # reach them.
 #
 # Variable groups (Pipelines > Library):
-#   distro_pipeline_vars      BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_test_credentials   target_database_JDBC, databaseName, userName, password
-#   distro_prod_credentials   target_database_JDBC, databaseName, userName, password
-#   distro_release_build_credentials   build_database_JDBC, build_databaseName, build_userName, build_password
+#   northwind-hybrid-pipeline-vars      BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
+#   northwind-hybrid-test-credentials   target_database_JDBC, databaseName, userName, password
+#   northwind-hybrid-prod-credentials   target_database_JDBC, databaseName, userName, password
+#   northwind-hybrid-check-credentials   build_database_JDBC, build_databaseName, build_userName, build_password
 #                             (a scratch BUILD database for the drift and change reports; Flyway
 #                             cleans it, so never point it at a real environment)
 
@@ -45,7 +45,7 @@ pool:
   name: Default
 
 variables:
-  - group: distro_pipeline_vars
+  - group: northwind-hybrid-pipeline-vars
 
 stages:
   - template: stage-deploy.yml@templates
@@ -54,12 +54,12 @@ stages:
       jobName: MigrateTest
       displayName: "Deploy to test"
       dependsOn: []
-      adoEnvironment: DistroTest
-      credentialsGroup: distro_test_credentials
+      adoEnvironment: northwind-hybrid-test
+      credentialsGroup: northwind-hybrid-test-credentials
       condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
       checkReport: true
       reportLabel: test
-      buildCredentialsGroup: distro_release_build_credentials
+      buildCredentialsGroup: northwind-hybrid-check-credentials
 
   - template: stage-deploy.yml@templates
     parameters:
@@ -67,8 +67,8 @@ stages:
       jobName: MigrateProd
       displayName: "Deploy to prod"
       dependsOn: DeployTest
-      adoEnvironment: DistroProd
-      credentialsGroup: distro_prod_credentials
+      adoEnvironment: northwind-hybrid-prod
+      credentialsGroup: northwind-hybrid-prod-credentials
       checkReport: true
       reportLabel: prod
-      buildCredentialsGroup: distro_release_build_credentials
+      buildCredentialsGroup: northwind-hybrid-check-credentials

@@ -16,8 +16,8 @@
 # and a warning on the run summary say what to do next.
 #
 # Variable groups (Pipelines > Library):
-#   distro_pipeline_vars             BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_integration_credentials   target_database_JDBC, databaseName, userName, password
+#   northwind-hybrid-pipeline-vars             BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
+#   northwind-hybrid-integration-credentials   target_database_JDBC, databaseName, userName, password
 
 # Exclude-only path filter: any push to dev runs this, unless every changed file is in schema-model/.
 trigger:
@@ -38,14 +38,14 @@ pool:
   name: Default
 
 variables:
-  - group: distro_pipeline_vars
+  - group: northwind-hybrid-pipeline-vars
 
 stages:
   - template: stage-check-report.yml@templates
     parameters:
       stageName: CheckIntegration
       displayName: "Flyway check report: integration"
-      credentialsGroup: distro_integration_credentials
+      credentialsGroup: northwind-hybrid-integration-credentials
       environmentLabel: integration
       # Code analysis findings are flagged as warnings on the run and listed in the report
       # (HTML + JSON artifact, run summary, PR description). They never stop the deployment.
@@ -59,8 +59,8 @@ stages:
       jobName: MigrateIntegration
       displayName: "Deploy to integration"
       dependsOn: CheckIntegration
-      adoEnvironment: DistroIntegration
-      credentialsGroup: distro_integration_credentials
+      adoEnvironment: northwind-hybrid-integration
+      credentialsGroup: northwind-hybrid-integration-credentials
       commit: $[ stageDependencies.CheckIntegration.Check.outputs['Pin.Sha'] ]
 
   - template: stage-promote.yml@templates
