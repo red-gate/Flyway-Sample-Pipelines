@@ -1,21 +1,26 @@
 <#
-Step 1: creates the six databases and brings the right ones up to date. Safe to re-run: it never
-drops or cleans anything, and only applies pending migrations.
+Step 1: creates the databases, brings the right ones up to date, and makes the baseline backup.
+Safe to re-run: it never drops or cleans anything, only applies pending migrations, and leaves an
+existing backup alone.
 
-  .\1-create-databases.ps1                 dev, integration, test, prod migrated to the latest version
-  .\1-create-databases.ps1 -EmptyTargets   only dev is migrated; integration, test and prod stay
-                                            empty, so the first pipeline runs deploy everything
+  .\1-create-databases.ps1                  dev, integration, test, prod migrated to the latest version
+  .\1-create-databases.ps1 -EmptyTargets    only dev is migrated; integration, test and prod stay
+                                             empty, so the first pipeline runs deploy everything
+  .\1-create-databases.ps1 -RefreshBaseline  also remake the baseline backup
 
   <prefix>-dev          migrated   the developers' database, used by Flyway Desktop
-  <prefix>-shadow       EMPTY      build database for `flyway diff generate`; Flyway cleans it
-  <prefix>-check        EMPTY      build database for the release drift/changes reports; Flyway cleans it
+  <prefix>-shadow       empty      build database for `flyway diff generate`
+  <prefix>-check        empty      build database for the release drift/changes reports
   <prefix>-integration  migrated   deployment targets: integration (dev branch), test and prod (main)
   <prefix>-test         migrated
   <prefix>-prod         migrated
+  <prefix>-baseline     V001       the schema-only baseline, backed up to BaselineBackupPath
 
-The schema comes from the migrations in setup\northwind-hybrid\migrations.
+On every run Flyway restores the baseline backup into shadow and check and applies the later
+migrations (the backup provisioner), so don't keep anything in them. The schema comes from the
+migrations in setup\northwind\migrations.
 #>
-param([switch]$EmptyTargets)
+param([switch]$EmptyTargets, [switch]$RefreshBaseline)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
 
@@ -29,14 +34,6 @@ foreach ($db in $Names.Db.Values) {
     Invoke-Sql "IF DATABASEPROPERTYEX(N'$db', 'IsAutoClose') = 1 ALTER DATABASE [$db] SET AUTO_CLOSE OFF" | Out-Null
 }
 
-Write-Step 'Build databases must stay empty'
-foreach ($k in 'shadow', 'check') {
-    $db = $Names.Db[$k]
-    $objects = [int]"$(Invoke-Sql "SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped = 0" $db)".Trim()
-    if ($objects -eq 0) { Write-Host "  empty    $db" }
-    else { Write-Warning "$db has $objects objects. Flyway cleans it on every run, so don't keep anything in it." }
-}
-
 Write-Step 'Migrating'
 if (-not (Import-FlywayLicence)) { Write-Host '  (no Flyway licence file found; migrate works without one)' }
 $toMigrate = @('dev')
@@ -47,6 +44,9 @@ foreach ($k in $toMigrate) {
     $line = ($out | Select-String 'Successfully applied|is up to date|No migration necessary' | Select-Object -First 1)
     Write-Host "  $db : $("$line".Trim())"
 }
+
+Write-Step 'Baseline backup (shadow and check are restored from it)'
+New-BaselineBackup -Force:$RefreshBaseline | Out-Null
 
 Write-Step 'Result'
 $rows = foreach ($k in $Names.Db.Keys) {

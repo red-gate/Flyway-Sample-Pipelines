@@ -16,36 +16,40 @@
 #
 # Every stage deploys $(Build.SourceVersion), the merge commit that triggered the run.
 #
-# Server-side guard: the northwind-hybrid-test and northwind-hybrid-prod environments and the test/prod credential groups
-# have a Branch control check (protected main only), so only this pipeline, running on main, can
-# reach them.
+# Server-side guard: the test and prod environments and credential groups have a Branch control
+# check (protected main only), so only this pipeline, running on main, can reach them.
 #
-# Variable groups (Pipelines > Library):
-#   northwind-hybrid-pipeline-vars      BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   northwind-hybrid-test-credentials   target_database_JDBC, databaseName, userName, password
-#   northwind-hybrid-prod-credentials   target_database_JDBC, databaseName, userName, password
-#   northwind-hybrid-check-credentials   build_database_JDBC, build_databaseName, build_userName, build_password
-#                             (a scratch BUILD database for the drift and change reports; Flyway
-#                             cleans it, so never point it at a real environment)
+# Project-specific names live in pipeline-settings.yml. Variable groups used here (Pipelines > Library):
+#   pipelineVarsGroup              BASELINE_VERSION
+#   testCredentialsGroup           target_database_JDBC, databaseName, userName, password
+#   prodCredentialsGroup           target_database_JDBC, databaseName, userName, password
+#   releaseBuildCredentialsGroup   build_database_JDBC, build_databaseName, build_userName, build_password
+#                                  (a scratch BUILD database for the drift and change reports; Flyway
+#                                  restores the baseline backup over it, or cleans it, so never point
+#                                  it at a real environment)
 
+# --- Per project, and can't be variables (keep in step with pipeline-settings.yml) ---------------
+# Also set the pipeline's default branch to main. That's a pipeline setting, not YAML (see README).
 trigger:
   branches:
     include:
-      - main
+      - main                         # mainBranch
 
 pr: none
+
+pool:
+  name: Default                      # agent pool with Flyway on it
 
 resources:
   repositories:
     - repository: templates
       type: git
-      name: flyway-templates-hybrid
-
-pool:
-  name: Default
+      name: flyway-templates-hybrid  # templates repo
+# --------------------------------------------------------------------------------------------------
 
 variables:
-  - group: northwind-hybrid-pipeline-vars
+  - template: pipeline-settings.yml
+  - group: ${{ variables.pipelineVarsGroup }}
 
 stages:
   - template: stage-deploy.yml@templates
@@ -54,12 +58,14 @@ stages:
       jobName: MigrateTest
       displayName: "Deploy to test"
       dependsOn: []
-      adoEnvironment: northwind-hybrid-test
-      credentialsGroup: northwind-hybrid-test-credentials
-      condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      adoEnvironment: ${{ variables.testEnvironment }}
+      credentialsGroup: ${{ variables.testCredentialsGroup }}
+      condition: eq(variables['Build.SourceBranch'], 'refs/heads/${{ variables.mainBranch }}')
       checkReport: true
       reportLabel: test
-      buildCredentialsGroup: northwind-hybrid-check-credentials
+      buildCredentialsGroup: ${{ variables.releaseBuildCredentialsGroup }}
+      baselineBackupPath: ${{ variables.baselineBackupPath }}
+      baselineBackupVersion: ${{ variables.baselineBackupVersion }}
 
   - template: stage-deploy.yml@templates
     parameters:
@@ -67,8 +73,10 @@ stages:
       jobName: MigrateProd
       displayName: "Deploy to prod"
       dependsOn: DeployTest
-      adoEnvironment: northwind-hybrid-prod
-      credentialsGroup: northwind-hybrid-prod-credentials
+      adoEnvironment: ${{ variables.prodEnvironment }}
+      credentialsGroup: ${{ variables.prodCredentialsGroup }}
       checkReport: true
       reportLabel: prod
-      buildCredentialsGroup: northwind-hybrid-check-credentials
+      buildCredentialsGroup: ${{ variables.releaseBuildCredentialsGroup }}
+      baselineBackupPath: ${{ variables.baselineBackupPath }}
+      baselineBackupVersion: ${{ variables.baselineBackupVersion }}

@@ -41,9 +41,19 @@ parameters:
     default: ''
 
   # Variable group for the BUILD database the drift and change reports are worked out in
-  # (build_database_JDBC, build_databaseName, build_userName, build_password). Flyway cleans it,
-  # so it must never be a real environment. Required with checkReport.
+  # (build_database_JDBC, build_databaseName, build_userName, build_password). Flyway restores or
+  # cleans it, so it must never be a real environment. Required with checkReport.
   - name: buildCredentialsGroup
+    type: string
+    default: ''
+
+  # Schema-only backup the build database is restored from, and the version it holds (see
+  # steps-build-provisioner.yml). Empty: Flyway cleans the build database instead.
+  - name: baselineBackupPath
+    type: string
+    default: ''
+
+  - name: baselineBackupVersion
     type: string
     default: ''
 
@@ -99,6 +109,8 @@ stages:
                       reportDir: $(CheckDir)
                       failOnDrift: ${{ parameters.failOnDrift }}
                       failOnCodeError: ${{ parameters.failOnCodeError }}
+                      baselineBackupPath: ${{ parameters.baselineBackupPath }}
+                      baselineBackupVersion: ${{ parameters.baselineBackupVersion }}
 
                 # Without *:pending, validate fails on every not-yet-applied migration, so the gate
                 # would only pass with nothing to do. It still catches checksum mismatches and

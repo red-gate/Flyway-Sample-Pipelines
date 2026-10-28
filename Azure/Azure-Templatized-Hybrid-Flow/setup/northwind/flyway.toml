@@ -1,6 +1,6 @@
 databaseType = "SqlServer"
 id = "44a67c6a-7711-4452-9170-e66a29241fdf"
-name = "northwind-hybrid"
+name = "northwind"
 
 [flyway]
 callbackLocations = [ "filesystem:callbacks" ]
@@ -119,16 +119,16 @@ useExistenceChecks = false
 # auth, put user/password in flyway.user.toml (not committed) rather than here.
 
 [environments.development]
-url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-hybrid-dev;integratedSecurity=true;trustServerCertificate=true"
+url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-dev;integratedSecurity=true;trustServerCertificate=true"
 displayName = "Development database"
 
 # Build database for `flyway diff generate`. Must stay empty: Flyway cleans it.
-# The Generate pipeline overrides the url from the northwind-hybrid-shadow-credentials variable group.
+# The Generate pipeline overrides the url from the northwind_build_credentials variable group.
 [environments.shadow]
-url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-hybrid-shadow;integratedSecurity=true;trustServerCertificate=true"
+url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-shadow;integratedSecurity=true;trustServerCertificate=true"
 displayName = "Shadow (build) database"
 
 # Deployment target. Each pipeline stage overrides this url from its credentials variable group
 # (integration, test, prod), so the value here is only a local default.
 [environments.target]
-url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-hybrid-integration;integratedSecurity=true;trustServerCertificate=true"
+url = "jdbc:sqlserver://localhost:1433;databaseName=northwind-integration;integratedSecurity=true;trustServerCertificate=true"

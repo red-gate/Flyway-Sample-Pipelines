@@ -85,7 +85,8 @@ steps:
       # --- drift ---------------------------------------------------------------------------
       $driftObjects = @()
       if ($drift) {
-        $driftObjects = ObjectChanges $drift
+        # @(): a function returns one object as a scalar, and in PowerShell 5.1 that has no .Count.
+        $driftObjects = @(ObjectChanges $drift)
         $lines.Add("### Drift")
         $lines.Add("")
         if ($drift.driftCheckSkipped) { $lines.Add("Drift check skipped.") }
@@ -104,7 +105,7 @@ steps:
 
       # --- changes -------------------------------------------------------------------------
       if ($changes) {
-        $chg = ObjectChanges $changes
+        $chg = @(ObjectChanges $changes)
         $pending = @($changes.pendingMigrations | Where-Object { $_ })
         $lines.Add("### Changes this deployment makes")
         $lines.Add("")

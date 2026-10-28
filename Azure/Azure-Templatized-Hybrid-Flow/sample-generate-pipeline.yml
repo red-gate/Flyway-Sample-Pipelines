@@ -13,9 +13,37 @@
 # Straight after the PR step, "➜ Link to the review PR" has the link in its log. The run title and
 # a warning on the run summary say what to do next.
 #
-# Variable groups (Pipelines > Library):
-#   northwind-hybrid-pipeline-vars       BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   northwind-hybrid-shadow-credentials   target_database_JDBC, databaseName, userName, password  (shadow/build database)
+# Project-specific names live in pipeline-settings.yml. Variable groups used here (Pipelines > Library):
+#   pipelineVarsGroup        BASELINE_VERSION
+#   shadowCredentialsGroup   target_database_JDBC, databaseName, userName, password  (shadow database)
+
+# --- Per project, and can't be variables (keep in step with pipeline-settings.yml) ---------------
+# Also set the pipeline's default branch to dev. That's a pipeline setting, not YAML (see README).
+trigger:
+  branches:
+    include:
+      - dev                          # devBranch
+  paths:
+    include:
+      - schema-model
+      - flyway.toml
+      - Filter.scpf
+
+pool:
+  name: Default                      # agent pool with Flyway on it
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: flyway-templates-hybrid  # templates repo
+# --------------------------------------------------------------------------------------------------
+
+variables:
+  - template: pipeline-settings.yml
+  - group: ${{ variables.pipelineVarsGroup }}
+  - name: LongLivedBranch
+    value: ${{ variables.devBranch }}
 
 parameters:
   # Default must not be empty: ADO marks an empty-default string parameter
@@ -25,42 +53,21 @@ parameters:
     type: string
     default: auto
 
-trigger:
-  branches:
-    include:
-      - dev
-  paths:
-    include:
-      - schema-model
-      - flyway.toml
-      - Filter.scpf
-
-resources:
-  repositories:
-    - repository: templates
-      type: git
-      name: flyway-templates-hybrid
-
-pool:
-  name: Default
-
-variables:
-  - group: northwind-hybrid-pipeline-vars
-
-  - name: LongLivedBranch
-    value: dev
-
 # Stages are chosen at compile time, so a run only ever shows the stages it actually runs.
 stages:
   # PR builds (Build Validation policy on dev): preview the migration this PR would generate.
   - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
     - template: stage-pr-review.yml@templates
       parameters:
-        credentialsGroup: northwind-hybrid-shadow-credentials
+        credentialsGroup: ${{ variables.shadowCredentialsGroup }}
+        baselineBackupPath: ${{ variables.baselineBackupPath }}
+        baselineBackupVersion: ${{ variables.baselineBackupVersion }}
 
   - ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
     - template: stage-generate-review.yml@templates
       parameters:
-        credentialsGroup: northwind-hybrid-shadow-credentials
-        devBranch: dev
+        credentialsGroup: ${{ variables.shadowCredentialsGroup }}
+        devBranch: ${{ variables.devBranch }}
         descriptionOverride: ${{ parameters.descriptionOverride }}
+        baselineBackupPath: ${{ variables.baselineBackupPath }}
+        baselineBackupVersion: ${{ variables.baselineBackupVersion }}

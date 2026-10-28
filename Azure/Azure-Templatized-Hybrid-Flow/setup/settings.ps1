@@ -3,13 +3,20 @@
 # Prefix, so changing it gives you a second, independent copy of the whole setup.
 
 $Settings = @{
-    Prefix          = 'northwind-hybrid'
+    Prefix          = 'northwind'
 
-    # SQL Server that holds the six databases. The same server written two ways:
+    # SQL Server that holds the databases. The same server written two ways:
     #   for sqlcmd:  'localhost', '.\SQLEXPRESS', 'sqlhost,1433'
     #   for JDBC:    'localhost:1433', 'sqlhost:1433'  (a named instance needs a fixed TCP port)
     SqlCmdServer    = 'localhost'
     JdbcServer      = 'localhost:1433'
+
+    # Schema-only backup the shadow and check databases are restored from (Flyway's backup
+    # provisioner). The path is read by SQL Server, so it must be on that server or on a file share
+    # it can reach. Empty = <the server's default backup folder>\<Prefix>-baseline.bak. Step 1
+    # creates it if it doesn't exist; the version it represents is baselineBackupVersion in
+    # ..\pipeline-settings.yml.
+    BaselineBackupPath = ''
 
     # Empty = Windows (integrated) authentication. The pipeline agent then has to run as a Windows
     # user that can reach the databases. Otherwise a SQL login that can create databases.

@@ -5,13 +5,14 @@ what is missing (variable group values and policies are brought back in line wit
   .\2-setup-azure-devops.ps1
 
 Creates, in project <prefix>:
-  repos          <prefix>                  the Flyway project (setup\northwind-hybrid) plus the three
-                                           pipeline files, on branches dev (default) and main
+  repos          <prefix>                  the Flyway project (setup\northwind) plus the three
+                                           pipeline files and pipeline-settings.yml (projectName set
+                                           to <prefix>), on branches dev (default) and main
                  flyway-templates-hybrid   the templates (..\flyway-templates-hybrid), branch main
                  (a repo that already has commits is left alone)
-  variable groups <prefix>-pipeline-vars, <prefix>-{shadow,integration,test,prod}-credentials,
-                 <prefix>-check-credentials (build database for the release drift/changes reports)
-  environments   <prefix>-integration, <prefix>-test, <prefix>-prod
+  variable groups named in ..\pipeline-settings.yml: <prefix>_pipeline_vars,
+                 <prefix>_{build,integration,test,prod}_credentials, <prefix>_release_build_credentials
+  environments   named there too: <prefix>-integration, <prefix>-test, <prefix>-prod
   pipelines      "<prefix> - 1 Generate", "<prefix> - 2 Integration", "<prefix> - 3 Release",
                  each authorized only for the resources it uses
   policies       dev:  1 reviewer, your own vote counts, reset on push (review PRs, feature PRs)
@@ -83,12 +84,18 @@ if (Test-RepoEmpty $repo) {
     $w = New-Workdir
     Copy-Item -Recurse "$SeedProject\*" $w
     Copy-Item "$SeedProject\.gitignore" $w
-    @{ 'sample-generate-pipeline.yml' = 'azure-pipelines-generate.yml'; 'sample-integration-pipeline.yml' = 'azure-pipelines-integration.yml'; 'sample-release-pipeline.yml' = 'azure-pipelines-release.yml' }.GetEnumerator() |
-        ForEach-Object { Copy-Item "$Kit\$($_.Key)" (Join-Path $w $_.Value) }
-    # Point the files at this setup: names (if the prefix changed), file names, SQL Server, auth, pool.
+    Copy-Item "$Kit\pipeline-settings.yml" $w
+    $pipelineFiles = @{ 'sample-generate-pipeline.yml' = 'azure-pipelines-generate.yml'; 'sample-integration-pipeline.yml' = 'azure-pipelines-integration.yml'; 'sample-release-pipeline.yml' = 'azure-pipelines-release.yml' }
+    foreach ($p in $pipelineFiles.GetEnumerator()) { Copy-Item "$Kit\$($p.Key)" (Join-Path $w $p.Value) }
+    # Point the files at this setup: project name, baseline backup, file names, SQL Server, auth, pool.
+    $backupPath = Get-BaselineBackupPath; $backupVersion = Get-BaselineVersion
     foreach ($f in Get-ChildItem $w -File | Where-Object { $_.Extension -in '.yml', '.toml' }) {
         $t = [IO.File]::ReadAllText($f.FullName)
-        $t = $t.Replace('northwind-hybrid', $Prefix).Replace('sample-generate-pipeline.yml', 'azure-pipelines-generate.yml').Replace('sample-integration-pipeline.yml', 'azure-pipelines-integration.yml').Replace('sample-release-pipeline.yml', 'azure-pipelines-release.yml')
+        $t = Set-PipelineSetting $t 'projectName' $Prefix                                                              # pipeline-settings.yml
+        $t = Set-PipelineSetting $t 'baselineBackupPath' $backupPath
+        $t = Set-PipelineSetting $t 'baselineBackupVersion' $backupVersion
+        $t = $t.Replace('databaseName=northwind-', "databaseName=$Prefix-").Replace('name = "northwind"', "name = `"$Prefix`"")   # flyway.toml
+        foreach ($p in $pipelineFiles.GetEnumerator()) { $t = $t.Replace($p.Key, $p.Value) }
         $t = $t.Replace('jdbc:sqlserver://localhost:1433;', "jdbc:sqlserver://$($S.JdbcServer);")
         if ($S.SqlUser) { $t = $t.Replace('integratedSecurity=true;', '') }
         $t = $t -replace '(?m)^(pool:\s*\r?\n\s*name:\s*)Default\b', "`${1}$($S.AgentPool)"

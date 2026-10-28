@@ -4,33 +4,54 @@
 . "$PSScriptRoot\settings.ps1"
 $S = $Settings
 $Prefix = $S.Prefix
+$Kit = Split-Path -Parent $PSScriptRoot          # the Azure-Templatized-Hybrid-Flow folder
+$SeedProject = Join-Path $PSScriptRoot 'northwind'
+
+# Reads the "- name: / value:" pairs of pipeline-settings.yml, with projectName set to $projectName
+# and ${{ variables.x }} references resolved, so the scripts use exactly the names the pipelines do.
+function Read-PipelineSettings([string]$path, [string]$projectName) {
+    $vals = [ordered]@{}; $key = $null
+    foreach ($line in [IO.File]::ReadAllLines($path)) {
+        if ($line -match '^\s*-\s*name:\s*(\S+)') { $key = $Matches[1] }
+        elseif ($key -and $line -match '^\s*value:\s*(.*?)\s*(#.*)?$') { $vals[$key] = $Matches[1] -replace "^'(.*)'$|^`"(.*)`"$", '$1$2'; $key = $null }
+    }
+    $vals.projectName = $projectName
+    foreach ($k in @($vals.Keys)) { $vals[$k] = [regex]::Replace($vals[$k], '\$\{\{\s*variables\.(\w+)\s*\}\}', { param($m) $vals[$m.Groups[1].Value] }) }
+    $vals
+}
+$PipelineSettings = Read-PipelineSettings "$Kit\pipeline-settings.yml" $Prefix
+# Sets one "- name: / value:" pair in the text of pipeline-settings.yml.
+function Set-PipelineSetting([string]$text, [string]$name, [string]$value) {
+    $text -replace "(?m)^(\s*-\s*name:\s*$name\s*\r?\n\s*value:\s*)[^\r\n]*", "`${1}'$($value.Replace('$', '$$'))'"
+}
 
 $Names = @{
     Project       = $Prefix
     Repo          = $Prefix                         # Azure DevOps creates this repo with the project
     TemplatesRepo = 'flyway-templates-hybrid'
-    DevBranch     = 'dev'
-    MainBranch    = 'main'
+    DevBranch     = $PipelineSettings.devBranch
+    MainBranch    = $PipelineSettings.mainBranch
     Db = [ordered]@{
         dev         = "$Prefix-dev"                 # developers' database (Flyway Desktop)
-        shadow      = "$Prefix-shadow"              # EMPTY build database for generate; Flyway cleans it
-        check       = "$Prefix-check"               # EMPTY build database for drift/changes; Flyway cleans it
+        shadow      = "$Prefix-shadow"              # build database for generate; Flyway restores/cleans it
+        check       = "$Prefix-check"               # build database for drift/changes; Flyway restores/cleans it
         integration = "$Prefix-integration"
         test        = "$Prefix-test"
         prod        = "$Prefix-prod"
+        baseline    = "$Prefix-baseline"            # schema at baselineBackupVersion: the source of the baseline backup
     }
-    Group = [ordered]@{
-        vars        = "$Prefix-pipeline-vars"
-        shadow      = "$Prefix-shadow-credentials"
-        integration = "$Prefix-integration-credentials"
-        test        = "$Prefix-test-credentials"
-        prod        = "$Prefix-prod-credentials"
-        check       = "$Prefix-check-credentials"
+    Group = [ordered]@{                             # from pipeline-settings.yml
+        vars        = $PipelineSettings.pipelineVarsGroup
+        shadow      = $PipelineSettings.shadowCredentialsGroup
+        integration = $PipelineSettings.integrationCredentialsGroup
+        test        = $PipelineSettings.testCredentialsGroup
+        prod        = $PipelineSettings.prodCredentialsGroup
+        check       = $PipelineSettings.releaseBuildCredentialsGroup
     }
-    Env = [ordered]@{
-        integration = "$Prefix-integration"
-        test        = "$Prefix-test"
-        prod        = "$Prefix-prod"
+    Env = [ordered]@{                               # from pipeline-settings.yml
+        integration = $PipelineSettings.integrationEnvironment
+        test        = $PipelineSettings.testEnvironment
+        prod        = $PipelineSettings.prodEnvironment
     }
     Pipeline = [ordered]@{
         generate    = "$Prefix - 1 Generate"
@@ -38,8 +59,6 @@ $Names = @{
         release     = "$Prefix - 3 Release"
     }
 }
-$Kit = Split-Path -Parent $PSScriptRoot          # the Azure-Templatized-Hybrid-Flow folder
-$SeedProject = Join-Path $PSScriptRoot 'northwind-hybrid'
 
 function Write-Step([string]$text) { Write-Host ""; Write-Host "== $text" -ForegroundColor Cyan }
 
@@ -84,6 +103,36 @@ function Invoke-Flyway([string]$db, [string[]]$arguments) {
     try { $out = & flyway @($a + $arguments) 2>&1; $code = $LASTEXITCODE } finally { Pop-Location }
     if ($code -ne 0) { throw "flyway $($arguments -join ' ') on $db failed:`n$($out -join "`n")" }
     $out
+}
+
+# --- Baseline backup ---------------------------------------------------------------------------
+# Where the baseline backup lives, as SQL Server sees it: BaselineBackupPath, or the server's
+# default backup folder.
+function Get-BaselineBackupPath {
+    if ($S.BaselineBackupPath) { return $S.BaselineBackupPath }
+    $dir = "$(Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS nvarchar(260))")".Trim()
+    "$($dir.TrimEnd('\'))\$Prefix-baseline.bak"
+}
+# Version of the first versioned migration, the schema the baseline backup holds. Flyway turns the
+# underscores in a version into dots: V001_20261013185549__Initial.sql is version 001.20261013185549.
+function Get-BaselineVersion {
+    $first = Get-ChildItem "$SeedProject\migrations" -Filter 'V*.sql' | Sort-Object Name | Select-Object -First 1
+    (($first.BaseName -replace '^V', '') -split '__')[0] -replace '_', '.'
+}
+# The schema-only backup the shadow and check databases are restored from: the <prefix>-baseline
+# database migrated to the first migration (V001 holds no data), backed up to the path above.
+# An existing backup is left alone unless -Force.
+function New-BaselineBackup([switch]$Force) {
+    $path = Get-BaselineBackupPath
+    $version = Get-BaselineVersion
+    $exists = "$(Invoke-Sql "DECLARE @e int; EXEC master.dbo.xp_fileexist N'$path', @e OUTPUT; SELECT @e")".Trim() -eq '1'
+    if ($exists -and -not $Force) { Write-Host "  exists   $path"; return $path }
+    $db = $Names.Db.baseline
+    Invoke-Sql "IF DB_ID(N'$db') IS NULL CREATE DATABASE [$db]; ALTER DATABASE [$db] SET AUTO_CLOSE OFF" | Out-Null
+    Invoke-Flyway $db @('migrate', "-target=$version") | Out-Null
+    Invoke-Sql "BACKUP DATABASE [$db] TO DISK = N'$path' WITH INIT, FORMAT, COPY_ONLY" | Out-Null
+    Write-Host "  created  $path ($db at version $version)"
+    $path
 }
 
 # --- Azure DevOps REST -------------------------------------------------------------------------

@@ -79,6 +79,12 @@ parameters:
     type: string
     default: validated
 
+  # Azure DevOps REST API version for the PR and policy calls. 6.0 is the oldest these calls need,
+  # so the same templates run on Azure DevOps Server 2020 and later, and on Azure DevOps Services.
+  - name: adoApiVersion
+    type: string
+    default: '6.0'
+
 stages:
   - stage: ${{ parameters.stageName }}
     displayName: ${{ parameters.displayName }}
@@ -129,8 +135,9 @@ stages:
             persistCredentials: true
 
           # Build Artifacts download: Pipeline Artifacts are not supported on Azure DevOps Server.
+          # Version 0 because Azure DevOps Server 2020 may not have version 1; the inputs are the same.
           - ${{ if ne(parameters.reportArtifact, '') }}:
-            - task: DownloadBuildArtifacts@1
+            - task: DownloadBuildArtifacts@0
               displayName: "Download ${{ parameters.reportArtifact }}"
               continueOnError: true
               inputs:
@@ -152,6 +159,7 @@ stages:
               $coll   = "$(System.CollectionUri)".TrimEnd('/')
               $proj   = "$coll/$(System.TeamProject)"
               $repo   = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $api    = "${{ parameters.adoApiVersion }}"
               $h      = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
               function Api($method, $url, $body) {
                 $p = @{ Method = $method; Uri = $url; Headers = $h; ContentType = 'application/json' }
@@ -162,7 +170,7 @@ stages:
               # 1. Refuse to set auto-complete unless the target branch requires a reviewer.
               #    Filter on each policy's own scope: some servers ignore the query's repo/ref filters.
               $repoId = "$(Build.Repository.ID)"
-              $policies = (Api GET "$proj/_apis/policy/configurations?repositoryId=$repoId&refName=refs/heads/$target&api-version=7.1").value
+              $policies = (Api GET "$proj/_apis/policy/configurations?repositoryId=$repoId&refName=refs/heads/$target&api-version=$api").value
               $reviewer = $policies | Where-Object {
                 $_.type.id -eq 'fa4e907d-c16b-4a4c-9dfa-4906e5d171dd' -and $_.isEnabled -and $_.isBlocking -and $_.settings.minimumApproverCount -ge 1 -and
                 ($_.settings.scope | Where-Object { ($_.repositoryId -eq $repoId -or -not $_.repositoryId) -and (
@@ -196,12 +204,12 @@ stages:
               if ($desc.Length -gt 3900) { $desc = $desc.Substring(0, 3900) + "`n`n(truncated, see the run summary)" }
 
               # 4. Open the PR, or refresh the existing one.
-              $existing = (Api GET "$repo/pullrequests?searchCriteria.status=active&searchCriteria.sourceRefName=refs/heads/$source&searchCriteria.targetRefName=refs/heads/$target&api-version=7.1").value | Select-Object -First 1
+              $existing = (Api GET "$repo/pullrequests?searchCriteria.status=active&searchCriteria.sourceRefName=refs/heads/$source&searchCriteria.targetRefName=refs/heads/$target&api-version=$api").value | Select-Object -First 1
               if ($existing) {
-                $pr = Api PATCH "$repo/pullrequests/$($existing.pullRequestId)?api-version=7.1" @{ description = $desc }
+                $pr = Api PATCH "$repo/pullrequests/$($existing.pullRequestId)?api-version=$api" @{ description = $desc }
                 Write-Host "Updated pull request $($pr.pullRequestId)."
               } else {
-                $pr = Api POST "$repo/pullrequests?api-version=7.1" @{
+                $pr = Api POST "$repo/pullrequests?api-version=$api" @{
                   sourceRefName = "refs/heads/$source"
                   targetRefName = "refs/heads/$target"
                   title         = "Release: promote $source to $target"
@@ -213,7 +221,7 @@ stages:
 
               # 5. Auto-complete as this job's identity. Never delete the long-lived source branch.
               $me = (Api GET "$coll/_apis/connectionData").authenticatedUser.id
-              Api PATCH "$repo/pullrequests/${prId}?api-version=7.1" @{
+              Api PATCH "$repo/pullrequests/${prId}?api-version=$api" @{
                 autoCompleteSetBy = @{ id = $me }
                 completionOptions = @{
                   mergeStrategy      = 'noFastForward'
@@ -226,14 +234,14 @@ stages:
               #    $sha gets the status; any later push to $source resets it (policy setting).
               $iteration = $null
               for ($i = 0; $i -lt 12 -and -not $iteration; $i++) {
-                $its = (Api GET "$repo/pullRequests/$prId/iterations?api-version=7.1").value
+                $its = (Api GET "$repo/pullRequests/$prId/iterations?api-version=$api").value
                 $iteration = $its | Where-Object { $_.sourceRefCommit.commitId -eq $sha } | Sort-Object id -Descending | Select-Object -First 1
                 if (-not $iteration) { Start-Sleep -Seconds 5 }
               }
               $latest = ($its | Sort-Object id -Descending | Select-Object -First 1)
               $prUrl = "$proj/_git/$(Build.Repository.Name)/pullrequest/$prId"
               if ($iteration -and $latest.id -eq $iteration.id) {
-                Api POST "$repo/pullRequests/$prId/statuses?api-version=7.1-preview.1" @{
+                Api POST "$repo/pullRequests/$prId/statuses?api-version=${api}-preview.1" @{
                   state       = 'succeeded'
                   description = "Flyway check run and deployed to ${{ parameters.environmentLabel }} (run $(Build.BuildNumber))"
                   context     = @{ genre = "${{ parameters.statusGenre }}"; name = "${{ parameters.statusName }}" }

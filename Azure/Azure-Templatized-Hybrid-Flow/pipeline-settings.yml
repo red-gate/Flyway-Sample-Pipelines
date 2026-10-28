@@ -1,0 +1,57 @@
+# Settings shared by the three Flyway pipelines: everything that changes from project to project,
+# defined once. Each pipeline includes this file and reads the values as ${{ variables.<name> }}.
+#
+# Usually only projectName changes. The variable group and environment names follow from it; edit
+# them if your project names them differently.
+#
+# Azure Pipelines reads three things before any variables exist, so they can't come from here. They
+# sit at the top of each pipeline file instead; keep them in step with this file:
+#   trigger branches   devBranch (generate, integration) and mainBranch (release)
+#   pool name          the agent pool with Flyway on it
+#   templates repo     resources > repositories > name
+
+variables:
+  - name: projectName
+    value: northwind
+
+  # Generated scripts and validated changes land on devBranch; mainBranch deploys to test and prod.
+  - name: devBranch
+    value: dev
+  - name: mainBranch
+    value: main
+
+  # Schema-only backup that Generate's shadow database and Release's check database are restored
+  # from (Flyway's backup provisioner): Flyway restores it, then applies only the later migrations.
+  # SQL Server reads this path, so put the backup on the server that hosts those databases or on a
+  # file share it can reach. Empty path: Flyway cleans those databases and applies every migration.
+  # baselineBackupVersion: the version of the newest migration already in the backup. Flyway Desktop
+  # file names carry a timestamp, which is part of the version: V001_20261013185549__Initial.sql is
+  # 001.20261013185549, and "001" would make Flyway apply it again. If the backup includes
+  # flyway_schema_history, Flyway uses the version recorded there instead.
+  # https://documentation.red-gate.com/flyway/learn-more-about-flyway/how-to-articles/use-a-sql-server-backup-to-baseline-a-database
+  - name: baselineBackupPath
+    value: 'C:\Program Files\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\Backup\NewWorldDB.bak'
+  - name: baselineBackupVersion
+    value: '001'
+
+  # Variable groups (Pipelines > Library). Each pipeline's header lists the keys it needs.
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: shadowCredentialsGroup              # Generate's shadow database: Flyway restores or cleans it
+    value: ${{ variables.projectName }}_build_credentials
+  - name: integrationCredentialsGroup
+    value: ${{ variables.projectName }}_integration_credentials
+  - name: testCredentialsGroup
+    value: ${{ variables.projectName }}_test_credentials
+  - name: prodCredentialsGroup
+    value: ${{ variables.projectName }}_prod_credentials
+  - name: releaseBuildCredentialsGroup        # build database for the release reports: Flyway restores or cleans it
+    value: ${{ variables.projectName }}_release_build_credentials
+
+  # Environments (Pipelines > Environments)
+  - name: integrationEnvironment
+    value: ${{ variables.projectName }}-integration
+  - name: testEnvironment
+    value: ${{ variables.projectName }}-test
+  - name: prodEnvironment
+    value: ${{ variables.projectName }}-prod
