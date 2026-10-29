@@ -28,6 +28,16 @@ parameters:
     type: boolean
     default: true
 
+  # Schema-only backup the shadow database is restored from, and the version it holds (see
+  # steps-build-provisioner.yml). Empty: Flyway cleans the shadow database instead.
+  - name: baselineBackupPath
+    type: string
+    default: ''
+
+  - name: baselineBackupVersion
+    type: string
+    default: ''
+
   - name: commitEmail
     type: string
     default: azuredevops-build@noreply.local
@@ -93,8 +103,15 @@ stages:
               environmentName: shadow
               outputVariable: ShadowAuth
 
+          - template: steps-build-provisioner.yml
+            parameters:
+              environmentName: shadow
+              outputVariable: ShadowProvisioner
+              backupFilePath: ${{ parameters.baselineBackupPath }}
+              backupVersion: ${{ parameters.baselineBackupVersion }}
+
           - script: |
-              flyway -configFiles=flyway.toml $(ShadowAuth) ^
+              flyway -configFiles=flyway.toml $(ShadowAuth) $(ShadowProvisioner) ^
                 diff generate ^
                 -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
                 -generate.types=$(GenerateTypes) ^

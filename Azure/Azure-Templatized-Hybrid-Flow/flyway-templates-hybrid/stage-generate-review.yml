@@ -59,6 +59,22 @@ parameters:
     type: string
     default: azuredevops-build@noreply.local
 
+  # Schema-only backup the shadow database is restored from, and the version it holds (see
+  # steps-build-provisioner.yml). Empty: Flyway cleans the shadow database instead.
+  - name: baselineBackupPath
+    type: string
+    default: ''
+
+  - name: baselineBackupVersion
+    type: string
+    default: ''
+
+  # Azure DevOps REST API version for the PR calls. 6.0 is the oldest these calls need, so the
+  # same templates run on Azure DevOps Server 2020 and later, and on Azure DevOps Services.
+  - name: adoApiVersion
+    type: string
+    default: '6.0'
+
   - name: commitName
     type: string
     default: Azure DevOps Build
@@ -133,8 +149,9 @@ stages:
               $prefix = "refs/heads/${{ parameters.reviewBranchPrefix }}/"
               $proj   = "$(System.CollectionUri)".TrimEnd('/') + "/$(System.TeamProject)"
               $repo   = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $api    = "${{ parameters.adoApiVersion }}"
               $h      = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
-              $open   = (Invoke-RestMethod -ErrorAction Stop -Headers $h -Uri "$repo/pullrequests?searchCriteria.status=active&searchCriteria.targetRefName=refs/heads/$dev&api-version=7.1").value |
+              $open   = (Invoke-RestMethod -ErrorAction Stop -Headers $h -Uri "$repo/pullrequests?searchCriteria.status=active&searchCriteria.targetRefName=refs/heads/$dev&api-version=$api").value |
                 Where-Object { $_.sourceRefName.StartsWith($prefix) -and $_.targetRefName -eq "refs/heads/$dev" } | Select-Object -First 1
               if (-not $open) { Write-Host "No open review PR. Generating from $dev."; exit 0 }
 
@@ -165,13 +182,20 @@ stages:
               environmentName: shadow
               outputVariable: ShadowAuth
 
+          - template: steps-build-provisioner.yml
+            parameters:
+              environmentName: shadow
+              outputVariable: ShadowProvisioner
+              backupFilePath: ${{ parameters.baselineBackupPath }}
+              backupVersion: ${{ parameters.baselineBackupVersion }}
+
           # Runs every time (never shown as skipped); does nothing only when the review branch conflicts.
           - script: |
               if "$(GenState)"=="ReviewConflict" (
                 echo Not generating: $(PrNote)
                 exit /b 0
               )
-              flyway -configFiles=flyway.toml $(ShadowAuth) ^
+              flyway -configFiles=flyway.toml $(ShadowAuth) $(ShadowProvisioner) ^
                 diff generate ^
                 -diff.source=schemaModel -diff.target=migrations -diff.buildEnvironment=shadow ^
                 -generate.types=$(GenerateTypes) ^
@@ -211,6 +235,7 @@ stages:
 
               $coll = "$(System.CollectionUri)".TrimEnd('/'); $proj = "$coll/$(System.TeamProject)"
               $repo = "$proj/_apis/git/repositories/$(Build.Repository.ID)"
+              $api = "${{ parameters.adoApiVersion }}"
               $h = @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" }
               function Api($m, $u, $b) { $p = @{ Method = $m; Uri = $u; Headers = $h; ContentType = 'application/json'; ErrorAction = 'Stop' }; if ($null -ne $b) { $p.Body = (ConvertTo-Json -InputObject $b -Depth 10) }; Invoke-RestMethod @p }
 
@@ -242,17 +267,17 @@ stages:
 
               # 3. Update the open PR, or open a new one with auto-complete.
               if ($state -eq 'ReviewOpen') {
-                Api PATCH "$repo/pullrequests/${id}?api-version=7.1" @{ description = $body } | Out-Null
+                Api PATCH "$repo/pullrequests/${id}?api-version=$api" @{ description = $body } | Out-Null
                 Write-Host "Added the scripts to review PR $id."
                 Write-Host "##vso[task.setvariable variable=GenState]ReviewUpdated"
                 Write-Host "##vso[task.setvariable variable=PrNote]Added the scripts for '$($desc -replace '_', ' ')' to open review PR $id, so one approval covers everything. Edit the scripts on its branch if needed, then approve it."
               } else {
-                $pr = Api POST "$repo/pullrequests?api-version=7.1" @{
+                $pr = Api POST "$repo/pullrequests?api-version=$api" @{
                   sourceRefName = "refs/heads/$branch"; targetRefName = "refs/heads/$dev"
                   title = "Review migration: $($desc -replace '_', ' ')"; description = $body
                 }
                 $me = (Api GET "$coll/_apis/connectionData").authenticatedUser.id
-                Api PATCH "$repo/pullrequests/$($pr.pullRequestId)?api-version=7.1" @{
+                Api PATCH "$repo/pullrequests/$($pr.pullRequestId)?api-version=$api" @{
                   autoCompleteSetBy = @{ id = $me }
                   completionOptions = @{ mergeStrategy = 'squash'; deleteSourceBranch = $true; mergeCommitMessage = "Merged PR $($pr.pullRequestId): Review migration: $($desc -replace '_', ' ')" }
                 } | Out-Null

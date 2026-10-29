@@ -16,36 +16,62 @@
 #
 # Every stage deploys $(Build.SourceVersion), the merge commit that triggered the run.
 #
-# Server-side guard: the DistroTest and DistroProd environments and the test/prod credential groups
-# have a Branch control check (protected main only), so only this pipeline, running on main, can
-# reach them.
+# Server-side guard: the test and prod environments and credential groups have a Branch control
+# check (protected main only), so only this pipeline, running on main, can reach them.
 #
-# Variable groups (Pipelines > Library):
-#   distro_pipeline_vars      BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_test_credentials   target_database_JDBC, databaseName, userName, password
-#   distro_prod_credentials   target_database_JDBC, databaseName, userName, password
-#   distro_release_build_credentials   build_database_JDBC, build_databaseName, build_userName, build_password
-#                             (a scratch BUILD database for the drift and change reports; Flyway
-#                             cleans it, so never point it at a real environment)
+# Variable groups used here (Pipelines > Library), named in the block below:
+#   pipelineVarsGroup              BASELINE_VERSION
+#   testCredentialsGroup           target_database_JDBC, databaseName, userName, password
+#   prodCredentialsGroup           target_database_JDBC, databaseName, userName, password
+#   releaseBuildCredentialsGroup   build_database_JDBC, build_databaseName, build_userName, build_password
+#                                  (a scratch BUILD database for the drift and change reports; Flyway
+#                                  restores the baseline backup over it, or cleans it, so never point
+#                                  it at a real environment)
 
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
+# Also set the pipeline's default branch to main. That's a pipeline setting, not YAML (see README).
 trigger:
   branches:
     include:
-      - main
+      - main                         # = mainBranch (trigger, pool and templates repo can't use variables)
 
 pr: none
+
+pool:
+  name: Default                      # agent pool with Flyway on it
 
 resources:
   repositories:
     - repository: templates
       type: git
-      name: flyway-templates-hybrid
-
-pool:
-  name: Default
+      name: flyway-templates-hybrid  # templates repo
 
 variables:
-  - group: distro_pipeline_vars
+  - name: projectName                # the group and environment names below follow from it
+    value: northwind
+  - name: mainBranch
+    value: main
+  # Schema-only backup the check database is restored from, and the version of the newest migration
+  # in it (see README, "Baseline backup"). Empty path: Flyway cleans the check database instead.
+  - name: baselineBackupPath
+    value: 'C:\Program Files\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\Backup\northwind.bak'
+  - name: baselineBackupVersion
+    value: '001'
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: testCredentialsGroup
+    value: ${{ variables.projectName }}_test_credentials
+  - name: prodCredentialsGroup
+    value: ${{ variables.projectName }}_prod_credentials
+  - name: releaseBuildCredentialsGroup
+    value: ${{ variables.projectName }}_release_build_credentials
+  - name: testEnvironment            # Pipelines > Environments
+    value: ${{ variables.projectName }}-test
+  - name: prodEnvironment
+    value: ${{ variables.projectName }}-prod
+  # ------------------------------------------------------------------------------------------------
+  - group: ${{ variables.pipelineVarsGroup }}
 
 stages:
   - template: stage-deploy.yml@templates
@@ -54,12 +80,14 @@ stages:
       jobName: MigrateTest
       displayName: "Deploy to test"
       dependsOn: []
-      adoEnvironment: DistroTest
-      credentialsGroup: distro_test_credentials
-      condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      adoEnvironment: ${{ variables.testEnvironment }}
+      credentialsGroup: ${{ variables.testCredentialsGroup }}
+      condition: eq(variables['Build.SourceBranch'], 'refs/heads/${{ variables.mainBranch }}')
       checkReport: true
       reportLabel: test
-      buildCredentialsGroup: distro_release_build_credentials
+      buildCredentialsGroup: ${{ variables.releaseBuildCredentialsGroup }}
+      baselineBackupPath: ${{ variables.baselineBackupPath }}
+      baselineBackupVersion: ${{ variables.baselineBackupVersion }}
 
   - template: stage-deploy.yml@templates
     parameters:
@@ -67,8 +95,10 @@ stages:
       jobName: MigrateProd
       displayName: "Deploy to prod"
       dependsOn: DeployTest
-      adoEnvironment: DistroProd
-      credentialsGroup: distro_prod_credentials
+      adoEnvironment: ${{ variables.prodEnvironment }}
+      credentialsGroup: ${{ variables.prodCredentialsGroup }}
       checkReport: true
       reportLabel: prod
-      buildCredentialsGroup: distro_release_build_credentials
+      buildCredentialsGroup: ${{ variables.releaseBuildCredentialsGroup }}
+      baselineBackupPath: ${{ variables.baselineBackupPath }}
+      baselineBackupVersion: ${{ variables.baselineBackupVersion }}

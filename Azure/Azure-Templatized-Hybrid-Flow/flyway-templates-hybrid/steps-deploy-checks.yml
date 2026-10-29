@@ -11,9 +11,10 @@
 #   <label>-check-summary.md          the summary shown on the run's Summary tab
 #
 # Drift and changes are worked out by building the migrations into a separate BUILD database,
-# which Flyway CLEANS every time. It comes from its own variable group (build_database_JDBC,
-# build_databaseName, build_userName, build_password) and must never be the target: the first
-# step refuses to go on if it is. Clean stays disabled for every other environment.
+# which Flyway resets every time: restored from the baseline backup when baselineBackupPath is set
+# (steps-build-provisioner.yml), otherwise CLEANED. It comes from its own variable group
+# (build_database_JDBC, build_databaseName, build_userName, build_password) and must never be the
+# target: the first step refuses to go on if it is. Clean stays disabled for every other environment.
 #
 # Expects the target's credentials group (target_database_JDBC, databaseName, ...), the build
 # group, $(TargetAuth) from steps-resolve-auth.yml and $(PinnedCommit).
@@ -43,6 +44,14 @@ parameters:
     type: number
     default: 25
 
+  - name: baselineBackupPath
+    type: string
+    default: ''
+
+  - name: baselineBackupVersion
+    type: string
+    default: ''
+
 steps:
   - powershell: |
       $target = "$env:TARGET_DB"; $targetUrl = "$env:TARGET_URL"
@@ -55,7 +64,7 @@ steps:
         Write-Error "Refusing to run: the build database ($build) is the target ($target). Flyway cleans the build database."
         exit 1
       }
-      Write-Host "Target: $target. Build database (cleaned by Flyway): $build."
+      Write-Host "Target: $target. Build database (reset by Flyway): $build."
       New-Item -ItemType Directory -Force -Path "${{ parameters.reportDir }}" | Out-Null
     displayName: "Check the build database is not the target"
     env:
@@ -71,10 +80,17 @@ steps:
       userVariable: build_userName
       passwordVariable: build_password
 
+  - template: steps-build-provisioner.yml
+    parameters:
+      environmentName: build
+      outputVariable: BuildProvisioner
+      backupFilePath: ${{ parameters.baselineBackupPath }}
+      backupVersion: ${{ parameters.baselineBackupVersion }}
+      noBackupArguments: -environments.build.provisioner=clean -environments.build.flyway.cleanDisabled=false
+
   - script: |
       flyway -configFiles=flyway.toml $(TargetAuth) $(BuildAuth) -environment=target ^
-        "-environments.build.url=$(build_database_JDBC)" ^
-        -environments.build.provisioner=clean -environments.build.flyway.cleanDisabled=false ^
+        "-environments.build.url=$(build_database_JDBC)" $(BuildProvisioner) ^
         check -drift -code -changes -dryrun ^
         -check.buildEnvironment=build ^
         -check.failOnDrift=${{ lower(parameters.failOnDrift) }} ^

@@ -15,43 +15,59 @@
 # Straight after the PR step, "➜ Link to the pull request" has the link in its log. The run title
 # and a warning on the run summary say what to do next.
 #
-# Variable groups (Pipelines > Library):
-#   distro_pipeline_vars             BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_integration_credentials   target_database_JDBC, databaseName, userName, password
+# Variable groups used here (Pipelines > Library), named in the block below:
+#   pipelineVarsGroup             BASELINE_VERSION
+#   integrationCredentialsGroup   target_database_JDBC, databaseName, userName, password
 
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
+# Also set the pipeline's default branch to dev. That's a pipeline setting, not YAML (see README).
 # Exclude-only path filter: any push to dev runs this, unless every changed file is in schema-model/.
 trigger:
   branches:
     include:
-      - dev
+      - dev                          # = devBranch (trigger, pool and templates repo can't use variables)
   paths:
     exclude:
       - schema-model
+
+pool:
+  name: Default                      # agent pool with Flyway on it
 
 resources:
   repositories:
     - repository: templates
       type: git
-      name: flyway-templates-hybrid
-
-pool:
-  name: Default
+      name: flyway-templates-hybrid  # templates repo
 
 variables:
-  - group: distro_pipeline_vars
+  - name: projectName                # the group and environment names below follow from it
+    value: northwind
+  - name: devBranch
+    value: dev
+  - name: mainBranch
+    value: main
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: integrationCredentialsGroup
+    value: ${{ variables.projectName }}_integration_credentials
+  - name: integrationEnvironment     # Pipelines > Environments
+    value: ${{ variables.projectName }}-integration
+  # ------------------------------------------------------------------------------------------------
+  - group: ${{ variables.pipelineVarsGroup }}
 
 stages:
   - template: stage-check-report.yml@templates
     parameters:
       stageName: CheckIntegration
       displayName: "Flyway check report: integration"
-      credentialsGroup: distro_integration_credentials
+      credentialsGroup: ${{ variables.integrationCredentialsGroup }}
       environmentLabel: integration
       # Code analysis findings are flagged as warnings on the run and listed in the report
       # (HTML + JSON artifact, run summary, PR description). They never stop the deployment.
       # Set to true to fail the check, and stop the deployment, on error-level findings.
       failOnCodeError: false
-      condition: eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+      condition: eq(variables['Build.SourceBranch'], 'refs/heads/${{ variables.devBranch }}')
 
   - template: stage-deploy.yml@templates
     parameters:
@@ -59,17 +75,17 @@ stages:
       jobName: MigrateIntegration
       displayName: "Deploy to integration"
       dependsOn: CheckIntegration
-      adoEnvironment: DistroIntegration
-      credentialsGroup: distro_integration_credentials
+      adoEnvironment: ${{ variables.integrationEnvironment }}
+      credentialsGroup: ${{ variables.integrationCredentialsGroup }}
       commit: $[ stageDependencies.CheckIntegration.Check.outputs['Pin.Sha'] ]
 
   - template: stage-promote.yml@templates
     parameters:
       stageName: PromoteToMain
-      displayName: "Open PR dev -> main"
+      displayName: "Open PR ${{ variables.devBranch }} -> ${{ variables.mainBranch }}"
       dependsOn: [CheckIntegration, DeployIntegration]
-      sourceBranch: dev
-      targetBranch: main
+      sourceBranch: ${{ variables.devBranch }}
+      targetBranch: ${{ variables.mainBranch }}
       commit: $[ stageDependencies.CheckIntegration.Check.outputs['Pin.Sha'] ]
       reportArtifact: check-report-integration
       manualReview: false

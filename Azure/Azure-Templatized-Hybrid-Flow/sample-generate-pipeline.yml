@@ -13,9 +13,51 @@
 # Straight after the PR step, "➜ Link to the review PR" has the link in its log. The run title and
 # a warning on the run summary say what to do next.
 #
-# Variable groups (Pipelines > Library):
-#   distro_pipeline_vars       BASELINE_VERSION, AGENT_POOL, SCHEMAS, LONG_LIVED_BRANCH
-#   distro_build_credentials   target_database_JDBC, databaseName, userName, password  (shadow/build database)
+# Variable groups used here (Pipelines > Library), named in the block below:
+#   pipelineVarsGroup        BASELINE_VERSION
+#   shadowCredentialsGroup   target_database_JDBC, databaseName, userName, password  (shadow database)
+
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
+# Also set the pipeline's default branch to dev. That's a pipeline setting, not YAML (see README).
+trigger:
+  branches:
+    include:
+      - dev                          # = devBranch (trigger, pool and templates repo can't use variables)
+  paths:
+    include:
+      - schema-model
+      - flyway.toml
+      - Filter.scpf
+
+pool:
+  name: Default                      # agent pool with Flyway on it
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: flyway-templates-hybrid  # templates repo
+
+variables:
+  - name: projectName                # the variable group names below follow from it
+    value: northwind
+  - name: devBranch
+    value: dev
+  # Schema-only backup the shadow database is restored from, and the version of the newest migration
+  # in it (see README, "Baseline backup"). Empty path: Flyway cleans the shadow database instead.
+  - name: baselineBackupPath
+    value: 'C:\Program Files\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\Backup\northwind.bak'
+  - name: baselineBackupVersion
+    value: '001'
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: shadowCredentialsGroup
+    value: ${{ variables.projectName }}_build_credentials
+  # ------------------------------------------------------------------------------------------------
+  - group: ${{ variables.pipelineVarsGroup }}
+  - name: LongLivedBranch
+    value: ${{ variables.devBranch }}
 
 parameters:
   # Default must not be empty: ADO marks an empty-default string parameter
@@ -25,42 +67,21 @@ parameters:
     type: string
     default: auto
 
-trigger:
-  branches:
-    include:
-      - dev
-  paths:
-    include:
-      - schema-model
-      - flyway.toml
-      - Filter.scpf
-
-resources:
-  repositories:
-    - repository: templates
-      type: git
-      name: flyway-templates-hybrid
-
-pool:
-  name: Default
-
-variables:
-  - group: distro_pipeline_vars
-
-  - name: LongLivedBranch
-    value: dev
-
 # Stages are chosen at compile time, so a run only ever shows the stages it actually runs.
 stages:
   # PR builds (Build Validation policy on dev): preview the migration this PR would generate.
   - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
     - template: stage-pr-review.yml@templates
       parameters:
-        credentialsGroup: distro_build_credentials
+        credentialsGroup: ${{ variables.shadowCredentialsGroup }}
+        baselineBackupPath: ${{ variables.baselineBackupPath }}
+        baselineBackupVersion: ${{ variables.baselineBackupVersion }}
 
   - ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
     - template: stage-generate-review.yml@templates
       parameters:
-        credentialsGroup: distro_build_credentials
-        devBranch: dev
+        credentialsGroup: ${{ variables.shadowCredentialsGroup }}
+        devBranch: ${{ variables.devBranch }}
         descriptionOverride: ${{ parameters.descriptionOverride }}
+        baselineBackupPath: ${{ variables.baselineBackupPath }}
+        baselineBackupVersion: ${{ variables.baselineBackupVersion }}

@@ -1,0 +1,46 @@
+# Sets $(<outputVariable>) to the Flyway arguments that prepare a build database: Generate's shadow
+# database, or the database the release checks build the migrations in.
+#
+#   backupFilePath set     Flyway restores the schema-only baseline backup, then applies only the
+#                          migrations after backupVersion (backup provisioner, Flyway Enterprise)
+#   backupFilePath empty   noBackupArguments: what the step did before baseline backups
+#
+# SQL Server reads backupFilePath, so the backup must be on the server that hosts the build database
+# or on a file share it can reach. backupVersion is the version of the newest migration in the
+# backup; it can be left empty when the backup includes flyway_schema_history.
+# https://documentation.red-gate.com/flyway/learn-more-about-flyway/how-to-articles/use-a-sql-server-backup-to-baseline-a-database
+
+parameters:
+  - name: environmentName
+    type: string
+
+  - name: outputVariable
+    type: string
+
+  - name: backupFilePath
+    type: string
+    default: ''
+
+  - name: backupVersion
+    type: string
+    default: ''
+
+  - name: noBackupArguments
+    type: string
+    default: ''
+
+steps:
+  - powershell: |
+      $name    = '${{ parameters.environmentName }}'
+      $path    = '${{ parameters.backupFilePath }}'
+      $version = '${{ parameters.backupVersion }}'
+      if ($path) {
+        $flags = "-environments.$name.provisioner=backup ""-environments.$name.resolvers.backup.backupFilePath=$path"""
+        if ($version) { $flags += " -environments.$name.resolvers.backup.backupVersion=$version" }
+        Write-Host "Flyway restores the $name database from $path$(if ($version) { " (version $version)" }), then applies the later migrations."
+      } else {
+        $flags = '${{ parameters.noBackupArguments }}'
+        Write-Host "No baseline backup configured: Flyway cleans the $name database and applies every migration."
+      }
+      Write-Host "##vso[task.setvariable variable=${{ parameters.outputVariable }}]$flags"
+    displayName: "Provision the ${{ parameters.environmentName }} database"
