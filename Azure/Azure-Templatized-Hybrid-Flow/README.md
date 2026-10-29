@@ -67,7 +67,7 @@ Generate's shadow database and Release's check database start from a schema-only
 - **Settings:** set `baselineBackupPath` and `baselineBackupVersion` at the top of the Generate and Release pipelines, with the same values in both. Leave the path empty to have Flyway clean those databases and apply every migration instead.
 - **Where the backup lives:** SQL Server restores it, so the path is read by the SQL Server that hosts the shadow and check databases, not by the agent. Put the backup on a file share that SQL Server can reach, or on that server itself.
 - **Schema only:** make it with `DBCC CLONEDATABASE`, as the Redgate article describes, so no data goes into it.
-- **The version:** `baselineBackupVersion` is the version of the newest migration already in the backup. With Flyway Desktop's timestamped file names that's the full version: `V001_20261013185549__Initial.sql` is `001.20261013185549`, not `001`. If the backup includes `flyway_schema_history`, Flyway uses the version recorded there.
+- **The version:** `baselineBackupVersion` is the version of the newest migration already in the backup. With Flyway Desktop's timestamped file names that's the full version: `V001_20261013185549__Initial.sql` is `001.20261013185549`, not `001`. If the backup includes `flyway_schema_history`, Flyway uses the history recorded there instead, so a backup taken from another Flyway project fails validation ("Detected applied migration not resolved locally"). Drop that table before taking the backup.
 - **Licence:** restoring from a backup needs Flyway Enterprise.
 
 ## Azure DevOps Server (on-premises)
