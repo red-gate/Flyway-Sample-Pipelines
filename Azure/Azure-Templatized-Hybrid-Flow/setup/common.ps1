@@ -7,11 +7,12 @@ $Prefix = $S.Prefix
 $Kit = Split-Path -Parent $PSScriptRoot          # the Azure-Templatized-Hybrid-Flow folder
 $SeedProject = Join-Path $PSScriptRoot 'northwind'
 
-# Reads the "- name: / value:" pairs of pipeline-settings.yml, with projectName set to $projectName
-# and ${{ variables.x }} references resolved, so the scripts use exactly the names the pipelines do.
-function Read-PipelineSettings([string]$path, [string]$projectName) {
+# Reads the "- name: / value:" pairs from the variables at the top of the sample pipelines, with
+# projectName set to $projectName and ${{ variables.x }} references resolved, so the scripts use
+# exactly the names the pipelines do.
+function Read-PipelineSettings([string[]]$paths, [string]$projectName) {
     $vals = [ordered]@{}; $key = $null
-    foreach ($line in [IO.File]::ReadAllLines($path)) {
+    foreach ($line in $paths | ForEach-Object { [IO.File]::ReadAllLines($_) }) {
         if ($line -match '^\s*-\s*name:\s*(\S+)') { $key = $Matches[1] }
         elseif ($key -and $line -match '^\s*value:\s*(.*?)\s*(#.*)?$') { $vals[$key] = $Matches[1] -replace "^'(.*)'$|^`"(.*)`"$", '$1$2'; $key = $null }
     }
@@ -19,10 +20,10 @@ function Read-PipelineSettings([string]$path, [string]$projectName) {
     foreach ($k in @($vals.Keys)) { $vals[$k] = [regex]::Replace($vals[$k], '\$\{\{\s*variables\.(\w+)\s*\}\}', { param($m) $vals[$m.Groups[1].Value] }) }
     $vals
 }
-$PipelineSettings = Read-PipelineSettings "$Kit\pipeline-settings.yml" $Prefix
-# Sets one "- name: / value:" pair in the text of pipeline-settings.yml.
+$PipelineSettings = Read-PipelineSettings (Get-ChildItem "$Kit\sample-*-pipeline.yml").FullName $Prefix
+# Sets one "- name: / value:" pair in the text of a pipeline file.
 function Set-PipelineSetting([string]$text, [string]$name, [string]$value) {
-    $text -replace "(?m)^(\s*-\s*name:\s*$name\s*\r?\n\s*value:\s*)[^\r\n]*", "`${1}'$($value.Replace('$', '$$'))'"
+    $text -replace "(?m)^(\s*-\s*name:\s*$name\s*(#[^\r\n]*)?\r?\n\s*value:\s*)[^\r\n]*", "`${1}'$($value.Replace('$', '$$'))'"
 }
 
 $Names = @{
@@ -40,7 +41,7 @@ $Names = @{
         prod        = "$Prefix-prod"
         baseline    = "$Prefix-baseline"            # schema at baselineBackupVersion: the source of the baseline backup
     }
-    Group = [ordered]@{                             # from pipeline-settings.yml
+    Group = [ordered]@{                             # from the pipelines' variables
         vars        = $PipelineSettings.pipelineVarsGroup
         shadow      = $PipelineSettings.shadowCredentialsGroup
         integration = $PipelineSettings.integrationCredentialsGroup
@@ -48,7 +49,7 @@ $Names = @{
         prod        = $PipelineSettings.prodCredentialsGroup
         check       = $PipelineSettings.releaseBuildCredentialsGroup
     }
-    Env = [ordered]@{                               # from pipeline-settings.yml
+    Env = [ordered]@{                               # from the pipelines' variables
         integration = $PipelineSettings.integrationEnvironment
         test        = $PipelineSettings.testEnvironment
         prod        = $PipelineSettings.prodEnvironment
@@ -57,6 +58,11 @@ $Names = @{
         generate    = "$Prefix - 1 Generate"
         integration = "$Prefix - 2 Integration"
         release     = "$Prefix - 3 Release"
+    }
+    PipelineFile = [ordered]@{                      # in the project repo, copied from ..\sample-<key>-pipeline.yml
+        generate    = 'azure-pipelines-generate.yml'
+        integration = 'azure-pipelines-integration.yml'
+        release     = 'azure-pipelines-release.yml'
     }
 }
 

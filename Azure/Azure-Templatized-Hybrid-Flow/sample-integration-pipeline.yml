@@ -15,17 +15,18 @@
 # Straight after the PR step, "➜ Link to the pull request" has the link in its log. The run title
 # and a warning on the run summary say what to do next.
 #
-# Project-specific names live in pipeline-settings.yml. Variable groups used here (Pipelines > Library):
+# Variable groups used here (Pipelines > Library), named in the block below:
 #   pipelineVarsGroup             BASELINE_VERSION
 #   integrationCredentialsGroup   target_database_JDBC, databaseName, userName, password
 
-# --- Per project, and can't be variables (keep in step with pipeline-settings.yml) ---------------
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
 # Also set the pipeline's default branch to dev. That's a pipeline setting, not YAML (see README).
 # Exclude-only path filter: any push to dev runs this, unless every changed file is in schema-model/.
 trigger:
   branches:
     include:
-      - dev                          # devBranch
+      - dev                          # = devBranch (trigger, pool and templates repo can't use variables)
   paths:
     exclude:
       - schema-model
@@ -38,10 +39,21 @@ resources:
     - repository: templates
       type: git
       name: flyway-templates-hybrid  # templates repo
-# --------------------------------------------------------------------------------------------------
 
 variables:
-  - template: pipeline-settings.yml
+  - name: projectName                # the group and environment names below follow from it
+    value: northwind
+  - name: devBranch
+    value: dev
+  - name: mainBranch
+    value: main
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: integrationCredentialsGroup
+    value: ${{ variables.projectName }}_integration_credentials
+  - name: integrationEnvironment     # Pipelines > Environments
+    value: ${{ variables.projectName }}-integration
+  # ------------------------------------------------------------------------------------------------
   - group: ${{ variables.pipelineVarsGroup }}
 
 stages:

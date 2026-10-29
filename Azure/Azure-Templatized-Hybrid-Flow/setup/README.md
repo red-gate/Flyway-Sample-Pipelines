@@ -10,7 +10,7 @@ schema change on dev ──> 1 Generate ──> review PR (versioned + undo scri
 
 ## What gets created
 
-Every name comes from `Prefix` in `settings.ps1`, which defaults to `northwind`. Variable group and environment names come from `..\pipeline-settings.yml`, the file the pipelines read, with `projectName` set to `Prefix`, so the scripts and the pipelines always agree.
+Every name comes from `Prefix` in `settings.ps1`, which defaults to `northwind`. Variable group and environment names are read from the variables at the top of the sample pipelines, with `projectName` set to `Prefix`, so the scripts and the pipelines always agree.
 
 | What | Names |
 |---|---|
@@ -80,7 +80,7 @@ These are easy to miss when doing it by hand:
   - It can open and complete PRs.
   - It can never bypass the policies on `main`.
 - **Direct pushes to `dev`:** you get "Bypass policies when pushing" on `dev`, so schema changes can be committed straight there. Use `-NoDevBypass` to skip this.
-- **Baseline backup:** step 1 backs up `-baseline` (the schema at V001, no data) and step 2 writes its path and version into `pipeline-settings.yml`. On every run Flyway restores that backup into `-shadow` and `-check` and applies the later migrations, so don't keep anything in them. SQL Server reads the backup path, so with SQL Server on another machine, put the backup on a file share it can reach and set `BaselineBackupPath`. Run step 1 with `-RefreshBaseline` to remake it. The release check refuses to run if its build database is ever the target.
+- **Baseline backup:** step 1 backs up `-baseline` (the schema at V001, no data) and step 2 writes its path and version into the Generate and Release pipelines. On every run Flyway restores that backup into `-shadow` and `-check` and applies the later migrations, so don't keep anything in them. SQL Server reads the backup path, so with SQL Server on another machine, put the backup on a file share it can reach and set `BaselineBackupPath`. Run step 1 with `-RefreshBaseline` to remake it. The release check refuses to run if its build database is ever the target.
 - **AUTO_CLOSE:** it's turned off on every database. SQL Express turns it on by default, and with it on, connections get slow and the Azure DevOps job agent's database lease times out.
 - **Flyway Desktop's project file:** `flyway.toml` in the repo points at your `-dev`, `-shadow` and `-integration` databases. With a SQL login instead of Windows auth, put user and password in `flyway.user.toml`, which isn't committed.
 

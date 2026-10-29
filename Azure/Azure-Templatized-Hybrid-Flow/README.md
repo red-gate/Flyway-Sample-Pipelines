@@ -20,7 +20,6 @@ your-flyway-project/                  Repo 1: one per database project
 ├── Filter.scpf
 ├── schema-model/
 ├── migrations/
-├── pipeline-settings.yml             project-specific names, shared by the three pipelines
 ├── azure-pipelines-generate.yml      ← sample-generate-pipeline.yml
 ├── azure-pipelines-integration.yml   ← sample-integration-pipeline.yml
 └── azure-pipelines-release.yml       ← sample-release-pipeline.yml
@@ -40,7 +39,7 @@ flyway-templates-hybrid/              Repo 2: shared by all projects
 └── steps-resolve-auth.yml
 ```
 
-- **Your Flyway project repo:** copy the three `sample-*-pipeline.yml` files and `pipeline-settings.yml` into the root of your Flyway project. Set `projectName` in `pipeline-settings.yml`: the variable group and environment names follow from it. Three things can't be variables in Azure Pipelines, so they're written out at the top of each pipeline: the trigger branch, the agent pool and the templates repo name.
+- **Your Flyway project repo:** copy the three `sample-*-pipeline.yml` files into the root of your Flyway project. Everything that changes from project to project is in the "Per project" block at the top of each file. Usually only `projectName` changes: the variable group and environment names follow from it. Values that appear in more than one file, such as `projectName` and the branch names, must match. The trigger branch, agent pool and templates repo name are written out in full, because Azure Pipelines doesn't allow variables there.
 - **Templates repo:** copy everything in `flyway-templates-hybrid/` into a separate repo called `flyway-templates-hybrid`. The pipelines reference it as `@templates`.
 
 To keep everything in one repo instead, put the templates in a `flyway-templates-hybrid/` folder and drop the `@templates` suffix from each `template:` line.
@@ -53,8 +52,8 @@ To set it up by hand:
 
 1. **Pipelines:** create three pipelines from the same project repo, one for each YAML file (New pipeline > Azure Repos Git > your repo > Existing Azure Pipelines YAML file). Name them in order, for example `1 Generate`, `2 Integration` and `3 Release`, so they sort in flow order.
    - **Default branch:** Generate and Integration need `dev`, Release needs `main`. It's the branch a manual run (Run pipeline) uses, and it's a setting on each pipeline: the YAML can't set it. Pick that branch in the Branch box when you select the YAML file. To check or change it later, open the pipeline and go to Edit > ⋮ > Triggers > YAML > Get sources > Default branch for manual and scheduled builds.
-2. **Variable groups:** under Pipelines > Library, create the six groups named in `pipeline-settings.yml`. With `projectName: northwind` they are `northwind_pipeline_vars`, `northwind_build_credentials`, `northwind_integration_credentials`, `northwind_test_credentials`, `northwind_prod_credentials` and `northwind_release_build_credentials`. `northwind_build_credentials` (Generate's shadow database) and `northwind_release_build_credentials` point at empty build databases that Flyway cleans. The header of each YAML file lists their keys.
-3. **Environments:** create the three named in `pipeline-settings.yml`: `northwind-integration`, `northwind-test` and `northwind-prod`.
+2. **Variable groups:** under Pipelines > Library, create the six groups named at the top of the pipelines. With `projectName: northwind` they are `northwind_pipeline_vars`, `northwind_build_credentials`, `northwind_integration_credentials`, `northwind_test_credentials`, `northwind_prod_credentials` and `northwind_release_build_credentials`. `northwind_build_credentials` (Generate's shadow database) and `northwind_release_build_credentials` point at empty build databases that Flyway cleans. The header of each YAML file lists their keys.
+3. **Environments:** create the three named at the top of the pipelines: `northwind-integration`, `northwind-test` and `northwind-prod`.
 4. **Branches:** create `dev` and `main`.
 5. **Policy on `dev`:** require at least one reviewer, so review PRs need an approval before they auto-complete. If people commit straight to `dev`, give them "Bypass policies when pushing" on `dev`.
 6. **Policy on `main`:** require at least one reviewer, and require the status `flyway/validated`, reset on every push. Integration posts that status only for the exact commit it checked and deployed.
@@ -65,7 +64,7 @@ To set it up by hand:
 
 Generate's shadow database and Release's check database start from a schema-only backup instead of being built from the very first migration. Flyway restores the backup, then applies only the later migrations. See [Use a SQL Server backup to baseline a database](https://documentation.red-gate.com/flyway/learn-more-about-flyway/how-to-articles/use-a-sql-server-backup-to-baseline-a-database).
 
-- **Settings:** set `baselineBackupPath` and `baselineBackupVersion` in `pipeline-settings.yml`. Leave the path empty to have Flyway clean those databases and apply every migration instead.
+- **Settings:** set `baselineBackupPath` and `baselineBackupVersion` at the top of the Generate and Release pipelines, with the same values in both. Leave the path empty to have Flyway clean those databases and apply every migration instead.
 - **Where the backup lives:** SQL Server restores it, so the path is read by the SQL Server that hosts the shadow and check databases, not by the agent. Put the backup on a file share that SQL Server can reach, or on that server itself.
 - **Schema only:** make it with `DBCC CLONEDATABASE`, as the Redgate article describes, so no data goes into it.
 - **The version:** `baselineBackupVersion` is the version of the newest migration already in the backup. With Flyway Desktop's timestamped file names that's the full version: `V001_20261013185549__Initial.sql` is `001.20261013185549`, not `001`. If the backup includes `flyway_schema_history`, Flyway uses the version recorded there.

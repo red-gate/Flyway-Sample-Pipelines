@@ -13,16 +13,17 @@
 # Straight after the PR step, "➜ Link to the review PR" has the link in its log. The run title and
 # a warning on the run summary say what to do next.
 #
-# Project-specific names live in pipeline-settings.yml. Variable groups used here (Pipelines > Library):
+# Variable groups used here (Pipelines > Library), named in the block below:
 #   pipelineVarsGroup        BASELINE_VERSION
 #   shadowCredentialsGroup   target_database_JDBC, databaseName, userName, password  (shadow database)
 
-# --- Per project, and can't be variables (keep in step with pipeline-settings.yml) ---------------
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
 # Also set the pipeline's default branch to dev. That's a pipeline setting, not YAML (see README).
 trigger:
   branches:
     include:
-      - dev                          # devBranch
+      - dev                          # = devBranch (trigger, pool and templates repo can't use variables)
   paths:
     include:
       - schema-model
@@ -37,10 +38,23 @@ resources:
     - repository: templates
       type: git
       name: flyway-templates-hybrid  # templates repo
-# --------------------------------------------------------------------------------------------------
 
 variables:
-  - template: pipeline-settings.yml
+  - name: projectName                # the variable group names below follow from it
+    value: northwind
+  - name: devBranch
+    value: dev
+  # Schema-only backup the shadow database is restored from, and the version of the newest migration
+  # in it (see README, "Baseline backup"). Empty path: Flyway cleans the shadow database instead.
+  - name: baselineBackupPath
+    value: 'C:\Program Files\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\Backup\northwind.bak'
+  - name: baselineBackupVersion
+    value: '001'
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: shadowCredentialsGroup
+    value: ${{ variables.projectName }}_build_credentials
+  # ------------------------------------------------------------------------------------------------
   - group: ${{ variables.pipelineVarsGroup }}
   - name: LongLivedBranch
     value: ${{ variables.devBranch }}

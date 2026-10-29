@@ -19,7 +19,7 @@
 # Server-side guard: the test and prod environments and credential groups have a Branch control
 # check (protected main only), so only this pipeline, running on main, can reach them.
 #
-# Project-specific names live in pipeline-settings.yml. Variable groups used here (Pipelines > Library):
+# Variable groups used here (Pipelines > Library), named in the block below:
 #   pipelineVarsGroup              BASELINE_VERSION
 #   testCredentialsGroup           target_database_JDBC, databaseName, userName, password
 #   prodCredentialsGroup           target_database_JDBC, databaseName, userName, password
@@ -28,12 +28,13 @@
 #                                  restores the baseline backup over it, or cleans it, so never point
 #                                  it at a real environment)
 
-# --- Per project, and can't be variables (keep in step with pipeline-settings.yml) ---------------
+# --- Per project: everything to change for another project ----------------------------------------
+# The other two pipelines start with the same kind of block; keep the values they share in step.
 # Also set the pipeline's default branch to main. That's a pipeline setting, not YAML (see README).
 trigger:
   branches:
     include:
-      - main                         # mainBranch
+      - main                         # = mainBranch (trigger, pool and templates repo can't use variables)
 
 pr: none
 
@@ -45,10 +46,31 @@ resources:
     - repository: templates
       type: git
       name: flyway-templates-hybrid  # templates repo
-# --------------------------------------------------------------------------------------------------
 
 variables:
-  - template: pipeline-settings.yml
+  - name: projectName                # the group and environment names below follow from it
+    value: northwind
+  - name: mainBranch
+    value: main
+  # Schema-only backup the check database is restored from, and the version of the newest migration
+  # in it (see README, "Baseline backup"). Empty path: Flyway cleans the check database instead.
+  - name: baselineBackupPath
+    value: 'C:\Program Files\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\Backup\northwind.bak'
+  - name: baselineBackupVersion
+    value: '001'
+  - name: pipelineVarsGroup
+    value: ${{ variables.projectName }}_pipeline_vars
+  - name: testCredentialsGroup
+    value: ${{ variables.projectName }}_test_credentials
+  - name: prodCredentialsGroup
+    value: ${{ variables.projectName }}_prod_credentials
+  - name: releaseBuildCredentialsGroup
+    value: ${{ variables.projectName }}_release_build_credentials
+  - name: testEnvironment            # Pipelines > Environments
+    value: ${{ variables.projectName }}-test
+  - name: prodEnvironment
+    value: ${{ variables.projectName }}-prod
+  # ------------------------------------------------------------------------------------------------
   - group: ${{ variables.pipelineVarsGroup }}
 
 stages:

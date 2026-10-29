@@ -14,8 +14,7 @@ $Settings = @{
     # Schema-only backup the shadow and check databases are restored from (Flyway's backup
     # provisioner). The path is read by SQL Server, so it must be on that server or on a file share
     # it can reach. Empty = <the server's default backup folder>\<Prefix>-baseline.bak. Step 1
-    # creates it if it doesn't exist; the version it represents is baselineBackupVersion in
-    # ..\pipeline-settings.yml.
+    # creates it if it doesn't exist; step 2 writes its path and version into the pipelines.
     BaselineBackupPath = ''
 
     # Empty = Windows (integrated) authentication. The pipeline agent then has to run as a Windows

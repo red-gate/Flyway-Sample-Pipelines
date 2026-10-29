@@ -6,11 +6,11 @@ what is missing (variable group values and policies are brought back in line wit
 
 Creates, in project <prefix>:
   repos          <prefix>                  the Flyway project (setup\northwind) plus the three
-                                           pipeline files and pipeline-settings.yml (projectName set
-                                           to <prefix>), on branches dev (default) and main
+                                           pipeline files (projectName set to <prefix>), on
+                                           branches dev (default) and main
                  flyway-templates-hybrid   the templates (..\flyway-templates-hybrid), branch main
                  (a repo that already has commits is left alone)
-  variable groups named in ..\pipeline-settings.yml: <prefix>_pipeline_vars,
+  variable groups named at the top of the sample pipelines: <prefix>_pipeline_vars,
                  <prefix>_{build,integration,test,prod}_credentials, <prefix>_release_build_credentials
   environments   named there too: <prefix>-integration, <prefix>-test, <prefix>-prod
   pipelines      "<prefix> - 1 Generate", "<prefix> - 2 Integration", "<prefix> - 3 Release",
@@ -84,18 +84,16 @@ if (Test-RepoEmpty $repo) {
     $w = New-Workdir
     Copy-Item -Recurse "$SeedProject\*" $w
     Copy-Item "$SeedProject\.gitignore" $w
-    Copy-Item "$Kit\pipeline-settings.yml" $w
-    $pipelineFiles = @{ 'sample-generate-pipeline.yml' = 'azure-pipelines-generate.yml'; 'sample-integration-pipeline.yml' = 'azure-pipelines-integration.yml'; 'sample-release-pipeline.yml' = 'azure-pipelines-release.yml' }
-    foreach ($p in $pipelineFiles.GetEnumerator()) { Copy-Item "$Kit\$($p.Key)" (Join-Path $w $p.Value) }
+    foreach ($k in $Names.PipelineFile.Keys) { Copy-Item "$Kit\sample-$k-pipeline.yml" (Join-Path $w $Names.PipelineFile[$k]) }
     # Point the files at this setup: project name, baseline backup, file names, SQL Server, auth, pool.
     $backupPath = Get-BaselineBackupPath; $backupVersion = Get-BaselineVersion
     foreach ($f in Get-ChildItem $w -File | Where-Object { $_.Extension -in '.yml', '.toml' }) {
         $t = [IO.File]::ReadAllText($f.FullName)
-        $t = Set-PipelineSetting $t 'projectName' $Prefix                                                              # pipeline-settings.yml
+        $t = Set-PipelineSetting $t 'projectName' $Prefix                                                              # pipelines
         $t = Set-PipelineSetting $t 'baselineBackupPath' $backupPath
         $t = Set-PipelineSetting $t 'baselineBackupVersion' $backupVersion
         $t = $t.Replace('databaseName=northwind-', "databaseName=$Prefix-").Replace('name = "northwind"', "name = `"$Prefix`"")   # flyway.toml
-        foreach ($p in $pipelineFiles.GetEnumerator()) { $t = $t.Replace($p.Key, $p.Value) }
+        foreach ($k in $Names.PipelineFile.Keys) { $t = $t.Replace("sample-$k-pipeline.yml", $Names.PipelineFile[$k]) }
         $t = $t.Replace('jdbc:sqlserver://localhost:1433;', "jdbc:sqlserver://$($S.JdbcServer);")
         if ($S.SqlUser) { $t = $t.Replace('integratedSecurity=true;', '') }
         $t = $t -replace '(?m)^(pool:\s*\r?\n\s*name:\s*)Default\b', "`${1}$($S.AgentPool)"
@@ -142,14 +140,13 @@ foreach ($k in $Names.Env.Keys) {
 
 # --- pipelines --------------------------------------------------------------------------------
 Write-Step 'Pipelines'
-$files = @{ generate = 'azure-pipelines-generate.yml'; integration = 'azure-pipelines-integration.yml'; release = 'azure-pipelines-release.yml' }
 $pipes = [ordered]@{}
 $all = (Invoke-Ado GET "$PU/_apis/pipelines?`$top=200&api-version=7.1").value
 foreach ($k in $Names.Pipeline.Keys) {
     $pl = $all | Where-Object name -eq $Names.Pipeline[$k]
     if (-not $pl) {
         $pl = Invoke-Ado POST "$PU/_apis/pipelines?api-version=7.1" @{ name = $Names.Pipeline[$k]; folder = '\'
-            configuration = @{ type = 'yaml'; path = $files[$k]; repository = @{ id = $repo.id; name = $repo.name; type = 'azureReposGit' } } }
+            configuration = @{ type = 'yaml'; path = $Names.PipelineFile[$k]; repository = @{ id = $repo.id; name = $repo.name; type = 'azureReposGit' } } }
         Write-Host "  created $($Names.Pipeline[$k])"
     } else { Write-Host "  exists  $($Names.Pipeline[$k])" }
     # A YAML pipeline created through the REST API has no default queue, and on Azure DevOps Server
